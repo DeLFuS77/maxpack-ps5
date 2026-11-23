@@ -36,6 +36,8 @@ jobs:
             target
           key: host-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: host-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
+      - name: Identity (tools/check_identity.sh)
+        run: tools/check_identity.sh
       - name: cargo check --workspace
         run: cargo check --workspace --locked --target x86_64-unknown-freebsd
       - name: node --check (src/ui.html script)
