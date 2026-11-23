@@ -38,14 +38,24 @@ pub fn import_roots(
         smp_ini_roots(t).iter().for_each(|p| add(p));
     }
     if let Some(t) = smp_manual_lst {
-        for line in t.lines() {
+        // manual.lst lists GAME folders, and a root's entries are what gets explored as games (the root
+        // itself is never one): the folder to scan is the parent of each entry.
+        for line in unbom(t).lines() {
             let line = line.trim();
-            if !line.starts_with('#') {
-                add(line);
+            if line.starts_with('#') {
+                continue;
+            }
+            if let Some((parent, _)) = line.trim_end_matches('/').rsplit_once('/') {
+                add(parent); // a game directly under `/` gives "", which `clean` drops
             }
         }
     }
     out
+}
+
+/// `t` without a leading UTF-8 byte order mark.
+fn unbom(t: &str) -> &str {
+    t.strip_prefix('\u{feff}').unwrap_or(t)
 }
 
 /// A clean absolute path without trailing `/`; `None` if relative, empty, `/`, with `..` or control bytes.
@@ -113,13 +123,14 @@ fn strip_toml_comment(v: &str) -> &str {
 
 fn km_roots(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut lines = text.lines();
+    let mut lines = unbom(text).lines();
     while let Some(line) = lines.next() {
         let line = line.trim();
         let Some((k, v)) = line.split_once('=') else { continue };
         if k.trim() != "scanpath" {
             continue;
         }
+        out.clear(); // as in Kraken Mount, a later scanpath replaces an earlier one
         let mut v = strip_toml_comment(v.trim()).trim_end().to_string();
         if v.starts_with('[') {
             while !v.ends_with(']') {
@@ -150,7 +161,7 @@ fn km_roots(text: &str) -> Vec<String> {
 fn smp_ini_roots(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut section = String::new();
-    for line in text.lines() {
+    for line in unbom(text).lines() {
         let s = line.trim();
         if s.is_empty() || s.starts_with('#') || s.starts_with(';') {
             continue;
@@ -163,7 +174,8 @@ fn smp_ini_roots(text: &str) -> Vec<String> {
         }
         let Some((k, v)) = s.split_once('=') else { continue };
         let k = k.trim().to_ascii_lowercase();
-        if !(k == "scanpath" || (section == "scan" && k == "path")) {
+        // The flat `scanpath` is only the old format, which has no sections.
+        if !((section.is_empty() && k == "scanpath") || (section == "scan" && k == "path")) {
             continue;
         }
         let v = v.trim();
@@ -198,7 +210,7 @@ mod tests {
             Some("[scan]\npath=/data/mis"),
             Some("/mnt/ext0/x\n# no\n"),
         );
-        assert_eq!(got, s(&["/data/homebrew", "/mnt/usb0/juegos", "/data/mis", "/mnt/ext0/x"]));
+        assert_eq!(got, s(&["/data/homebrew", "/mnt/usb0/juegos", "/data/mis", "/mnt/ext0"]));
     }
 
     #[test]
@@ -232,6 +244,30 @@ mod tests {
     #[test]
     fn manual_lst_crlf_and_comments() {
         let lst = "# h\r\n  /mnt/ext0/x/ \r\n/mnt/ext0/x\r\n\r\n#/z\r\n/y";
-        assert_eq!(import_roots(&[], None, None, Some(lst)), s(&["/mnt/ext0/x", "/y"]));
+        // Entries are game folders: the root is their parent; a game directly under `/` has none.
+        assert_eq!(import_roots(&[], None, None, Some(lst)), s(&["/mnt/ext0"]));
+        let two = "/mnt/a/g1\n/mnt/b/g2\n/mnt/a/g3\n";
+        assert_eq!(import_roots(&[], None, None, Some(two)), s(&["/mnt/a", "/mnt/b"]));
+    }
+
+    #[test]
+    fn km_last_scanpath_wins() {
+        let toml = "scanpath = [\"/viejo\"]\nscanpath = [\"/n1\", \"/n2\"]\n";
+        assert_eq!(import_roots(&[], Some(toml), None, None), s(&["/n1", "/n2"]));
+    }
+
+    #[test]
+    fn smp_flat_scanpath_only_without_section() {
+        let ini = "[general]\nscanpath=/no\n[scan]\nscanpath=/tampoco\npath=/si\n";
+        assert_eq!(import_roots(&[], None, Some(ini), None), s(&["/si"]));
+    }
+
+    #[test]
+    fn bom_is_ignored() {
+        let bom = "\u{feff}";
+        assert_eq!(import_roots(&[], Some(&format!("{bom}scanpath = [\"/k\"]")), None, None), s(&["/k"]));
+        assert_eq!(import_roots(&[], None, Some(&format!("{bom}[scan]\npath=/i")), None), s(&["/i"]));
+        assert_eq!(import_roots(&[], None, Some(&format!("{bom}scanpath=/f")), None), s(&["/f"]));
+        assert_eq!(import_roots(&[], None, None, Some(&format!("{bom}/m/g"))), s(&["/m"]));
     }
 }
