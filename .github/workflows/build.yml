@@ -38,21 +38,36 @@ jobs:
           restore-keys: host-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
       - name: Identity (tools/check_identity.sh)
         run: bash tools/check_identity.sh
-      - name: Identity self-test (a planted old name must fail)
+      # Every self-test runs on a full copy of the scanned paths (the positive control proves the
+      # copy is complete), so the only reason a planted copy fails is the planted defect.
+      - name: Identity self-tests (a clean copy passes; each planted defect fails)
         run: |
-          t=$(mktemp -d)
-          cp -r tools src ps5 .github docs "$t"/
+          mk() { t=$(mktemp -d); cp -r tools src ps5 .github docs vendor crates Cargo.toml "$t"/; }
+          expect_fail() { # $1 = what was planted
+            if bash "$t/tools/check_identity.sh"; then echo "self-test: $1 not detected"; exit 1; fi
+            echo "self-test: $1 detected"
+          }
+          # The URL is built in pieces so this file does not contain it.
+          url="quer3q/ampr-emu-ng/rel""eases/latest"
+          mk
+          bash "$t/tools/check_identity.sh"
+          echo "self-test: clean copy passes"
+          mk
           echo Kraken-Mount | tr - ' ' >> "$t/docs/planted.md"
-          if bash "$t/tools/check_identity.sh"; then echo "self-test: planted name not detected"; exit 1; fi
-          echo "self-test: planted name detected"
-      - name: Identity self-test (the console checklist allows only its three tokens)
-        run: |
-          t=$(mktemp -d)
-          cp -r tools src ps5 .github docs "$t"/
+          expect_fail "planted old name"
+          mk
           # The old port, written without the literal so this file stays clean.
           echo "puerto $((8000 + 97))" >> "$t/docs/pruebas-consola.md"
-          if bash "$t/tools/check_identity.sh"; then echo "self-test: old port in the checklist not detected"; exit 1; fi
-          echo "self-test: old port in the checklist detected"
+          expect_fail "old port in the checklist"
+          mk
+          printf 'v0.5.0' > "$t/vendor/ampr-emu-ng/VERSION"
+          expect_fail "VERSION without -maxpack.N"
+          mk
+          echo "// https://github.com/$url" >> "$t/crates/maxpack-logic/src/lib.rs"
+          expect_fail "quer3q releases URL in crates/"
+          mk
+          echo "# https://github.com/$url" > "$t/tools/planted.sh"
+          expect_fail "quer3q releases URL in tools/"
       - name: cargo check --workspace
         run: cargo check --workspace --locked --target x86_64-unknown-freebsd
       - name: node --check (src/ui.html script)
