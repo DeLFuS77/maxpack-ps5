@@ -26,7 +26,7 @@ pub fn image_has_title(file_name: &str, tid: &str) -> bool {
 }
 
 /// A game title id: 4 capitals and 5 digits, not a system app (NPXS); the payload's scan::valid_tid.
-fn is_title_id(t: &str) -> bool {
+pub(crate) fn is_title_id(t: &str) -> bool {
     let b = t.as_bytes();
     b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
         && !t.starts_with("NPXS")
