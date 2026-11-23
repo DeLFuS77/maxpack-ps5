@@ -294,7 +294,24 @@ pub fn kstuff_waiting(l: Lang) -> &'static str {
     }
 }
 
-/// ShadowMount+ is running (it mounts the same titles): start-up waits for it to stop.
+/// Another mounter (`name`, maxpack_logic::mounter::display_name) runs: MaxPack mounts nothing new
+/// until it stops. New in MaxPack: Spanish and English, English for the other languages.
+pub fn other_mounter(l: Lang, name: &str) -> String {
+    match l {
+        Lang::Es => format!("MaxPack: {name} está en marcha; MaxPack no monta juegos hasta que se cierre"),
+        _ => format!("MaxPack: {name} is running; MaxPack mounts no games until it stops"),
+    }
+}
+
+/// The other mounter (`name`) stopped: MaxPack mounts again. Spanish and English, as other_mounter.
+pub fn mounting_resumed(l: Lang, name: &str) -> String {
+    match l {
+        Lang::Es => format!("MaxPack: {name} se ha cerrado; MaxPack vuelve a montar juegos"),
+        _ => format!("MaxPack: {name} stopped; MaxPack mounts games again"),
+    }
+}
+
+/// ShadowMount+ is running (it mounts the same titles): MaxPack waits for it to stop to mount.
 pub fn smp_running(l: Lang) -> &'static str {
     match l {
         Lang::En => "MaxPack: ShadowMount+ is running; waiting for it to stop",

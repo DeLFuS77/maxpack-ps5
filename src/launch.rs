@@ -6,6 +6,7 @@
 //! ShellCore hooks. Order: /mnt/sandbox vnode event (before spawn), NOTE_EXEC fallback, then
 //! unmount on NOTE_EXIT or when the sandbox dir goes. See DESIGN.md "Launch: fakelib overlay".
 use crate::sys;
+use maxpack_logic::mounter::MounterState;
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
 use std::io;
@@ -506,11 +507,16 @@ struct Watcher {
     sessions: HashMap<String, Session>,
     /// SysCore descendants that exec'd without a title id yet: (pid, give-up time).
     pending: Vec<(libc::pid_t, u64)>,
+    /// web::State::mounter: no new overlay unless Ready (another mounter runs). Layers already
+    /// mounted are still taken down on exit as always.
+    mounter: Arc<Mutex<MounterState>>,
 }
 
 /// Blocking; run on its own thread. Overlays the cache fakelib for launches of the titles in
-/// `titles`; keeps `running` = the title ids with a live session.
-pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<String>>>) {
+/// `titles` while `mounter` is Ready; keeps `running` = the title ids with a live session.
+pub fn watch(
+    titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<String>>>, mounter: Arc<Mutex<MounterState>>,
+) {
     let kq = unsafe { libc::kqueue() };
     if kq < 0 {
         tlog!("kqueue failed: {}", io::Error::last_os_error());
@@ -539,7 +545,7 @@ pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<Str
     }
     tlog!("watching {SANDBOX_ROOT} ({})", if vnode_ok { "EVFILT_VNODE" } else { "polling every 250 ms" });
     let known = list(SANDBOX_ROOT).unwrap_or_default().into_iter().collect();
-    let mut w = Watcher { kq, titles, running, known, sessions: HashMap::new(), pending: Vec::new() };
+    let mut w = Watcher { kq, titles, running, known, sessions: HashMap::new(), pending: Vec::new(), mounter };
     w.adopt();
     w.poll_cleanups();
     w.publish();
@@ -594,6 +600,11 @@ pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<Str
 impl Watcher {
     fn titles(&self) -> HashSet<String> {
         self.titles.lock().unwrap().clone()
+    }
+
+    /// Why no new overlay may be mounted now (`waiting` of /api/state), None when Ready.
+    fn not_mounting(&self) -> Option<String> {
+        self.mounter.lock().unwrap().api_waiting()
     }
 
     /// running = the title ids of the live sessions (a session ends after its cleanup).
@@ -706,6 +717,14 @@ impl Watcher {
             old.unmount_pass(false);
         }
         let mut s = Session::new(tid);
+        if let Some(why) = self.not_mounting() {
+            // Another mounter runs: this launch never gets our overlay. Still a session, so
+            // `running` holds the title (no remount of its /system_ex stack) until its game exits.
+            tlog!("{tid} {why}: not overlaying this launch");
+            s.srcs.clear();
+            self.sessions.insert(name.to_string(), s);
+            return;
+        }
         if s.srcs.is_empty() {
             // Still a session: `running` must hold the title while its game runs.
             tlog!("{tid} empty fakelib, nothing to overlay; not mounting");
@@ -800,7 +819,15 @@ impl Watcher {
                 }
             },
         };
-        let s = self.sessions.entry(name.clone()).or_insert_with(|| Session::new(tid));
+        let not_mounting = self.not_mounting();
+        let s = self.sessions.entry(name.clone()).or_insert_with(|| {
+            let mut s = Session::new(tid);
+            if not_mounting.is_some() {
+                // First seen while another mounter runs: never overlaid (fast_mount).
+                s.srcs.clear();
+            }
+            s
+        });
         if s.lib.is_none() {
             s.lib = find_lib(&name);
         }
@@ -816,6 +843,10 @@ impl Watcher {
             // A reused session: a partial cleanup may have taken /data and the USB mounts already
             // (mount_dir keeps the ones still in place).
             Some(lib) if on_top => s.mount_data(&lib),
+            // Another mounter runs: no new overlay, not even for a launch seen before it started.
+            _ if not_mounting.is_some() => {
+                tlog!("{tid} exec pid={pid}: {}: not overlaying", not_mounting.as_deref().unwrap_or(""))
+            }
             _ if s.srcs.is_empty() => tlog!("{tid} empty fakelib, nothing to overlay; not mounting"),
             // A failed overlay still gets /data and /app0/kraken: without them ng cannot open the .pkg.
             Some(lib) if top.is_some() => {

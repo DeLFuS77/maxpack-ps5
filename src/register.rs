@@ -211,7 +211,11 @@ fn remount_system_ex() -> io::Result<()> {
 /// SMP mount_title_nullfs: `src` must be a dir with eboot.bin or eboot2.bin; mkdir -p
 /// /system_ex/app/<TID> 0755, then nmount(fstype=nullfs, from, fspath, flags 0). Any other
 /// mount at the target (another tool's copy, a stale nullfs of a rebuilt cache, an old
-/// backport unionfs) is unmounted first.
+/// backport unionfs) is unmounted first, never with MNT_FORCE.
+/// Adoption: a title another mounter registered keeps its home-screen entry; its nullfs of another
+/// source (that mounter's cache, say) is replaced by ours, one of the same game folder is kept.
+/// When it cannot be unmounted (EBUSY: its game runs) the error names what is there; the caller
+/// marks the title failed, retried when its inputs change or after another mounter ran (main).
 fn mount_title_nullfs(title_id: &str, src: &str) -> io::Result<()> {
     let src_path = Path::new(src);
     if !src_path.is_dir() {
@@ -245,7 +249,7 @@ fn mount_title_nullfs(title_id: &str, src: &str) -> io::Result<()> {
     }
     // ponytail: at most 4 stacked layers, then give up (SMP has a full stack reset).
     for _ in 0..4 {
-        match mount_source(&dst) {
+        let what = match mount_source(&dst) {
             Ok(None) => {
                 return ctx(nmount(&[("fstype", "nullfs"), ("from", src), ("fspath", &dst)], 0), || {
                     format!("nullfs {src} -> {dst}")
@@ -255,12 +259,16 @@ fn mount_title_nullfs(title_id: &str, src: &str) -> io::Result<()> {
             // mount on the old inode, and ShellCore then sees an empty app (0x80940033).
             Ok(Some(m)) if m.fstype == "nullfs" && m.from_is(src) && same_inode(&dst, src) => return Ok(()),
             Ok(Some(m)) => {
-                log!("{title_id}: {dst} is a {} of {} (not ours, or stale); unmounting it", m.fstype, m.from)
+                log!("{title_id}: {dst} is a {} of {} (not ours, or stale); unmounting it", m.fstype, m.from);
+                format!("a {} of {}", m.fstype, m.from)
             }
-            Err(e) => log!("{title_id}: statfs {dst}: {e}; unmounting it as stale"),
-        }
+            Err(e) => {
+                log!("{title_id}: statfs {dst}: {e}; unmounting it as stale");
+                format!("a stale mount ({e})")
+            }
+        };
         // Never MNT_FORCE: EBUSY means a running game holds the stack; leave it alone.
-        ctx(crate::sys::unmount(&dst, 0), || format!("unmount {dst} (title running?)"))?;
+        ctx(crate::sys::unmount(&dst, 0), || format!("unmount {dst}, {what} (title running?)"))?;
     }
     Err(err(format!("{dst}: still mounted after 4 unmounts")))
 }

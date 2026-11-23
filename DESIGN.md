@@ -23,7 +23,7 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
 ## Paths
 | Path | What |
 |---|---|
-| `/data/maxpack/config.toml` | settings (created with defaults on first start) |
+| `/data/maxpack/config.toml` | settings (created on first start: the defaults, plus the scan roots the other mounters had; see Settings) |
 | `/data/maxpack/caches/<TID>/` | per-game cache |
 | `/data/maxpack/ampr.bundled` | `<version> <len> <crc32>` of the `libSceAmpr.sprx` we last wrote, bundled or downloaded (v0.4.0 builds wrote `<len> <crc32>`: ours, version unknown; outside `ampr/`, whose files all go into fakelib) |
 | `/data/maxpack/ampr/` | ampr-emu-ng files (`libSceAmpr.sprx`, ...), copied on top of every game's `fakelib/` in its cache (chmod 0777 at start; a `libkernel.sprx` there is never copied and logs a warning) |
@@ -58,7 +58,7 @@ source and fsid seen at request time; the payload never unmounts the drive itsel
 A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arrays of strings; `#` comments.
 | Key | Default | Meaning |
 |---|---|---|
-| `scanpath` | (defaults above) | array of paths; replaces the default scan roots |
+| `scanpath` | (defaults above) | array of paths; replaces the default scan roots. First start only (no `config.toml`): the roots added by hand in the other mounters are imported, read only: `scanpath` of `/data/krakenmount/config.toml` (the last line wins), `[scan] path` of `/data/shadowmount/config.ini`, and the parent folder of each `/data/shadowmount/manual.lst` entry (`maxpack_logic::roots`). With any, `scanpath` lists every default root first, for every drive whether present or not, then theirs; with none there is no `scanpath` line. A root inside `/data/krakenmount` or `/data/shadowmount` is never scanned |
 | `inject_ampr` | true | copy `/data/maxpack/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
 | `add_emulators` | true | add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes `fakelib/`) |
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
@@ -172,8 +172,14 @@ Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as 
 0777) whatever elfldr passes; then create dirs, load config, take port 8095 (asks an older copy to quit), install the bundled
 `libSceAmpr.sprx` when `ampr/libSceAmpr.sprx` is missing or matches `ampr.bundled` (an older bundled
 copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web thread, klog thread when `debug`, then wait
-(2 s poll, one toast per reason, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
-SMP `sm_kstuff_is_loaded`) and no `shadowmountplus.elf` process runs, then the launch watcher thread. Loop every `scan_interval_seconds` or on
+(2 s poll, one toast, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
+SMP `sm_kstuff_is_loaded`), then the mounter thread and the launch watcher thread.
+Another mounter: `maxpack_logic::mounter_state` (kstuff, then a `shadowmountplus.elf` or `kraken-mount.elf` process) is looked at every
+2 s (`watch_mounter`, which wakes the loop on a change) and at each loop turn, into `State::mounter`. While it is not Ready: no scan,
+build, register, purge or auto-remove, a pass in progress stops before its next title (a title built meanwhile is neither registered
+nor mounted), the launch watcher mounts no new overlay (a launch first seen then never gets one; overlays already up still go on
+exit as always), one toast per change, `waiting` = `"other:<process>"`; the web UI stays up (`State::installer_only`). Back to Ready:
+every title is checked again (`registered` and `failed` cleared), so titles the other mounter remounted are adopted again. Loop every `scan_interval_seconds` or on
 wake: reload config, scan, then for each game: freshness check, build if stale or forced,
 register (once per run, and after every rebuild), status `ready`. Right before the register (or the
 mount-only path below), once per run per title, `cache::fix_access` opens up the cache and the
@@ -376,7 +382,7 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
   `GET /kraken.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
   the rest `no-store`.
 - `GET /api/state`:
-  `{version, busy, paused, waiting:"kstuff"|"shadowmount"|null, running:[TID], games:[{title_id, title_name, version, path, kind:"pkg"|"folder", packing:"plain"|"zstd"|"lz4"|null,
+  `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off)}],
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`

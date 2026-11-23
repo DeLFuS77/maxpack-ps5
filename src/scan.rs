@@ -40,6 +40,17 @@ pub struct ScanResult {
     /// Sources still being copied (stability_wait_seconds): path and title id when known.
     /// Skipped this pass, but not gone: the caller keeps their entry, registration and cache.
     pub unstable: Vec<(PathBuf, Option<String>)>,
+    /// ShadowMountPlus disk images where a source could be: listed, never mounted (design stage 3).
+    pub images: Vec<Image>,
+}
+
+/// A `.ffpkg`, `.exfat`, `.ffpfs` or `.ffpfsc` file (maxpack_logic::images::smp_image_kind).
+#[derive(Clone, Debug)]
+pub struct Image {
+    pub path: PathBuf,
+    pub kind: &'static str,
+    /// From a `[PPSA01234]` in the file name; None without one.
+    pub title_id: Option<String>,
 }
 
 /// Seconds since the youngest max(mtime, ctime) of `paths` when that is under `wait` (SMP
@@ -253,7 +264,8 @@ fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, resu
 /// Finds the sources under `roots`: the .pkg files and game folders (eboot.bin and
 /// sce_sys/param.json) directly in a root, and those one folder below it (see `candidates`).
 pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult {
-    let mut result = ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new() };
+    let mut result =
+        ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new(), images: Vec::new() };
     // Title id -> (winner is a pkg, its index in `games`; None while the winner is still being copied).
     let mut seen: HashMap<String, (bool, Option<usize>)> = HashMap::new();
     // A slot is emptied when a later source beats it.
@@ -270,6 +282,10 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
     }
     order.extend(later);
     for (root, path, nested) in order {
+        // Never a source there: a game's app0 is written (fix_access, the game's own writes, delete).
+        if maxpack_logic::roots::in_other_mounter_data(&path.to_string_lossy()) {
+            continue;
+        }
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
             Err(e) => {
@@ -277,6 +293,12 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
                 continue;
             }
         };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Some(kind) = metadata.is_file().then(|| maxpack_logic::images::smp_image_kind(&name)).flatten() {
+            let title_id = maxpack_logic::images::bracket_title_id(&name).map(str::to_string);
+            result.images.push(Image { path, kind, title_id });
+            continue;
+        }
         let (kind, size, param) = if metadata.is_file()
             && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pkg")) {
             // Before the pkg is opened: a half-copied header is not parsed. The title id is

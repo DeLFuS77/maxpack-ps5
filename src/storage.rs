@@ -65,6 +65,14 @@ pub fn drive_of(path: &Path) -> String {
 /// SMP SM_DEFAULT_SCAN_PATHS_INITIALIZER (include/sm_paths.h) order, present drives only.
 pub fn default_scan_roots() -> Vec<String> {
     let present = mounted_aliases();
+    let mut all = all_default_scan_roots();
+    all.retain(|r| r.starts_with("/data/") || present.iter().any(|m| r == m || r.starts_with(&format!("{m}/"))));
+    all
+}
+
+/// `default_scan_roots` for every drive, present or not: what a written `scanpath` lists so that a
+/// drive plugged in later is still scanned (an absent root is just not there).
+pub fn all_default_scan_roots() -> Vec<String> {
     let ext: Vec<String> = (0..EXT).map(|i| format!("/mnt/ext{i}")).collect();
     let usb: Vec<String> = (0..USB).map(|i| format!("/mnt/usb{i}")).collect();
     let mut all = vec!["/data/homebrew".to_string(), "/data/etaHEN/games".to_string()];
@@ -76,7 +84,6 @@ pub fn default_scan_roots() -> Vec<String> {
     all.extend(usb.iter().map(|m| format!("{m}/etaHEN/games")));
     all.extend(usb.iter().cloned());
     all.extend(ext.iter().cloned());
-    all.retain(|r| r.starts_with("/data/") || present.iter().any(|m| r == m || r.starts_with(&format!("{m}/"))));
     all
 }
 

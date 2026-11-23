@@ -11,6 +11,54 @@
 //! - ShadowMountPlus `manual.lst` (`src/sm_manual.c` `sm_manual_for_each_path`): one path per line,
 //!   trimmed, trailing `/` removed, `#` comments.
 
+/// The other mounters' settings files, only ever read (for the first `config.toml`).
+pub const KM_CONFIG_TOML: &str = "/data/krakenmount/config.toml";
+pub const SMP_CONFIG_INI: &str = "/data/shadowmount/config.ini";
+pub const SMP_MANUAL_LST: &str = "/data/shadowmount/manual.lst";
+
+/// The other mounters' data folders (`/user/data` is the same folder as `/data`). MaxPack never
+/// writes or deletes anything there, so no scan root and no source may be inside one.
+const OTHER_MOUNTER_DATA: [&str; 4] =
+    ["/data/krakenmount", "/data/shadowmount", "/user/data/krakenmount", "/user/data/shadowmount"];
+
+/// `path` is one of the other mounters' data folders or inside one. `//`, `.` and `..` are resolved
+/// as text first; symlinks are not followed.
+pub fn in_other_mounter_data(path: &str) -> bool {
+    let parts = |p: &str| {
+        let mut out: Vec<String> = Vec::new();
+        for c in p.split('/') {
+            match c {
+                "" | "." => {}
+                ".." => {
+                    out.pop();
+                }
+                c => out.push(c.to_string()),
+            }
+        }
+        out
+    };
+    let p = parts(path);
+    OTHER_MOUNTER_DATA.iter().any(|d| p.starts_with(&parts(d)))
+}
+
+/// `scanpath` of the first `config.toml`. None when the other mounters add no root to
+/// `all_defaults`: then there is no `scanpath` line, so the usual roots keep following the drives
+/// as they come and go. Otherwise every usual root and then theirs, because one `scanpath` line
+/// replaces the usual roots. Roots inside the other mounters' data folders are left out.
+pub fn first_scan_paths(
+    all_defaults: &[String],
+    km_config_toml: Option<&str>,
+    smp_config_ini: Option<&str>,
+    smp_manual_lst: Option<&str>,
+) -> Option<Vec<String>> {
+    let usual = import_roots(all_defaults, None, None, None);
+    let theirs: Vec<String> = import_roots(&[], km_config_toml, smp_config_ini, smp_manual_lst)
+        .into_iter()
+        .filter(|r| !usual.contains(r) && !in_other_mounter_data(r))
+        .collect();
+    (!theirs.is_empty()).then(|| usual.into_iter().chain(theirs).collect())
+}
+
 /// Roots to use the first time: `defaults`, then Kraken Mount's, then ShadowMountPlus's `config.ini`
 /// and `manual.lst`, in that order, without trailing `/`, repeats or anything that is not a clean
 /// absolute path.
@@ -260,6 +308,39 @@ mod tests {
     fn smp_flat_scanpath_only_without_section() {
         let ini = "[general]\nscanpath=/no\n[scan]\nscanpath=/tampoco\npath=/si\n";
         assert_eq!(import_roots(&[], None, Some(ini), None), s(&["/si"]));
+    }
+
+    #[test]
+    fn first_start_without_custom_roots_writes_no_scanpath() {
+        let d = s(&["/data/homebrew", "/mnt/usb0/homebrew"]);
+        assert_eq!(first_scan_paths(&d, None, None, None), None);
+        // Usual roots again, or garbage, import nothing either: the usual roots stay dynamic.
+        let km = "scanpath = [\"/data/homebrew/\"]";
+        assert_eq!(first_scan_paths(&d, Some(km), Some("[scan]\npath=relativa"), Some("/data/homebrew/JUEGO\n")), None);
+    }
+
+    #[test]
+    fn first_start_lists_usual_roots_then_custom() {
+        let d = s(&["/data/homebrew", "/mnt/usb0/homebrew"]);
+        let got = first_scan_paths(&d, Some("scanpath = [\"/mnt/usb1/juegos\"]"), Some("[scan]\npath=/data/mis"), Some("/mnt/ext0/x/G1\n"));
+        assert_eq!(got, Some(s(&["/data/homebrew", "/mnt/usb0/homebrew", "/mnt/usb1/juegos", "/data/mis", "/mnt/ext0/x"])));
+    }
+
+    #[test]
+    fn other_mounter_data_is_never_a_root() {
+        for p in [
+            "/data/krakenmount", "/data/krakenmount/caches/PPSA01234", "/data/shadowmount/",
+            "/user/data/shadowmount/x", "/user/data/krakenmount", "/data//krakenmount/./caches",
+            "/data/homebrew/../krakenmount",
+        ] {
+            assert!(in_other_mounter_data(p), "{p}");
+        }
+        for p in ["/data/krakenmount2", "/data/homebrew", "/data", "/", "/mnt/usb0/krakenmount", "/data/krakenmount/..", "/mnt/usb0/../usb1"] {
+            assert!(!in_other_mounter_data(p), "{p}");
+        }
+        let km = "scanpath = [\"/data/krakenmount/caches\", \"/ok\"]";
+        let got = first_scan_paths(&s(&["/d"]), Some(km), Some("[scan]\npath=/data/shadowmount"), Some("/data/shadowmount/x/G\n"));
+        assert_eq!(got, Some(s(&["/d", "/ok"])));
     }
 
     #[test]

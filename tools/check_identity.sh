@@ -12,6 +12,9 @@ PATTERN='Kraken Mount|krakenmount|kraken-mount|KRKN00001|(^|[^0-9])8097([^0-9]|$
 EXCEPTIONS=(
   # The "about" credit link in ui.html names the project MaxPack is based on: exactly this line.
   '^src/ui\.html:[0-9]+: *<a class="gh-link button" data-credit="kraken-mount" href="https://github\.com/quer3q/kraken-mount" aria-label="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)" title="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)">$'
+  # The console checklist tests the original mounter itself (before anything, coming from it and
+  # going back to it), so it names it and its data folder on purpose: that one file only.
+  '^docs/pruebas-consola\.md:[0-9]+:.*$'
 )
 # The ampr-emu-ng contract (kraken.image, /app0/kraken/, kraken.pkg, kraken_zero.dat, "ampr-emu-ng ")
 # needs no entry: none of those names match PATTERN. The internal crate kraken-mount-pkg lives in

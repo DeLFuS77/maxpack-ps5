@@ -13,9 +13,35 @@ pub fn smp_image_kind(file_name: &str) -> Option<&'static str> {
     }
 }
 
+/// The title id written between brackets in an image's file name (`Juego [PPSA01234].ffpkg`): the
+/// first `[...]` that holds a game title id. None when there is none.
+pub fn bracket_title_id(file_name: &str) -> Option<&str> {
+    file_name.split('[').skip(1).filter_map(|r| r.split_once(']').map(|(id, _)| id)).find(|id| is_title_id(id))
+}
+
+/// A game title id: 4 capitals and 5 digits, not a system app (NPXS); the payload's scan::valid_tid.
+fn is_title_id(t: &str) -> bool {
+    let b = t.as_bytes();
+    b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
+        && !t.starts_with("NPXS")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bracket_title_id_from_name() {
+        assert_eq!(bracket_title_id("Astro Bot [PPSA01234].ffpkg"), Some("PPSA01234"));
+        assert_eq!(bracket_title_id("[CUSA00001][v1.00] x.exfat"), Some("CUSA00001"));
+        assert_eq!(bracket_title_id("x [v1.00] [PPSA01234].ffpfs"), Some("PPSA01234"));
+        for name in [
+            "PPSA01234.exfat", "[ppsa01234].exfat", "[NPXS20001].exfat", "[PPSA0123].exfat",
+            "[PPSA012345].exfat", "[PPSA01234.exfat", "x.ffpfsc", "[ PPSA01234 ].exfat",
+        ] {
+            assert_eq!(bracket_title_id(name), None, "{name}");
+        }
+    }
 
     #[test]
     fn smp_image_kind_by_extension() {

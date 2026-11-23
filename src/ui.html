@@ -535,6 +535,7 @@ var MSG = {
     queued: 'Your request is queued.',
     stopBusy: 'A game is running: close it first, then stop MaxPack.',
     waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.', waitSmp: 'ShadowMount+ is running: stop it to use MaxPack. Games appear once it stops.',
+    waitOther: 'Another mounter is running ({name}): MaxPack mounts no games until it stops.',
     stopped: 'MaxPack stopped. Open the MaxPack tile to start it again.',
     // Library: filters, drives, cards, empty state, log
     prevFilter: 'Previous filter (L2)', nextFilter: 'Next filter (R2)', sourceType: 'Source type',
@@ -875,6 +876,7 @@ var MSG = {
     queued: 'Tu solicitud está en cola.',
     stopBusy: 'Hay un juego en curso: ciérralo primero y luego detén MaxPack.',
     waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.', waitSmp: 'ShadowMount+ está en ejecución: detenlo para usar MaxPack. Los juegos aparecerán cuando se detenga.',
+    waitOther: 'Hay otro montador en marcha ({name}): MaxPack no monta juegos hasta que se cierre.',
     stopped: 'MaxPack se ha detenido. Abre el icono de MaxPack para iniciarlo de nuevo.',
     prevFilter: 'Filtro anterior (L2)', nextFilter: 'Filtro siguiente (R2)', sourceType: 'Tipo de origen',
     kindAll: 'Todos', kindFolders: 'Carpetas', badgeFolder: 'Carpeta',
@@ -2093,7 +2095,13 @@ async function poll() {
     setBanner('snoampr', cache.ampr_present === false);
     if (!state.paused) queued = false;
     setBanner('paused', !!state.paused, pausedText);
-    setBanner('waiting', !!state.waiting, function () { return t(state.waiting === 'kstuff' ? 'waitKstuff' : 'waitSmp'); });
+    // waiting: null | 'kstuff' | 'other:<process>' (ShadowMount+ keeps its translated text).
+    setBanner('waiting', !!state.waiting, function () {
+      var w = String(state.waiting);
+      if (w === 'kstuff') return t('waitKstuff');
+      if (w === 'other:shadowmountplus.elf') return t('waitSmp');
+      return t('waitOther', { name: w.replace(/^other:/, '') });
+    });
     var games = Array.isArray(state.games) ? state.games : [];
     renderChips(games);
     renderStorage(state.drives);

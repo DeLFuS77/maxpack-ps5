@@ -20,6 +20,7 @@ mod web;
 
 use cache::Fresh;
 use config::Settings;
+use maxpack_logic::mounter::{display_name, mounter_state, MounterState};
 use scan::{Kind, Source};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -78,6 +79,9 @@ enum Reg {
     New,
     /// Staged and mounted, registered by the pass's `install_staged` (FW 12+).
     Staged,
+    /// Built, but another mounter started meanwhile: neither registered nor mounted; a later pass
+    /// takes the title again (its cache is fresh by then).
+    Deferred,
 }
 
 /// Builds when stale or forced, then registers.
@@ -111,6 +115,12 @@ fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, 
         let r = cache::build(src, s);
         check_space(state, s);
         r?;
+        // A build can take minutes: another mounter started during it (main::watch_mounter) gets
+        // no register or mount from us now.
+        if !state.mounts() {
+            log!("{tid}: built; not registered while another mounter runs");
+            return Ok(Reg::Deferred);
+        }
     }
     // Once per run per title: build_and_register runs only for titles not registered in this run.
     cache::fix_access(src);
@@ -174,6 +184,8 @@ fn process(
             state.update(&src.path, |g| g.status = "checking");
             staged.push(src.clone());
         }
+        // Not in `registered` nor `failed`: the next pass that mounts takes it again.
+        Ok(Reg::Deferred) => state.update(&src.path, |g| g.status = "pending"),
         r => finish(state, s, src, registered, failed, r.map(|reg| reg == Reg::New), true),
     }
 }
@@ -608,39 +620,73 @@ fn prepare_ampr() {
 /// A scan pass that takes at least this long is logged with its timing.
 const SLOW_PASS_MS: u128 = 1000;
 
-/// ShadowMountPlus's process name (SMP main.c PAYLOAD_NAME): it registers and mounts the same titles.
-const SMP_PROCESS: &str = "shadowmountplus.elf";
+/// How often the mounter state is looked at (watch_mounter, and the scan loop while it is paused).
+const MOUNTER_POLL: Duration = Duration::from_secs(2);
 
-/// SMP wait_for_kstuff_ready, plus ShadowMount+ not running: polls every 2 s, one toast per
-/// reason when it starts waiting for it.
-fn wait_ready(state: &State) {
-    let s = state.settings.lock().unwrap().clone();
-    let mut waiting: Option<&str> = None;
-    loop {
-        let why = if !sys::kstuff_loaded() {
-            Some("kstuff")
-        } else if launch::find_pid(SMP_PROCESS).is_some() {
-            Some("shadowmount")
-        } else {
-            None
-        };
-        *state.waiting.lock().unwrap() = why;
-        match why {
-            None => {
-                if let Some(w) = waiting {
-                    log!("{w}: ready; continuing start-up");
+/// Set whenever another mounter is seen; the scan loop takes it once it mounts again: the other
+/// mounter may have remounted, registered or removed our titles, so every title is checked again.
+static OTHER_SEEN: AtomicBool = AtomicBool::new(false);
+
+/// maxpack_logic::mounter_state now (kstuff, then ShadowMountPlus and the original of MaxPack by
+/// process name, which register and mount the same titles), stored in `state.mounter` for
+/// /api/state and the launch watcher. On a change: logged, one toast (waiting for kstuff, another
+/// mounter, or mounting again after one) and, with `wake`, the scan loop woken to act on it.
+/// Callers are serialized, so a later look is never stored before an earlier one.
+fn refresh_mounter(state: &State, wake: bool) -> MounterState {
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let m = mounter_state(sys::kstuff_loaded(), &|n| launch::find_pid(n).is_some());
+    let last = std::mem::replace(&mut *state.mounter.lock().unwrap(), m);
+    if matches!(m, MounterState::OtherMounter(_)) {
+        OTHER_SEEN.store(true, Ordering::SeqCst);
+    }
+    if m != last {
+        let s = state.settings.lock().unwrap().clone();
+        let l = i18n::lang();
+        match (m, last) {
+            (MounterState::Ready, MounterState::OtherMounter(p)) => {
+                log!("{p} is gone; mounting again");
+                toast(&s, &i18n::mounting_resumed(l, display_name(p)));
+            }
+            (MounterState::Ready, _) => log!("kstuff: ready; mounting"),
+            (MounterState::WaitKstuff, _) => {
+                log!("waiting for kstuff; nothing mounts until it answers");
+                toast(&s, i18n::kstuff_waiting(l));
+            }
+            (MounterState::OtherMounter(p), _) => {
+                log!("{p} is running: no scan, build, register or new overlay until it stops (the web UI stays up)");
+                // ShadowMount+ keeps its 11-language text; the others get the new one.
+                if p == "shadowmountplus.elf" {
+                    toast(&s, i18n::smp_running(l));
+                } else {
+                    toast(&s, &i18n::other_mounter(l, display_name(p)));
                 }
-                return;
             }
-            Some(w) if waiting != Some(w) => {
-                log!("waiting before start-up: {w}");
-                let l = i18n::lang();
-                toast(&s, if w == "kstuff" { i18n::kstuff_waiting(l) } else { i18n::smp_running(l) });
-                waiting = Some(w);
-            }
-            Some(_) => {}
         }
-        std::thread::sleep(Duration::from_secs(2));
+        if wake {
+            state.wake();
+        }
+    }
+    m
+}
+
+/// SMP wait_for_kstuff_ready: polls every 2 s until kstuff answers, one toast when it starts
+/// waiting. Another mounter is not waited for here (the web UI and the installer stay up): from
+/// now on watch_mounter looks every 2 s and the scan loop only pauses mounting.
+fn wait_ready(state: &Arc<State>) {
+    while refresh_mounter(state, false) == MounterState::WaitKstuff {
+        std::thread::sleep(MOUNTER_POLL);
+    }
+    let state = state.clone();
+    std::thread::spawn(move || watch_mounter(&state));
+}
+
+/// The mounter state every 2 s, also while the scan thread is busy with a long build: a mounter
+/// started meanwhile stops new overlays (launch::watch) within 2 s, and the scan loop is woken.
+fn watch_mounter(state: &State) {
+    loop {
+        std::thread::sleep(MOUNTER_POLL);
+        refresh_mounter(state, true);
     }
 }
 
@@ -780,21 +826,36 @@ fn main() {
     }
     let web_state = state.clone();
     std::thread::spawn(move || web::serve(web_state, listener));
-    // The web UI is up; nothing mounts until kstuff answers and ShadowMount+ is gone.
+    // The web UI is up; nothing mounts until kstuff answers, nor while another mounter runs.
     wait_ready(&state);
-    let (titles, running) = (state.titles.clone(), state.running.clone());
+    let (titles, running, mounter) = (state.titles.clone(), state.running.clone(), state.mounter.clone());
     // Built caches are launchable before the first scan ends: watch them from the start.
     for e in std::fs::read_dir(cache::CACHES).into_iter().flatten().flatten() {
         if e.path().join(cache::DONE).is_file() {
             titles.lock().unwrap().insert(e.file_name().to_string_lossy().into_owned());
         }
     }
-    std::thread::spawn(move || launch::watch(titles, running));
+    std::thread::spawn(move || launch::watch(titles, running, mounter));
     let (mut registered, mut failed) = (HashSet::new(), HashMap::new());
     // Auto-remove timers start only after the first full pass: a drive not mounted yet at start
     // looks like a missing source until then (the delay covers the rest).
     let (mut timers, mut full_pass, t0) = (MissingTimers::default(), false, std::time::Instant::now());
     loop {
+        // Another mounter runs (or kstuff is gone): no scan, build, register, purge or auto-remove,
+        // and launch::watch mounts no new overlay; overlays already up still go when their game
+        // exits. Requests stay queued as while a game runs. The web UI (and the installer) stay up.
+        if !refresh_mounter(&state, false).mounts() {
+            state.busy.store(false, Ordering::SeqCst);
+            std::thread::sleep(MOUNTER_POLL);
+            continue;
+        }
+        // Back after another mounter: every title goes through build_and_register again (only a
+        // remount when it is still on the home screen), and a failure gets one more try.
+        if OTHER_SEEN.swap(false, Ordering::SeqCst) && !(registered.is_empty() && failed.is_empty()) {
+            log!("another mounter ran: checking every title again");
+            registered.clear();
+            failed.clear();
+        }
         // A game runs: nothing that could touch its app0 or /system_ex mount. Rescan, rebuild
         // and purge requests stay queued (forced / purge) for after it exits.
         // ponytail: polls every 2 s instead of a wake from the watcher.
@@ -810,10 +871,10 @@ fn main() {
         sys::LOG_FILE.store(s.log, Ordering::Relaxed);
         *state.settings.lock().unwrap() = s.clone();
         state.busy.store(true, Ordering::SeqCst);
-        let roots = if s.scan_paths.is_empty() { storage::default_scan_roots() } else { s.scan_paths.clone() };
+        let roots = usable_roots(if s.scan_paths.is_empty() { storage::default_scan_roots() } else { s.scan_paths.clone() });
         let r = scan::scan(&roots, s.backports, s.stability_wait_secs);
         let scan_ms = pass.elapsed().as_millis();
-        if state.paused() {
+        if state.paused() || !state.mounts() {
             continue;
         }
         // Purge after the scan, so `keep` is this scan's library and every kept title rebuilds below.
@@ -834,6 +895,7 @@ fn main() {
             state.forced.lock().unwrap().extend(keep);
         }
         publish(&state, &r);
+        *state.images.lock().unwrap() = r.images.clone();
         // A source that left the scan (USB unplugged) goes through register::mount again when back.
         // A source still being copied stays registered (skipped this pass, not gone).
         registered.retain(|t| r.games.iter().any(|g| &g.title_id == t)
@@ -850,16 +912,24 @@ fn main() {
                 full = false;
                 break;
             }
+            // A first adoption pass can build for minutes: another mounter started meanwhile
+            // (watch_mounter) stops it before the next title, not at the end of the pass.
+            if !state.mounts() {
+                log!("pass stopped before {}: MaxPack does not mount now", src.title_id);
+                full = false;
+                break;
+            }
             process(&state, &s, src, &mut registered, &mut failed, &mut staged);
         }
-        // Not once a game has started (nothing registers while a game runs): the staged titles are
-        // not in `registered`, so the pass after the game exits stages them again and installs them.
+        // Not once a game has started (nothing registers while a game runs) or another mounter
+        // runs: the staged titles are not in `registered`, so the pass after that stages them again
+        // and installs them.
         // ponytail: a title already on the home screen (a rebuild) is only remounted then; its
         // app.db row keeps the old version and name until its next full register.
-        if !state.paused() {
+        if !state.paused() && state.mounts() {
             install_staged(&state, &s, &mut staged, &mut registered, &mut failed);
         }
-        if full_pass && full && !state.paused() {
+        if full_pass && full && !state.paused() && state.mounts() {
             auto_remove(&state, &s, &r, &mut timers, t0.elapsed().as_secs());
         }
         full_pass |= full;
@@ -872,6 +942,23 @@ fn main() {
         }
         state.busy.store(false, Ordering::SeqCst);
         drop(work);
+        // watch_mounter wakes this wait when the mounter state changes.
         state.wait(Duration::from_secs(s.scan_interval_secs));
     }
+}
+
+/// `roots` without those inside the other mounters' data folders, which MaxPack only reads
+/// (maxpack_logic::roots::in_other_mounter_data); each one left out is logged once.
+fn usable_roots(mut roots: Vec<String>) -> Vec<String> {
+    static LOGGED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    roots.retain(|r| {
+        let inside = maxpack_logic::roots::in_other_mounter_data(r);
+        let mut logged = LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        if inside && !logged.contains(r) {
+            log!("scan root {r} is inside another mounter's data folder: not scanned (MaxPack never writes there)");
+            logged.push(r.clone());
+        }
+        !inside
+    });
+    roots
 }

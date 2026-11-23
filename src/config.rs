@@ -296,12 +296,40 @@ fn render(s: &Settings) -> String {
     out
 }
 
-/// Reads the config; creates it with the defaults when missing.
+/// The settings of a first start: the defaults, plus the scan roots added by hand in the other
+/// mounters (maxpack_logic::roots), whose files are only read. Without such roots there is no
+/// scanpath line, as before; with them, scanpath lists every usual root first.
+fn first_settings() -> Settings {
+    use maxpack_logic::roots::{first_scan_paths, KM_CONFIG_TOML, SMP_CONFIG_INI, SMP_MANUAL_LST};
+    let read = |path: &str| match std::fs::read(path) {
+        Ok(b) => Some(String::from_utf8_lossy(&b).into_owned()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            log!("config: first start: cannot read {path}: {e}; skipped");
+            None
+        }
+    };
+    let (km, ini, lst) = (read(KM_CONFIG_TOML), read(SMP_CONFIG_INI), read(SMP_MANUAL_LST));
+    let usual = crate::storage::all_default_scan_roots();
+    let mut s = Settings::default();
+    match first_scan_paths(&usual, km.as_deref(), ini.as_deref(), lst.as_deref()) {
+        Some(paths) => {
+            let theirs: Vec<&String> = paths.iter().filter(|p| !usual.contains(p)).collect();
+            log!("config: first start: imported {} scan root(s) from the other mounters: {theirs:?}; scanpath keeps the {} usual roots too",
+                theirs.len(), usual.len());
+            s.scan_paths = paths;
+        }
+        None => log!("config: first start: imported 0 scan roots from the other mounters; the usual roots are scanned"),
+    }
+    s
+}
+
+/// Reads the config; creates it when missing (first_settings).
 pub fn load() -> Settings {
     match std::fs::read_to_string(CONFIG_PATH) {
         Ok(t) => parse(&t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let s = Settings::default();
+            let s = first_settings();
             if let Err(e) = save(&s) {
                 log!("config {CONFIG_PATH}: cannot create: {e}");
             }

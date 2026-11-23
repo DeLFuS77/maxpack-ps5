@@ -1,8 +1,9 @@
 //! Tiny HTTP/1.1 server for the web UI opened in the PS5 browser (Connection: close, no keep-alive).
 //! Routes: DESIGN.md "Web API".
 use crate::config::{self, Settings};
-use crate::scan::{Kind, Packing, Source};
+use crate::scan::{Image, Kind, Packing, Source};
 use crate::{cache, register, storage, sys};
+use maxpack_logic::mounter::MounterState;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
@@ -37,8 +38,11 @@ pub struct State {
     /// Purge requested: done by the scan loop, so it never races a build.
     pub purge: AtomicBool,
     pub busy: AtomicBool,
-    /// Start-up is waiting for this ("kstuff" or "shadowmount", main::wait_ready); None once ready.
-    pub waiting: Mutex<Option<&'static str>>,
+    /// Whether MaxPack mounts now (main::refresh_mounter: every 2 s and at each scan loop turn):
+    /// /api/state `waiting`, and launch::watch overlays nothing new unless Ready.
+    pub mounter: Arc<Mutex<MounterState>>,
+    /// ShadowMountPlus images of the last scan: listed for the UI, not mounted.
+    pub images: Mutex<Vec<Image>>,
     /// Held by the scan loop for a whole pass (scan, purge, build, register); delete takes it.
     pub work: Mutex<()>,
     pub low_space: AtomicBool,
@@ -59,7 +63,10 @@ impl State {
             forced: Mutex::new(HashSet::new()),
             purge: AtomicBool::new(false),
             busy: AtomicBool::new(false),
-            waiting: Mutex::new(None),
+            // Nothing mounts before main::wait_ready has looked; from Ready, its first look toasts
+            // what it waits for.
+            mounter: Arc::new(Mutex::new(MounterState::Ready)),
+            images: Mutex::new(Vec::new()),
             work: Mutex::new(()),
             low_space: AtomicBool::new(false),
             cache_total: Mutex::new(0),
@@ -93,6 +100,16 @@ impl State {
     /// A game runs: no scan/build/register/purge until it exits (requests stay queued).
     pub fn paused(&self) -> bool {
         !self.running.lock().unwrap().is_empty()
+    }
+
+    /// MaxPack mounts now: kstuff answers and no other mounter runs.
+    pub fn mounts(&self) -> bool {
+        self.mounter.lock().unwrap().mounts()
+    }
+
+    /// Another mounter runs: MaxPack only installs (its own mounting pauses, the installer does not).
+    pub fn installer_only(&self) -> bool {
+        matches!(*self.mounter.lock().unwrap(), MounterState::OtherMounter(_))
     }
 
     /// Title ids of the library (duplicates excluded).
@@ -490,13 +507,23 @@ fn api_state(state: &State) -> Vec<u8> {
     let tail = &lines[lines.len().saturating_sub(LOG_LINES)..];
     let mut running: Vec<String> = state.running.lock().unwrap().iter().cloned().collect();
     running.sort();
+    // {path, kind, title_id?}: no title_id key when the file name has none.
+    let images: Vec<_> = state.images.lock().unwrap().iter().map(|i| {
+        let mut o = serde_json::json!({"path": i.path.to_string_lossy(), "kind": i.kind});
+        if let Some(t) = &i.title_id {
+            o["title_id"] = t.as_str().into();
+        }
+        o
+    }).collect();
     let v = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "busy": state.busy.load(Ordering::SeqCst),
         "paused": !running.is_empty(),
-        "waiting": *state.waiting.lock().unwrap(),
+        // null | "kstuff" | "other:<process>"
+        "waiting": state.mounter.lock().unwrap().api_waiting(),
         "running": running,
         "games": games,
+        "images": images,
         "drives": drives,
         "cache": {
             "path": cache::CACHES,

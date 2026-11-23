@@ -40,9 +40,29 @@ impl MounterState {
     }
 }
 
+/// The name people know a mounter by, for toasts and the log: ShadowMount+ (as the other texts call
+/// it) and the original of MaxPack; any other process keeps its own name.
+pub fn display_name(process: &str) -> &str {
+    match process {
+        "shadowmountplus.elf" => "ShadowMount+",
+        "kraken-mount.elf" => "Kraken Mount",
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_names() {
+        assert_eq!(display_name("shadowmountplus.elf"), "ShadowMount+");
+        assert_eq!(display_name("kraken-mount.elf"), "Kraken Mount");
+        assert_eq!(display_name("otro.elf"), "otro.elf");
+        for n in OTHER_MOUNTERS {
+            assert_ne!(display_name(n), n, "{n} has a display name");
+        }
+    }
 
     #[test]
     fn mounter_state_transitions() {
