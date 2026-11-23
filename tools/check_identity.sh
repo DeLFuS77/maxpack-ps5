@@ -45,4 +45,16 @@ if [[ -n "$hits" ]]; then
   echo "check_identity: $(printf '%s\n' "$hits" | wc -l) occurrence(s)" >&2
   exit 1
 fi
+# The bundled ampr-emu-ng is our own build (DeLFuS77/ampr-emu-ng): its VERSION ends in -maxpack.N.
+if ! grep -qE -- '-maxpack\.[0-9]+$' vendor/ampr-emu-ng/VERSION; then
+  echo "check_identity: vendor/ampr-emu-ng/VERSION ($(tr -d '
+' < vendor/ampr-emu-ng/VERSION)) must end in -maxpack.N (our own build)" >&2
+  exit 1
+fi
+# MaxPack never downloads quer3q's build: no URL of its releases in code (the PATTERN above covers
+# src/, ps5/, .github/ and docs/; Cargo.toml, crates/ and tools/ other than this script are checked here).
+if grep -rnIE 'quer3q/ampr-emu-ng/releases' Cargo.toml crates tools --exclude=check_identity.sh 2>/dev/null | grep -q .; then
+  echo "check_identity: a quer3q/ampr-emu-ng/releases URL is in code" >&2
+  exit 1
+fi
 echo "check_identity: OK"

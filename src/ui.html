@@ -569,7 +569,7 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
       <textarea id="f_scanpath" spellcheck="false"></textarea></label>
     <label class="row"><span class="lbl" data-i18n="addEmulators">Add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators when a game needs them and has none</span><input type="checkbox" id="f_add_emulators"></label>
     <label class="row"><span class="lbl" data-i18n="injectAmpr">Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)</span><input type="checkbox" id="f_inject_ampr"></label>
-    <label class="row"><span class="lbl" data-i18n="amprAutoUpdate">Auto-update ampr-emu-ng (checked once at start)</span><input type="checkbox" id="f_ampr_auto_update"></label>
+    <label class="row"><span><span class="lbl" data-i18n="amprAutoUpdate">Auto-update ampr-emu-ng (checked once at start)</span><span class="hint" data-i18n="amprAutoUpdateHint">Off until MaxPack is published. It only ever downloads MaxPack's own ampr-emu-ng build.</span></span><input type="checkbox" id="f_ampr_auto_update"></label>
     <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
     <label class="row"><span class="lbl" data-i18n="scanInterval">Scan interval, seconds (1-3600)</span><input type="number" id="f_scan_interval_seconds" min="1" max="3600"></label>
@@ -713,6 +713,7 @@ var MSG = {
     addEmulators: 'Add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators when a game needs them and has none',
     injectAmpr: "Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)",
     amprAutoUpdate: 'Auto-update ampr-emu-ng (checked once at start)',
+    amprAutoUpdateHint: "Off until MaxPack is published. It only ever downloads MaxPack's own ampr-emu-ng build.",
     amprUpdateNow: "Update ampr-emu-ng now",
     amprUpdating: "Updating ampr-emu-ng...",
     amprBundled: "bundled",
@@ -1093,6 +1094,7 @@ var MSG = {
     addEmulators: 'Añadir los emuladores incluidos de DLC (dlc_emu) y PlayGo (pgo_stub) cuando un juego los necesita y no los trae',
     injectAmpr: 'Inyectar ampr-emu-ng en la fakelib de los juegos en carpeta (los juegos pkg siempre lo reciben)',
     amprAutoUpdate: 'Actualizar ampr-emu-ng automáticamente (se comprueba una vez al iniciar)',
+    amprAutoUpdateHint: 'Apagada hasta que se publique MaxPack. Solo descarga la ampr-emu-ng propia de MaxPack.',
     amprUpdateNow: "Actualizar ampr-emu-ng ahora",
     amprUpdating: "Actualizando ampr-emu-ng...",
     amprBundled: "incluido",
