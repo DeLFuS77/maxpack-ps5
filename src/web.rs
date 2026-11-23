@@ -457,8 +457,15 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
 /// uninstall it accepts is followed to its end (installer::after_uninstall), so MaxPack's home
 /// entry and mount of that game go with it.
 fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
-    use maxpack_logic::inst::{answer_ok, game_blocks, header, installer_path, needs_no_game, uninstall_title};
+    use maxpack_logic::inst::{answer_ok, game_blocks, header, installer_path, needs_no_game, title_id_repeats, uninstall_title};
     let Some(path) = installer_path(method, target) else { return not_found() };
+    // A repeated `title_id` is read differently by the gate (the last) and the engine (the first):
+    // it never reaches the engine.
+    if path == "/api/uninstall" && title_id_repeats(body) {
+        log!("installer: {path} refused: title_id repeated");
+        let body = serde_json::json!({"ok": false, "code": "bad_json", "detail": "title_id repeated"}).to_string();
+        return reply(400, "application/json", body);
+    }
     // `paused()` only knows the titles MaxPack tracks: for an uninstall (it names its title id) the
     // process list is asked too, so a game another mounter launched blocks it as well, and a failed
     // walk refuses. A replace carries paths, not a title id: it stays on `paused()` alone.

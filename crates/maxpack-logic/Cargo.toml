@@ -6,4 +6,5 @@ license = "GPL-3.0-or-later"
 description = "Logic of the MaxPack payload that needs no PS5, tested on the host: imported scan roots and the paths never scanned, other-mounter state, ShadowMountPlus image kinds, installed games, the request checks of port 8095 and installer route forwarding"
 
 [dependencies]
+serde = "1"
 serde_json = "1"

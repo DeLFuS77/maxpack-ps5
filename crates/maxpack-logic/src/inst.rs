@@ -65,9 +65,39 @@ pub fn game_blocks(paused: bool, walk: Option<bool>) -> bool {
     paused || walk != Some(false)
 }
 
+/// A JSON object body whose top level has the key `title_id` more than once. serde_json keeps the
+/// last of a repeated key and the engine's mp_json_get the first, so such a body would name one
+/// title to the gate and another to the engine: web.rs refuses it (400 bad_json). Keys inside
+/// nested values or strings do not count. Not an object, or not JSON: false (the engine answers).
+pub fn title_id_repeats(body: &[u8]) -> bool {
+    use serde::de::{Deserializer, IgnoredAny, MapAccess, Visitor};
+    struct Count(usize);
+    impl<'de> Visitor<'de> for Count {
+        type Value = usize;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an object")
+        }
+        fn visit_map<A: MapAccess<'de>>(mut self, mut m: A) -> Result<usize, A::Error> {
+            while let Some(k) = m.next_key::<String>()? {
+                m.next_value::<IgnoredAny>()?;
+                if k == "title_id" {
+                    self.0 += 1;
+                }
+            }
+            Ok(self.0)
+        }
+    }
+    let mut de = serde_json::Deserializer::from_slice(body);
+    de.deserialize_map(Count(0)).is_ok_and(|n| n > 1)
+}
+
 /// The title id of an uninstall request's body (`{"title_id": "PPSA01234", "confirm": true}`), when
 /// it is a game title id.
+/// None when `title_id` repeats (title_id_repeats): the engine reads the first, serde the last.
 pub fn uninstall_title(body: &[u8]) -> Option<String> {
+    if title_id_repeats(body) {
+        return None;
+    }
     let v: Value = serde_json::from_slice(body).ok()?;
     let tid = v.get("title_id")?.as_str()?;
     crate::images::is_title_id(tid).then(|| tid.to_string())
@@ -216,6 +246,25 @@ mod tests {
         ] {
             assert_eq!(game_blocks(paused, walk), want, "paused={paused} walk={walk:?}");
         }
+    }
+
+    #[test]
+    fn title_id_repeats_table() {
+        for (b, want) in [
+            (&br#"{"title_id":"PPSA01234","confirm":true}"#[..], false),
+            (br#"{"title_id":"PPSA01234","title_id":"CUSA00001","confirm":true}"#, true),
+            (br#"{"title_id":"A","x":1,"title_id":"B"}"#, true),
+            (br#"{"note":"has \"title_id\" inside","title_id":"PPSA01234"}"#, false),
+            (br#"{"x":{"title_id":"A"},"title_id":"PPSA01234"}"#, false),
+            (br#"{"x":"title_id","title_id":"PPSA01234"}"#, false),
+            (b"x", false),
+            (br#"["title_id","title_id"]"#, false),
+        ] {
+            assert_eq!(title_id_repeats(b), want, "{}", String::from_utf8_lossy(b));
+        }
+        let dup = br#"{"title_id":"PPSA01234","title_id":"CUSA00001","confirm":true}"#;
+        assert_eq!(uninstall_title(dup), None);
+        assert_eq!(uninstall_title(br#"{"title_id":"PPSA01234","confirm":true}"#).as_deref(), Some("PPSA01234"));
     }
 
     #[test]
