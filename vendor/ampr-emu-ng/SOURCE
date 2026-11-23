@@ -1,0 +1,7 @@
+# Where vendor/ampr-emu-ng/libSceAmpr.sprx comes from (Corresponding Source for THIRD_PARTY_NOTICES).
+# Not listed in SHA256SUMS: ps5/build.sh checks with --ignore-missing.
+repository: https://github.com/DeLFuS77/ampr-emu-ng
+commit: a52648f7f21f8e772c0bacdb1c58d56d26f7a6f1
+upstream: https://github.com/quer3q/ampr-emu-ng v0.5.0 (4d56acc); the commit above only adds a CI change that publishes nothing
+ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45216693845 (workflow build, branch main, success)
+version: v0.5.0-maxpack.1 (VERSION)

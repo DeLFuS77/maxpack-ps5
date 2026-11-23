@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Copies into vendor/maxpack what the payload builds from the MaxPack engine (the phase-2
 # installer): the sources of one commit of the MaxPack repository, with the zstd and zlib sources
-# its submodules pin at that commit and their licences. The commit goes into vendor/maxpack/COMMIT.
+# its submodules pin at that commit and their licences. The commit goes into vendor/maxpack/COMMIT,
+# and the tag that keeps it into vendor/maxpack/COMMIT.tag.
 # A copy, not a submodule: this repository's CI cannot read the other private repository.
 #
 #   tools/sync_maxpack.sh <path-to-the-maxpack-repo> <commit>
@@ -45,5 +46,12 @@ sub third_party/zlib LICENSE README zlib.h zconf.h adler32.c compress.c crc32.c 
   trees.h uncompr.c zutil.c zutil.h
 
 echo "$commit" > "$dest/COMMIT"
+# The tag that keeps that commit in the MaxPack repository, so a rebase there cannot orphan it.
+tags=$(git -C "$repo" tag --points-at "$commit")
+if [[ -n "$tags" ]]; then
+  printf '%s\n' "$tags" > "$dest/COMMIT.tag"
+else
+  echo "warning: no tag points at $commit in $repo; tag it (git tag -a motor-consola-N $commit) and run this again" >&2
+fi
 echo "vendor/maxpack: $commit ($(git -C "$repo" log -1 --format=%s "$commit"))"
 cat "$dest/COMMIT.submodules"
