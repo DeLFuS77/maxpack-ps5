@@ -6,6 +6,8 @@ hacer y qué debe pasar. Marca cada casilla al comprobarla y apunta el firmware.
 Dónde mirar:
 - el registro, `/data/maxpack/maxpack.log` (también en la página, al final);
 - el estado, `http://<ip-de-la-consola>:8095/api/state`: los campos `waiting`, `games` e `images`;
+- el del instalador, `http://<ip-de-la-consola>:8095/api/inst/state`: `job`, `pending`, `installed`
+  y `last`;
 - los avisos de la consola.
 
 > Trabaja sobre copias. Guarda antes `/data/krakenmount` y `/data/shadowmount` por FTP: MaxPack no
@@ -196,3 +198,60 @@ Dónde mirar:
   configuración intactas.
 - [ ] **4.2. Volver a ShadowMountPlus.** Lo mismo con ShadowMountPlus.
 - [ ] **4.3. Y otra vez a MaxPack.** Esperado: adopta de nuevo sin duplicados, como en 3.1.
+
+## 5. El instalador (pestaña Instalar)
+
+Prepara en un USB un `.p5z` hecho con `maxpack pack --p5z` y una imagen `.exfat` de otro juego,
+los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in N ms (MaxPack engine
+1b88861, ...)`.
+
+- [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**
+  - En Instalar salen los dos en «Juegos para instalar»: el `.p5z` con su icono, lo que ahorra y lo
+    que ocupará; el `.exfat` con «se copia tal cual».
+  - Instala el `.p5z` en el almacenamiento interno y, cuando acabe, el `.exfat` en el USB.
+  - Esperado:
+    - el progreso avanza con velocidad y tiempo restante, y al final «<juego> instalado»;
+    - los dos salen en «Instalados con MaxPack» y en `/data/maxpack/installed/<TITLE_ID>.json`;
+    - el `.p5z` queda en `/data/homebrew/<TITLE_ID>` y MaxPack lo monta en su siguiente pasada:
+      sale en el menú y arranca;
+    - «Verificar» acaba en «<juego> verificado» con `0 con fallos`.
+- [ ] **5.2. Instalar con ShadowMountPlus en marcha (solo instalador).**
+  - Arranca ShadowMountPlus y luego MaxPack.
+  - Esperado:
+    - el aviso de la página dice «Hay otro montador en marcha (shadowmountplus.elf): MaxPack solo
+      instala» y que la página se abre en el navegador en `http://<ip-de-la-PS5>:8095`;
+    - el icono de MaxPack (`MXPK00001`) **no** se registra: en el registro, `tile: not registered
+      while another mounter runs`; en FW 12+ no se llama a `sceAppInstUtilAppInstallAll`;
+    - abre `http://<ip-de-la-PS5>:8095` en el navegador de la consola: Instalar funciona;
+    - instala un juego en carpeta con packs zstd: queda registrado en ShadowMountPlus con el aviso
+      del modo `fakelib`, como en la fase 2, y ShadowMountPlus lo monta;
+    - MaxPack no monta nada mientras tanto (`waiting` sigue en `"other:shadowmountplus.elf"`).
+  - Cierra ShadowMountPlus. Esperado: el icono se registra entonces (`tile MXPK00001: ...`) y
+    MaxPack monta lo instalado.
+- [ ] **5.3. Reemplazar.**
+  - Copia a mano una carpeta del mismo juego a `/data/homebrew/<TITLE_ID>` (u otra ruta que exploren
+    los cargadores) e instala su `.p5z`.
+  - Esperado: «¿Instalar y reemplazar?» con la ruta y el tamaño de la copia vieja. «Cancelar» no
+    toca nada; «Instalar y reemplazar» instala, verifica y solo entonces borra la vieja. Queda una
+    sola copia y una sola entrada en el menú.
+- [ ] **5.4. Reanudar tras quitar el USB.**
+  - Empieza a instalar un juego grande desde el USB y desconecta el USB a mitad.
+  - Esperado: la instalación falla sin colgar MaxPack y sale en «Instalaciones a medias» con lo ya
+    copiado.
+  - Vuelve a conectar el USB y pulsa «Seguir». Esperado: sigue desde donde se quedó (no empieza de
+    cero) y termina como en 5.1.
+  - Repite con «Descartar»: se borra lo copiado (`/data/maxpack/tmp/<TITLE_ID>` o `maxpack-tmp/` del
+    USB) y desaparece de la lista.
+- [ ] **5.5. Salir con una instalación en marcha.**
+  - Con una instalación copiando, pulsa «Detener» en la página (o envía otra vez el ELF al cargador:
+    la copia nueva pide salir a la vieja).
+  - Esperado:
+    - en el registro, `installer: pausing before quitting` y `installer: paused; ...` en menos de
+      3 s; la copia nueva toma el puerto 8095 sin `port_busy`;
+    - al arrancar otra vez, la instalación sale en «Instalaciones a medias» y «Seguir» la termina.
+- [ ] **5.6. La página desde el móvil.**
+  - Abre `http://<ip-de-la-PS5>:8095` en el navegador de un móvil de la misma red.
+  - Esperado: la biblioteca, Instalar y los ajustes se ven sin desplazarse de lado; instalar,
+    pausar, verificar y desinstalar funcionan igual que en la consola.
+  - Ábrela con un nombre en lugar de la IP (por ejemplo, el de tu router para la consola).
+    Esperado: Instalar dice «El instalador rechazó la petición»: solo vale la IP (o `localhost`).

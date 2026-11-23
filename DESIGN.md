@@ -475,6 +475,15 @@ toasts through `sys::notify` when `notify` is on. Its data stays in `/data/maxpa
 own server). Quitting pauses a running install (POST `/api/pause`, again for each queued job that starts) and
 waits up to 3 s for the queue (`mp_api_wait_idle`); a paused install is listed as unfinished at the next start,
 where Install resumes it.
+The page's **Install** tab is phase 2's page (`vendor/maxpack/web/index.html`) in this UI's style: the job with
+progress, speed and time left (Pause), unfinished installs (Resume, Discard), what can be installed (icon,
+saving or "copied as is", Search again, a path added by hand through `probe`), the destination drives with
+their free space, Install (a replace asks first, listing the copies it deletes), and what MaxPack installed
+(Verify, Uninstall). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
+the UI's words, its Spanish `detail` under them. Its texts are English and Spanish (the other languages fall
+back to English). While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
+opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
+ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data.
 
 ## Build and check
 `cargo check --target x86_64-unknown-freebsd` (fast, host). Full payload: `ps5/build.sh` (Docker).

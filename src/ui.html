@@ -201,8 +201,8 @@ button.shoulder:hover { color: var(--fg); }
   display: grid; grid-template-columns: 24rem minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 1.6rem 2.4rem; padding: 2.2rem 2.4rem; border-radius: 2rem;
 }
-/* The game sheet and the settings form share one dark surface. */
-.sheet, .settings {
+/* The game sheet, the settings form and the install panel share one dark surface. */
+.sheet, .settings, .inst {
   background: rgba(18, 18, 30, 0.78);
   -webkit-backdrop-filter: blur(4rem) saturate(180%); backdrop-filter: blur(4rem) saturate(180%);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), var(--glass-edge), 0 1.4rem 4rem rgba(0, 0, 0, 0.6);
@@ -338,7 +338,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .logbox.open pre { display: block; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0 0 1.2rem; }
-.settings .banner { margin: 0 0 1.2rem; }
+.settings .banner, .inst .banner { margin: 0 0 1.2rem; }
 .msg { min-height: 1.2em; margin-top: 0.6rem; color: var(--danger-ink); overflow-wrap: break-word; }
 .m-err { margin-top: 0.9rem; color: var(--danger-ink); overflow-wrap: break-word; }
 .m-err:empty { display: none; }
@@ -360,10 +360,92 @@ button:disabled { opacity: 0.5; cursor: default; }
   .settings-foot .btns { flex-wrap: wrap; }
 }
 
+/* ---------- Install: the phase-2 installer (/api/inst/*) ---------- */
+.inst { max-width: 80rem; margin: 0 auto; border-radius: 1.8rem; padding: 1.8rem 2rem; }
+.inst-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin-bottom: 1.2rem; }
+.inst-head h2 { font-size: 1.6rem; font-weight: 700; }
+.inst-head .hint { font-size: 0.9rem; color: var(--muted); }
+.inst-head .hint.on { color: #9ff0c4; }
+.inst h3, .images h3 {
+  margin: 1.8rem 0 0.8rem; font-size: 0.85rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.inst-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.8rem 0 0.8rem; }
+.inst-bar h3 { margin: 0; }
+.inst #i-msg { white-space: pre-line; }
+.inst-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.inst-item {
+  display: flex; align-items: center; gap: 1.2rem; padding: 0.9rem 1.2rem; border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+button.inst-item {
+  width: 100%; height: auto; justify-content: flex-start; text-align: left; white-space: normal;
+  font-weight: 400; -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+button.inst-item:hover { background: rgba(255, 255, 255, 0.14); }
+button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 0 0.15rem rgba(255, 255, 255, 0.85); }
+.inst-icon {
+  display: flex; align-items: center; justify-content: center; flex: none; width: 4rem; height: 4rem;
+  border-radius: 0.8rem; overflow: hidden; background: rgba(255, 255, 255, 0.12);
+  color: var(--fg-2); font-size: 1.3rem; font-weight: 800;
+}
+.inst-icon img { width: 100%; height: 100%; object-fit: cover; }
+.inst-info { display: block; flex: 1 1 0%; min-width: 0; }
+.inst-info b { display: block; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+.inst-info span { display: block; margin-top: 0.2rem; font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
+.inst-info .note { color: #fff0cf; }
+.inst .mono, .images .mono { font-family: var(--mono); }
+.inst-size { display: block; flex: none; width: 15rem; }
+.inst-size .pct { display: block; font-size: 1.6rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.inst-size .pct small { margin-left: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.inst-size .meter { display: block; width: 100%; margin: 0.6rem 0 0.4rem; }
+.inst-size .nums { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.78rem; color: var(--muted); }
+.inst-size .nums b { color: var(--fg); font-weight: 600; }
+.inst-actions { display: flex; flex: none; gap: 0.5rem; }
+.inst-manual { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+.inst-manual input {
+  flex: 1 1 auto; min-width: 0; height: 2.6rem; padding: 0 1.1rem; border: 0; border-radius: 999px;
+  font: inherit; font-family: var(--mono); font-size: 0.9rem; color: var(--fg); background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 1px 0.2rem rgba(0, 0, 0, 0.3);
+}
+.inst-drives { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.inst-drives button {
+  flex-direction: column; align-items: flex-start; gap: 0.1rem; height: auto; min-height: 3.3rem;
+  padding: 0.5rem 1.3rem; border-radius: 1.1rem;
+}
+.inst-drives button span { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+.inst-drives button[aria-checked="true"] { background: rgba(255, 255, 255, 0.9); color: #12121a; }
+.inst-drives button[aria-checked="true"] span { color: #3a3a48; }
+.inst-go { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.inst-go .row { flex: 1 1 24rem; margin: 0; }
+.inst-go .primary { height: 3rem; padding: 0 2.4rem; font-size: 1.05rem; }
+.inst-job { margin-bottom: 1.2rem; padding: 1.2rem 1.4rem; border-radius: 1.2rem; background: rgba(255, 255, 255, 0.1); }
+.inst-job .line { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.inst-job .what { font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
+.inst-job .pct { font-size: 2.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.inst-job .meter { width: 100%; height: 0.7rem; margin: 0.9rem 0 0.7rem; }
+.inst-job .meter i { -webkit-transition: width 0.8s linear; transition: width 0.8s linear; }
+.inst-job .nums { font-size: 0.9rem; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.inst .empty { padding: 0.4rem 0; text-align: left; }
+/* A confirmation that lists paths (replace) keeps its lines. */
+#ctext { white-space: pre-line; }
+/* ShadowMountPlus images, under the library grid: listed, not mounted. */
+.images { margin-top: 2rem; }
+.images > .hint { margin: -0.4rem 0 0.8rem; font-size: 0.9rem; color: var(--muted); }
+.images .row .lbl { overflow-wrap: anywhere; }
+.images .row .hint { overflow-wrap: anywhere; }
+@media (max-width: 860px) {
+  .inst { padding: 16px; border-radius: 1.2rem; }
+  .inst-item { flex-wrap: wrap; }
+  .inst-size, .inst-actions { width: 100%; }
+  .inst-actions button { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .inst-job .meter i { -webkit-transition: none; transition: none; } }
+
 /* ---------- Right-to-left (Arabic): setLang() sets <html dir="rtl"> ----------
    Flex rows, grids and text flip by themselves; these are the physical leftovers.
    Paths, title ids and the log stay left to right, isolated from the text around them. */
-[dir="rtl"] .card { text-align: right; }
+[dir="rtl"] .card, [dir="rtl"] button.inst-item { text-align: right; }
 [dir="rtl"] .badge { left: auto; right: 0.75rem; }
 [dir="rtl"] .sheet-side .badge { left: auto; right: 1rem; }
 [dir="rtl"] .card .status-pill, [dir="rtl"] .card .running-pill { right: auto; left: 0.75rem; }
@@ -387,6 +469,7 @@ button:disabled { opacity: 0.5; cursor: default; }
     </div>
     <div class="seg nav glass" role="tablist" aria-label="Screens" data-i18n-aria="screens">
       <button class="seg-opt" role="tab" id="tab-library" aria-selected="true" aria-controls="library" data-view="library" data-i18n="library">Library</button>
+      <button class="seg-opt" role="tab" id="tab-install" aria-selected="false" aria-controls="install" data-view="install" data-i18n="installTab">Install</button>
       <button class="seg-opt" role="tab" id="tab-settings" aria-selected="false" aria-controls="settings" data-view="settings" data-i18n="settings">Settings</button>
     </div>
     <div class="top-actions">
@@ -425,6 +508,49 @@ button:disabled { opacity: 0.5; cursor: default; }
     <h2>No games found.</h2>
     <p data-i18n="emptyCopy" data-args="pkg=.pkg;dir=/data/homebrew;usb=homebrew" data-wrap="pkg=code;dir=code;usb=code">Copy <code>.pkg</code> files or game folders to <code>/data/homebrew</code> (or <code>homebrew</code> on a USB drive), then press Rescan.</p>
     <p data-i18n="emptyHome">Each game shows up here and on the home screen once it is registered.</p>
+  </div>
+  <div class="images" id="images" hidden>
+    <h3 data-i18n="imagesTitle">ShadowMountPlus images</h3>
+    <p class="hint" data-i18n="imagesHint">MaxPack does not mount these images yet.</p>
+    <div id="imagelist"></div>
+  </div>
+</section>
+
+<section id="install" role="tabpanel" aria-labelledby="tab-install" hidden>
+  <div class="inst glass">
+    <div class="inst-head">
+      <h2 data-i18n="iTitle">Install games</h2>
+      <span class="hint" id="i-smp"></span>
+    </div>
+    <div class="banner" id="i-msg" role="status"></div>
+    <div class="inst-job" id="i-job" hidden aria-live="polite">
+      <div class="line"><span class="what" id="i-job-what"></span><span class="pct" id="i-job-pct"></span></div>
+      <div class="meter"><i id="i-job-bar"></i></div>
+      <div class="line"><span class="nums" id="i-job-nums"></span><button type="button" id="i-pause" data-i18n="iPause">Pause</button></div>
+    </div>
+    <div id="i-pending-box" hidden>
+      <h3 data-i18n="iPendingTitle">Unfinished installs</h3>
+      <div class="inst-list" id="i-pending"></div>
+    </div>
+    <div class="inst-bar">
+      <h3 id="i-found-title" data-i18n="iFound">Games to install</h3>
+      <button class="small" type="button" id="i-rescan" data-i18n="iRescan">Search again</button>
+    </div>
+    <div class="inst-list" id="i-found" role="radiogroup" aria-labelledby="i-found-title"></div>
+    <p class="empty" id="i-found-empty" hidden data-i18n="iFoundEmpty">No .p5z, game folder or image on the drives or in /data/maxpack.</p>
+    <form class="inst-manual" id="i-manual" onsubmit="return false">
+      <input id="i-path" type="text" autocomplete="off" spellcheck="false">
+      <button type="submit" data-i18n="iAdd">Add</button>
+    </form>
+    <h3 id="i-dest-title" data-i18n="iDest">Where to install</h3>
+    <div class="inst-drives" id="i-drives" role="radiogroup" aria-labelledby="i-dest-title"></div>
+    <div class="inst-go">
+      <label class="row" id="i-del-row"><span class="lbl" data-i18n="iDeleteP5z">Delete the .p5z once it is installed and verified</span><input type="checkbox" id="i-del"></label>
+      <button class="primary" type="button" id="i-install" data-i18n="iInstall">Install</button>
+    </div>
+    <h3 data-i18n="iInstalled">Installed with MaxPack</h3>
+    <div class="inst-list" id="i-installed"></div>
+    <p class="empty" id="i-installed-empty" hidden data-i18n="iInstalledEmpty">You haven't installed any game with MaxPack yet.</p>
   </div>
 </section>
 
@@ -535,7 +661,8 @@ var MSG = {
     queued: 'Your request is queued.',
     stopBusy: 'A game is running: close it first, then stop MaxPack.',
     waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.', waitSmp: 'ShadowMount+ is running: stop it to use MaxPack. Games appear once it stops.',
-    waitOther: 'Another mounter is running ({name}): MaxPack mounts no games until it stops.',
+    installerOnly: 'Another mounter is running ({name}): MaxPack only installs. It mounts no games until that one stops, and the MaxPack tile may be missing from the home screen: open this page in a browser at {url}.',
+    consoleIp: 'PS5-IP',
     stopped: 'MaxPack stopped. Open the MaxPack tile to start it again.',
     // Library: filters, drives, cards, empty state, log
     prevFilter: 'Previous filter (L2)', nextFilter: 'Next filter (R2)', sourceType: 'Source type',
@@ -610,7 +737,48 @@ var MSG = {
     driveInfo: '{drive}: {free} free of {total}',
     loading: 'Loading...', saving: 'Saving...', saved: 'Saved.',
     loadFailed: 'Could not load settings: {error}. Close and reopen to retry; Save is off.',
-    saveFailed: 'Save failed: {error}'
+    saveFailed: 'Save failed: {error}',
+    // Library: ShadowMountPlus images (listed, not mounted)
+    imagesTitle: 'ShadowMountPlus images', imagesHint: 'MaxPack does not mount these images yet.',
+    imageWith: 'for now, with ShadowMountPlus',
+    // Install: the phase-2 installer (its error codes: INST_CODES)
+    installTab: 'Install', iTitle: 'Install games',
+    iSmpOn: 'ShadowMountPlus {version} connected: what you install is registered in it too',
+    iMounts: 'MaxPack mounts what you install on its next scan.',
+    iFound: 'Games to install', iRescan: 'Search again',
+    iFoundEmpty: 'No .p5z, game folder or image on the drives or in /data/maxpack. Plug in a USB drive with them and press Search again.',
+    iManualPh: 'Path to a .p5z, game folder or image, for example /mnt/usb0/game.p5z', iManualAria: 'Path to add',
+    iAdd: 'Add', iDest: 'Where to install', iFree: '{free} free',
+    iDeleteP5z: 'Delete the .p5z once it is installed and verified', iInstall: 'Install',
+    iPickFirst: 'Pick a game from the list first.',
+    iInstalled: 'Installed with MaxPack', iInstalledEmpty: "You haven't installed any game with MaxPack yet.",
+    iVerify: 'Verify', iUninstall: 'Uninstall', iPause: 'Pause', iPausing: 'Pausing...',
+    iCopying: 'Copying {name}', iChecking: 'Checking {name}', iFinishing: 'Finishing {name}',
+    iRegistering: 'Registering {name} in ShadowMountPlus', iVerifying: 'Verifying {name}', iUninstalling: 'Uninstalling {name}',
+    iCounts: '{ok} OK, {bad} damaged', iQueue: '{n} more queued', iLeft: '{time} left',
+    iSmpPending: 'Pending in ShadowMountPlus: {why}',
+    iSmaller: 'smaller', iInstalledAs: '{size} installed', iOfOriginal: 'of {size}', iVersion: 'version {v}',
+    iPendingTitle: 'Unfinished installs', iPendingMeta: '{size} copied. Source: {path}',
+    iResume: 'Resume', iDiscard: 'Discard', iDiscardTitle: 'Discard {name}?',
+    iDiscardText: 'What was copied of it ({size}) will be deleted.', iDiscarded: 'Discarded.',
+    iKind_p5z: 'MaxPack .p5z', iKind_folder: 'Folder', iKind_image: 'Image', iAsIs: 'copied as is',
+    iQueued: 'Queued. You can keep using the page.',
+    iReplaceTitle: 'Install and replace?',
+    iReplaceText: 'So that only one copy is left, once the new one is installed and verified this will be deleted:',
+    iReplaceYes: 'Install and replace',
+    iUninstallTitle: 'Uninstall {name}?', iUninstallText: '{path} will be deleted.',
+    iNet: "Can't reach the installer. Check that MaxPack is still running.",
+    iDone_install: '{name} installed.', iDone_verify: '{name} verified.', iDone_uninstall: '{name} uninstalled.',
+    iStopped: 'Paused. Press Resume under Unfinished installs to go on where it stopped.',
+    iNoSpace: 'Not enough space: {size} more needed.', iBadP5z: 'The .p5z is damaged or not valid.',
+    iBadDest: 'That drive is no longer connected.',
+    iNoRuntime: "This .p5z has no ampr-emu-ng and the installer doesn't carry one. Pack it again with --runtime.",
+    iIoError: "Couldn't write to the drive.", iBadPath: "That path isn't on a USB drive or in /data.",
+    iBadSource: "That folder or image can't be installed.", iBusy: 'That game is already installing or queued.',
+    iNotFound: "That game isn't installed with MaxPack.", iVerifyBad: 'Verification found damaged files.',
+    iGameRunning: 'Close the game first.', iNeedsConfirm: 'Your confirmation is needed.', iBadJson: 'Invalid request.',
+    iForbidden: 'The installer refused the request: open this page at the console IP.',
+    iStarting: 'The installer is starting...', iNoInstaller: 'The installer could not start.'
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -876,7 +1044,8 @@ var MSG = {
     queued: 'Tu solicitud está en cola.',
     stopBusy: 'Hay un juego en curso: ciérralo primero y luego detén MaxPack.',
     waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.', waitSmp: 'ShadowMount+ está en ejecución: detenlo para usar MaxPack. Los juegos aparecerán cuando se detenga.',
-    waitOther: 'Hay otro montador en marcha ({name}): MaxPack no monta juegos hasta que se cierre.',
+    installerOnly: 'Hay otro montador en marcha ({name}): MaxPack solo instala. No monta juegos hasta que ese se cierre, y el icono de MaxPack puede no estar en el menú: abre esta página en el navegador, en {url}.',
+    consoleIp: 'ip-de-la-PS5',
     stopped: 'MaxPack se ha detenido. Abre el icono de MaxPack para iniciarlo de nuevo.',
     prevFilter: 'Filtro anterior (L2)', nextFilter: 'Filtro siguiente (R2)', sourceType: 'Tipo de origen',
     kindAll: 'Todos', kindFolders: 'Carpetas', badgeFolder: 'Carpeta',
@@ -947,7 +1116,46 @@ var MSG = {
     driveInfo: '{drive}: libre {free} de {total}',
     loading: 'Cargando...', saving: 'Guardando...', saved: 'Guardado.',
     loadFailed: 'No se pudieron cargar los ajustes: {error}. Cierra y vuelve a abrir para reintentar; Guardar está desactivado.',
-    saveFailed: 'Error al guardar: {error}'
+    saveFailed: 'Error al guardar: {error}',
+    imagesTitle: 'Imágenes de ShadowMountPlus', imagesHint: 'MaxPack aún no monta estas imágenes.',
+    imageWith: 'por ahora, con ShadowMountPlus',
+    installTab: 'Instalar', iTitle: 'Instalar juegos',
+    iSmpOn: 'ShadowMountPlus {version} conectado: lo que instales se registra también en él',
+    iMounts: 'MaxPack monta lo que instales en su siguiente pasada.',
+    iFound: 'Juegos para instalar', iRescan: 'Buscar otra vez',
+    iFoundEmpty: 'No hay ningún .p5z, carpeta de juego ni imagen en las unidades ni en /data/maxpack. Conecta un USB con ellos y pulsa Buscar otra vez.',
+    iManualPh: 'Ruta de un .p5z, una carpeta de juego o una imagen, por ejemplo /mnt/usb0/juego.p5z', iManualAria: 'Ruta para añadir',
+    iAdd: 'Añadir', iDest: 'Dónde instalar', iFree: '{free} libres',
+    iDeleteP5z: 'Borrar el .p5z cuando esté instalado y verificado', iInstall: 'Instalar',
+    iPickFirst: 'Elige primero un juego de la lista.',
+    iInstalled: 'Instalados con MaxPack', iInstalledEmpty: 'Todavía no has instalado ningún juego con MaxPack.',
+    iVerify: 'Verificar', iUninstall: 'Desinstalar', iPause: 'Pausar', iPausing: 'Pausando...',
+    iCopying: 'Copiando {name}', iChecking: 'Comprobando {name}', iFinishing: 'Terminando {name}',
+    iRegistering: 'Registrando {name} en ShadowMountPlus', iVerifying: 'Verificando {name}', iUninstalling: 'Desinstalando {name}',
+    iCounts: '{ok} correctos, {bad} con fallos', iQueue: '{n} más en cola', iLeft: 'quedan {time}',
+    iSmpPending: 'Pendiente en ShadowMountPlus: {why}',
+    iSmaller: 'menos', iInstalledAs: '{size} instalado', iOfOriginal: 'de {size}', iVersion: 'versión {v}',
+    iPendingTitle: 'Instalaciones a medias', iPendingMeta: '{size} copiados. Origen: {path}',
+    iResume: 'Seguir', iDiscard: 'Descartar', iDiscardTitle: '¿Descartar {name}?',
+    iDiscardText: 'Se borrará lo ya copiado ({size}).', iDiscarded: 'Descartado.',
+    iKind_p5z: '.p5z de MaxPack', iKind_folder: 'Carpeta', iKind_image: 'Imagen', iAsIs: 'se copia tal cual',
+    iQueued: 'En cola. Puedes seguir usando la página.',
+    iReplaceTitle: '¿Instalar y reemplazar?',
+    iReplaceText: 'Para que quede una sola copia, después de instalar y verificar la nueva se borrará:',
+    iReplaceYes: 'Instalar y reemplazar',
+    iUninstallTitle: '¿Desinstalar {name}?', iUninstallText: 'Se borrará {path}.',
+    iNet: 'No hay conexión con el instalador. Comprueba que MaxPack sigue en marcha.',
+    iDone_install: '{name} instalado.', iDone_verify: '{name} verificado.', iDone_uninstall: '{name} desinstalado.',
+    iStopped: 'En pausa. Pulsa Seguir en Instalaciones a medias para continuar donde se quedó.',
+    iNoSpace: 'No cabe: faltan {size}.', iBadP5z: 'El .p5z está dañado o no es válido.',
+    iBadDest: 'Esa unidad ya no está conectada.',
+    iNoRuntime: 'Este .p5z no trae ampr-emu-ng y el instalador no lleva ninguno. Vuelve a empaquetarlo con --runtime.',
+    iIoError: 'No se pudo escribir en la unidad.', iBadPath: 'Esa ruta no está en un USB ni en /data.',
+    iBadSource: 'Esa carpeta o imagen no se puede instalar.', iBusy: 'Ese juego ya se está instalando o está en cola.',
+    iNotFound: 'Ese juego no está instalado con MaxPack.', iVerifyBad: 'La verificación encontró archivos dañados.',
+    iGameRunning: 'Cierra el juego antes.', iNeedsConfirm: 'Hace falta tu confirmación.', iBadJson: 'Petición no válida.',
+    iForbidden: 'El instalador rechazó la petición: abre esta página con la IP de la consola.',
+    iStarting: 'El instalador se está iniciando...', iNoInstaller: 'El instalador no pudo arrancar.'
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2082,6 +2290,35 @@ $('rebuildall').onclick = function () {
   ask(t('rebuildAllTitle'), t('rebuildAllText'), t('rebuildAll'), function () { post('/api/rebuild-all'); });
 };
 
+function waitingText() {
+  var w = String(state && state.waiting);
+  if (w === 'kstuff') return t('waitKstuff');
+  return t('installerOnly', { name: w.replace(/^other:/, ''), url: pageUrl() });
+}
+// Where this page opens from another device: this address, unless it is the console's own loopback.
+function pageUrl() {
+  var h = location.hostname;
+  if (h === '127.0.0.1' || h === 'localhost' || h === '[::1]') return 'http://<' + t('consoleIp') + '>:8095';
+  return location.protocol + '//' + location.host;
+}
+// ShadowMountPlus images (state.images): listed under the grid, never mounted by MaxPack.
+function renderImages(images) {
+  var list = Array.isArray(images) ? images : [], box = $('imagelist'), key = lang + JSON.stringify(list);
+  $('images').hidden = !list.length;
+  if (box._key === key) return;
+  box._key = key;
+  box.textContent = '';
+  list.forEach(function (im) {
+    var row = el('div', 'row'), text = el('span');
+    text.appendChild(el('span', 'lbl', String(im.path || '').split('/').pop()));
+    text.appendChild(el('span', 'hint', [im.title_id, String(im.kind || '').toUpperCase(), t('imageWith')]
+      .filter(Boolean).join(' · ')));
+    text.appendChild(el('span', 'hint mono', im.path));
+    row.appendChild(text);
+    box.appendChild(row);
+  });
+}
+
 async function poll() {
   if (stopped) return;
   try {
@@ -2095,17 +2332,13 @@ async function poll() {
     setBanner('snoampr', cache.ampr_present === false);
     if (!state.paused) queued = false;
     setBanner('paused', !!state.paused, pausedText);
-    // waiting: null | 'kstuff' | 'other:<process>' (ShadowMount+ keeps its translated text).
-    setBanner('waiting', !!state.waiting, function () {
-      var w = String(state.waiting);
-      if (w === 'kstuff') return t('waitKstuff');
-      if (w === 'other:shadowmountplus.elf') return t('waitSmp');
-      return t('waitOther', { name: w.replace(/^other:/, '') });
-    });
+    // waiting: null | 'kstuff' | 'other:<process>': another mounter runs, MaxPack only installs.
+    setBanner('waiting', !!state.waiting, waitingText);
     var games = Array.isArray(state.games) ? state.games : [];
     renderChips(games);
     renderStorage(state.drives);
     renderGrid(games);
+    renderImages(state.images);
     if (modalOpen()) renderModal();
     if (typeof renderSettingsInfo === 'function') renderSettingsInfo();
     var lines = Array.isArray(state.log) ? state.log : [];
@@ -2213,7 +2446,14 @@ function setView(v) {
     $(tabs[i].getAttribute('aria-controls')).hidden = !on;
   }
   if (opening) loadSettings();
-  else if (v === 'library') settingsRequest++;
+  else if (v !== 'settings') settingsRequest++;
+  instView(v === 'install');
+}
+// The first control of the open screen (ArrowDown from the tabs).
+function focusView() {
+  if (!$('settings').hidden) fields()[0].focus();
+  else if (!$('install').hidden) { var c = instControls(); if (c.length) c[0].focus(); }
+  else focusChip();
 }
 var tabs = document.querySelectorAll('.nav .seg-opt');
 for (var i = 0; i < tabs.length; i++)
@@ -2245,6 +2485,380 @@ for (var s = 0; s < shoulders.length; s++)
   shoulders[s].onclick = function () { stepFilter(+this.getAttribute('data-step')); };
 $('modal').onclick = function (e) { if (e.target === this) closeModal(); };
 
+// ---- chunk 4: Install, the phase-2 installer (/api/inst/<x> is its own /api/<x>) ----
+// Its answers: 200 {ok:true, ...} or {ok:false, code, detail} (detail in Spanish, from the engine);
+// 503 {code:'starting'|'no_installer'} from the payload. Polled every second while the tab is open.
+var inst = null, instTimer = null, instOn = false, instSel = null, instDest = null, instExtra = [];
+// instNames: every title id -> name seen, so a result still names a game gone from the lists.
+var instNames = {}, instLastKey = null, instStateErr = false;
+var instSpeed = { id: '', t: 0, done: 0, v: 0 };
+var INST_STAGES = { copiando: 'iCopying', comprobando: 'iChecking', terminando: 'iFinishing', registrando: 'iRegistering' };
+var INST_CODES = {
+  stopped: 'iStopped', no_space: 'iNoSpace', bad_p5z: 'iBadP5z', bad_dest: 'iBadDest', no_runtime: 'iNoRuntime',
+  io_error: 'iIoError', bad_path: 'iBadPath', bad_source: 'iBadSource', busy: 'iBusy', not_found: 'iNotFound',
+  verify_bad: 'iVerifyBad', game_running: 'iGameRunning', needs_confirm: 'iNeedsConfirm', bad_json: 'iBadJson',
+  forbidden: 'iForbidden', starting: 'iStarting', no_installer: 'iNoInstaller'
+};
+function instCode(code) { return INST_CODES[code] ? t(INST_CODES[code]) : String(code || '?'); }
+// GET state/icon or a POST with a JSON body; the answer's JSON, or an Error when it is not JSON.
+async function instReq(method, name, body) {
+  var opts = { method: method, cache: 'no-store' };
+  if (method === 'POST') { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body || {}); }
+  var r = await fetch('/api/inst/' + name, opts), j = null;
+  try { j = await r.json(); } catch (e) { /* not JSON: an older payload without the installer */ }
+  if (!j) throw new Error('HTTP ' + r.status);
+  return j;
+}
+// ok: a green note; else an error. text renders the message (kept for a language switch).
+function instShow(ok, text) {
+  $('i-msg').classList.toggle('ok', !!ok);
+  setBanner('i-msg', true, text);
+}
+function instError(code, detail) {
+  instShow(false, function () { return instCode(code) + (detail ? '\n' + detail : ''); });
+}
+function instNet() { instShow(false, function () { return t('iNet'); }); }
+// A POST whose only answer is ok or an error to show; resolves to the answer (null when offline).
+async function instPost(name, body) {
+  var j = null;
+  try {
+    j = await instReq('POST', name, body);
+    if (!j.ok) instError(j.code, j.detail);
+  } catch (e) { instNet(); }
+  instSchedule(300);
+  return j;
+}
+function instSchedule(ms) {
+  clearTimeout(instTimer);
+  if (instOn && !stopped) instTimer = setTimeout(instPoll, ms);
+}
+function instView(on) {
+  if (on === instOn) return;
+  instOn = on;
+  if (on) instPoll(); else clearTimeout(instTimer);
+}
+async function instPoll() {
+  if (!instOn || stopped) return;
+  try {
+    var j = await instReq('GET', 'state');
+    if (j.ok === false) {
+      instStateErr = true;
+      instError(j.code, j.code === 'starting' ? '' : j.detail);
+    } else {
+      if (instStateErr) { instStateErr = false; setBanner('i-msg', false); }
+      inst = j;
+      renderInst(false);
+    }
+  } catch (e) { instStateErr = true; instNet(); }
+  instSchedule(1000);
+}
+function instName(title) { return instNames[title] || title || '?'; }
+function instLearnNames() {
+  [inst.found, instExtra, inst.installed, inst.job ? [inst.job] : []].forEach(function (list) {
+    (Array.isArray(list) ? list : []).forEach(function (x) { if (x && x.title_id && x.name) instNames[x.title_id] = x.name; });
+  });
+}
+// The found list plus paths added by hand (probe), without repeats.
+function instAll() {
+  var list = inst && Array.isArray(inst.found) ? inst.found.slice(0) : [];
+  instExtra.forEach(function (x) {
+    if (!list.some(function (f) { return f.path === x.path; })) list.push(x);
+  });
+  return list;
+}
+function instKindOf(path) {
+  var list = instAll();
+  for (var i = 0; i < list.length; i++) if (list[i].path === path) return list[i].kind || 'p5z';
+  return 'p5z';
+}
+// The game's icon (src) over its initials; the initials stay when there is none.
+function instIcon(name, src) {
+  var box = el('span', 'inst-icon');
+  box.appendChild(el('span', null, initials(name)));
+  if (src) {
+    var img = el('img');
+    img.alt = '';
+    img.onload = function () { box.textContent = ''; box.appendChild(img); };
+    img.src = src;
+  }
+  return box;
+}
+// What a found item takes once installed: the saving of a .p5z, or the size of what is copied as is.
+function instSize(item) {
+  var box = el('span', 'inst-size');
+  if (item.kind && item.kind !== 'p5z') {
+    var plain = el('span', 'pct', fmtSize(item.install_size));
+    plain.appendChild(el('small', null, t('iAsIs')));
+    box.appendChild(plain);
+    return box;
+  }
+  var orig = item.original_size || item.install_size, ratio = orig ? item.install_size / orig : 1;
+  var saved = Math.floor((1 - ratio) * 100);
+  var pct = el('span', 'pct', saved > 0 ? '\u2212' + saved + ' %' : '0 %');
+  pct.appendChild(el('small', null, t('iSmaller')));
+  box.appendChild(pct);
+  var meter = el('span', 'meter'), fillBar = el('i');
+  fillBar.style.width = Math.max(2, Math.min(100, ratio * 100)).toFixed(1) + '%';
+  meter.appendChild(fillBar);
+  box.appendChild(meter);
+  var nums = el('span', 'nums');
+  nums.appendChild(el('b', null, t('iInstalledAs', { size: fmtSize(item.install_size) })));
+  nums.appendChild(el('span', null, t('iOfOriginal', { size: fmtSize(orig) })));
+  box.appendChild(nums);
+  return box;
+}
+function instSelect(path) {
+  instSel = path;
+  var p5z = instKindOf(path) === 'p5z';
+  $('i-del-row').hidden = !p5z;
+  if (!p5z) $('i-del').checked = false;
+  var rows = $('i-found').children;
+  for (var i = 0; i < rows.length; i++)
+    rows[i].setAttribute('aria-checked', String(rows[i].getAttribute('data-path') === path));
+}
+function instFoundRow(item) {
+  var b = el('button', 'inst-item'), info = el('span', 'inst-info');
+  b.type = 'button';
+  b.setAttribute('role', 'radio');
+  b.setAttribute('data-path', item.path);
+  b.setAttribute('aria-checked', String(item.path === instSel));
+  b.appendChild(instIcon(item.name || item.title_id, '/api/inst/icon?p5z=' + encodeURIComponent(item.path)));
+  info.appendChild(el('b', null, item.name || item.title_id));
+  info.appendChild(el('span', null, [t('iKind_' + (item.kind || 'p5z')), item.title_id,
+    item.version ? t('iVersion', { v: item.version }) : ''].filter(Boolean).join(' · ')));
+  info.appendChild(el('span', 'mono', item.path));
+  b.appendChild(info);
+  b.appendChild(instSize(item));
+  b.onclick = function () { instSelect(item.path); };
+  return b;
+}
+// The data-path of the row (inside box) that holds node, or null.
+function instRowKey(node, box) {
+  for (; node && node !== box; node = node.parentNode)
+    if (node.getAttribute && node.getAttribute('data-path') != null) return node.getAttribute('data-path');
+  return null;
+}
+// Rebuilds box with a row from make(x) per item when key changed. The focus stays on the same
+// button: the row (data-path) and, for a row's action, the button with the same text.
+function instRebuild(box, key, list, make) {
+  if (box._key === key) return;
+  box._key = key;
+  var focus = document.activeElement, had = !!focus && focus !== box && box.contains(focus);
+  var row = had ? instRowKey(focus, box) : null, text = had ? focus.textContent : null;
+  box.textContent = '';
+  list.forEach(function (x) { box.appendChild(make(x)); });
+  if (!had) return;
+  var buttons = Array.prototype.slice.call(box.querySelectorAll('button')), again = null;
+  buttons.forEach(function (b) {
+    if (!again && instRowKey(b, box) === row && (b.getAttribute('data-path') != null || b.textContent === text)) again = b;
+  });
+  (again || buttons[0] || $('tab-install')).focus();
+}
+function renderInstFound(force) {
+  var list = instAll();
+  if (force) $('i-found')._key = null;
+  instRebuild($('i-found'), lang + JSON.stringify(list), list, instFoundRow);
+  if (!instSel && list.length === 1) instSel = list[0].path;
+  if (instSel && !list.some(function (f) { return f.path === instSel; })) instSel = null;
+  instSelect(instSel);
+  $('i-found-empty').hidden = list.length > 0;
+}
+function renderInstDrives(force) {
+  var drives = Array.isArray(inst.drives) ? inst.drives : [], box = $('i-drives');
+  if (!drives.some(function (d) { return d.root === instDest; })) instDest = drives.length ? drives[0].root : null;
+  if (force) box._key = null;
+  instRebuild(box, lang + JSON.stringify(drives), drives, function (d) {
+    var b = el('button', null, driveLabel(d.root));
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('data-path', d.root);
+    b.appendChild(el('span', null, t('iFree', { free: fmtSize(d.free) })));
+    b.onclick = function () { instDest = d.root; renderInstDrives(false); };
+    return b;
+  });
+  for (var i = 0; i < box.children.length; i++)
+    box.children[i].setAttribute('aria-checked', String(box.children[i].getAttribute('data-path') === instDest));
+}
+function instActions(row, buttons) {
+  var act = el('span', 'inst-actions');
+  buttons.forEach(function (b) {
+    var btn = el('button', b[2] ? 'small danger' : 'small', b[0]);
+    btn.type = 'button';
+    btn.onclick = b[1];
+    act.appendChild(btn);
+  });
+  row.appendChild(act);
+}
+function instInstalledRow(g) {
+  var name = g.name || g.title_id, row = el('div', 'inst-item'), info = el('span', 'inst-info');
+  row.setAttribute('data-path', g.title_id);
+  // The library's art for the title once MaxPack has it (/icon/<TID>), else the initials.
+  row.appendChild(instIcon(name, '/icon/' + encodeURIComponent(g.title_id)));
+  info.appendChild(el('b', null, name));
+  info.appendChild(el('span', null, [g.title_id, g.version ? t('iVersion', { v: g.version }) : ''].filter(Boolean).join(' · ')));
+  info.appendChild(el('span', 'mono', g.dir));
+  // Pending in ShadowMountPlus only means something while it runs (MaxPack mounts it otherwise).
+  if (g.smp_pending && inst.smp && inst.smp.alive) info.appendChild(el('span', 'note', t('iSmpPending', { why: g.smp_why || '' })));
+  row.appendChild(info);
+  instActions(row, [
+    [t('iVerify'), function () { instPost('verify', { title_id: g.title_id }); }],
+    [t('iUninstall'), function () {
+      ask(t('iUninstallTitle', { name: name }), t('iUninstallText', { path: g.dir }), t('iUninstall'), function () {
+        instPost('uninstall', { title_id: g.title_id, confirm: true });
+      });
+    }, true]
+  ]);
+  return row;
+}
+function instPendingRow(p) {
+  var name = instName(p.title_id), row = el('div', 'inst-item'), info = el('span', 'inst-info');
+  row.setAttribute('data-path', p.title_id);
+  row.appendChild(instIcon(name, null));
+  info.appendChild(el('b', null, name));
+  info.appendChild(el('span', null, t('iPendingMeta', { size: fmtSize(p.bytes), path: p.source })));
+  row.appendChild(info);
+  instActions(row, [
+    [t('iResume'), function () { instInstall(p.source, p.dest, [], false); }],
+    [t('iDiscard'), function () {
+      ask(t('iDiscardTitle', { name: name }), t('iDiscardText', { size: fmtSize(p.bytes) }), t('iDiscard'), async function () {
+        var j = await instPost('discard', { title_id: p.title_id });
+        if (j && j.ok) instShow(true, function () { return t('iDiscarded'); });
+      });
+    }, true]
+  ]);
+  return row;
+}
+function renderInstJob() {
+  var j = inst.job;
+  $('i-job').hidden = !j;
+  if (!j) { instSpeed.id = ''; return; }
+  var name = j.name || instName(j.title_id);
+  var label = j.kind === 'verify' ? 'iVerifying' : j.kind === 'uninstall' ? 'iUninstalling' : INST_STAGES[j.stage] || 'iCopying';
+  setText($('i-job-what'), t(label, { name: name }));
+  var frac = j.total ? Math.min(1, j.done / j.total) : 0;
+  setText($('i-job-pct'), Math.floor(frac * 100) + ' %');
+  $('i-job-bar').style.width = (frac * 100).toFixed(1) + '%';
+  // Speed: a smoothed bytes/s over the polls of one stage.
+  var now = Date.now(), id = j.title_id + '|' + j.stage;
+  if (instSpeed.id !== id) instSpeed = { id: id, t: now, done: j.done, v: 0 };
+  else if (now > instSpeed.t && j.done >= instSpeed.done) {
+    var v = (j.done - instSpeed.done) / ((now - instSpeed.t) / 1000);
+    instSpeed.v = instSpeed.v ? instSpeed.v * 0.7 + v * 0.3 : v;
+    instSpeed.t = now;
+    instSpeed.done = j.done;
+  }
+  var parts = [fmtSize(j.done) + ' / ' + fmtSize(j.total)];
+  if (instSpeed.v > 0) {
+    parts.push(fmtSize(instSpeed.v) + '/s');
+    var left = instDuration((j.total - j.done) / instSpeed.v);
+    if (left) parts.push(t('iLeft', { time: left }));
+  }
+  if (inst.queue) parts.push(t('iQueue', { n: inst.queue }));
+  setText($('i-job-nums'), parts.join(' · '));
+  $('i-pause').hidden = j.kind !== 'install';
+  setText($('i-pause'), t(j.paused ? 'iPausing' : 'iPause'));
+  $('i-pause').disabled = !!j.paused;
+}
+function instDuration(secs) {
+  if (!isFinite(secs) || secs <= 0) return '';
+  if (secs < 60) return Math.round(secs) + ' s';
+  if (secs < 3600) return Math.round(secs / 60) + ' min';
+  var h = Math.floor(secs / 3600);
+  return h + ' h ' + Math.round((secs - h * 3600) / 60) + ' min';
+}
+// The last job's result, once per change (the first state of the page shows the one it finds).
+function renderInstLast() {
+  var l = inst.last;
+  if (!l) return;
+  var key = JSON.stringify(l), first = instLastKey === null;
+  if (key === instLastKey) return;
+  instLastKey = key;
+  if (first && !l.code) return;
+  var name = instName(l.title_id);
+  if (l.code === 'needs_confirm' && l.existing && l.source) { instAskReplace(l.source, l.dest, l.existing, false); return; }
+  var counts = function () { return l.files_ok !== undefined ? t('iCounts', { ok: l.files_ok, bad: l.files_bad }) : ''; };
+  instShow(l.code === 'done', function () {
+    var more = counts() || (l.code === 'done' ? '' : l.detail);
+    return (l.code === 'done' ? t('iDone_' + l.kind, { name: name }) : instCode(l.code)) + (more ? '\n' + more : '');
+  });
+}
+function renderInst(force) {
+  instLearnNames();
+  var smp = inst.smp || {}, line = $('i-smp');
+  line.classList.toggle('on', !!smp.alive);
+  setText(line, smp.alive ? t('iSmpOn', { version: smp.version || '' }) : state && !state.waiting ? t('iMounts') : '');
+  renderInstJob();
+  var pending = Array.isArray(inst.pending) ? inst.pending : [];
+  if (force) $('i-pending')._key = null;
+  instRebuild($('i-pending'), lang + JSON.stringify(pending), pending, instPendingRow);
+  $('i-pending-box').hidden = !pending.length;
+  renderInstFound(force);
+  renderInstDrives(force);
+  var installed = Array.isArray(inst.installed) ? inst.installed : [];
+  if (force) $('i-installed')._key = null;
+  instRebuild($('i-installed'), lang + JSON.stringify(installed) + !!(inst.smp && inst.smp.alive), installed, instInstalledRow);
+  $('i-installed-empty').hidden = installed.length > 0;
+  renderInstLast();
+}
+function instAskReplace(src, dst, existing, del) {
+  var lines = existing.map(function (x) { return x.path + ' (' + fmtSize(x.size) + ')'; });
+  ask(t('iReplaceTitle'), t('iReplaceText') + '\n' + lines.join('\n'), t('iReplaceYes'), function () {
+    instInstall(src, dst, existing.map(function (x) { return x.path; }), del);
+  });
+}
+async function instInstall(src, dst, replace, del) {
+  try {
+    var j = await instReq('POST', 'install', { p5z: src, dest: dst, replace: replace || [], delete_p5z: !!del });
+    if (j.ok) instShow(true, function () { return t('iQueued'); });
+    else if (j.code === 'needs_confirm' && j.existing) instAskReplace(src, dst, j.existing, del);
+    else if (j.code === 'no_space') {
+      var missing = Math.max(0, (j.need || 0) - (j.avail || 0));
+      instShow(false, function () { return t('iNoSpace', { size: fmtSize(missing) }); });
+    } else instError(j.code, j.detail);
+  } catch (e) { instNet(); }
+  instSchedule(300);
+}
+$('i-install').onclick = function () {
+  if (!instSel) { instShow(false, function () { return t('iPickFirst'); }); return; }
+  instInstall(instSel, instDest, [], $('i-del').checked);
+};
+$('i-pause').onclick = function () { instPost('pause', {}); };
+$('i-rescan').onclick = function () { instPost('scan', {}); };
+$('i-manual').onsubmit = async function (e) {
+  if (e) e.preventDefault();
+  var path = $('i-path').value.replace(/^\s+|\s+$/g, '');
+  if (!path) return false;
+  try {
+    var j = await instReq('POST', 'probe', { path: path });
+    if (!j.ok) { instError(j.code, j.detail); return false; }
+    instExtra.push(j.found);
+    instSel = j.found.path;
+    $('i-path').value = '';
+    if (inst) renderInst(false);
+  } catch (err) { instNet(); }
+  return false;
+};
+// The Install screen's controls in page order (shown and enabled).
+function instControls() {
+  return Array.prototype.slice.call(document.querySelectorAll('#install button, #install input'))
+    .filter(function (c) { return !c.disabled && c.offsetParent !== null; });
+}
+// Up/Down walk the controls; Left/Right the buttons of one row (drives, a row's actions).
+function moveInInstall(t, key) {
+  var list = instControls(), i = list.indexOf(t);
+  if (i < 0) return false;
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    if (t.tagName !== 'BUTTON') return false;
+    var sib = key === 'ArrowLeft' ? t.previousElementSibling : t.nextElementSibling;
+    if (sib && sib.tagName === 'BUTTON' && !sib.disabled && !t.classList.contains('inst-item')) sib.focus();
+    return true;
+  }
+  if (key === 'ArrowUp' && i === 0) { $('tab-install').focus(); return true; }
+  var next = list[i + (key === 'ArrowUp' ? -1 : 1)];
+  if (next) next.focus();
+  return true;
+}
+
 function cards() { return Array.prototype.slice.call(document.querySelectorAll('#grid .card')); }
 function columns(list) {
   var n = 0;
@@ -2275,7 +2889,7 @@ function moveInSeg(btn, key) {
     if (key === 'ArrowDown' && cards().length) cards()[0].focus();
     if (key === 'ArrowUp') document.querySelector('.nav [aria-selected="true"]').focus();
   } else if (key === 'ArrowDown') {
-    if ($('library').hidden) fields()[0].focus(); else focusChip();
+    focusView();
   }
 }
 // The Unmount buttons on the drive pills, right of the filter chips.
@@ -2366,7 +2980,7 @@ document.addEventListener('keydown', function (e) {
     return;
   }
   if (k === 'Escape' || (k === 'Backspace' && !typing)) {
-    if (!$('settings').hidden) { e.preventDefault(); setView('library'); $('tab-library').focus(); }
+    if ($('library').hidden) { e.preventDefault(); setView('library'); $('tab-library').focus(); }
     return;
   }
   if ((k === 'F7' || k === 'F8') && !$('library').hidden) {
@@ -2375,6 +2989,7 @@ document.addEventListener('keydown', function (e) {
   // PlayStation uses unconsumed arrows to move its native cursor and open the text IME.
   if (!arrow || PS) return;
   if ($('settings').contains(t)) { if (moveInSettings(t, k)) e.preventDefault(); return; }
+  if ($('install').contains(t)) { if (moveInInstall(t, k)) e.preventDefault(); return; }
   if (typing) return;
   if (t.classList.contains('card')) { e.preventDefault(); moveInGrid(t, k); }
   else if (t.classList.contains('seg-opt')) { e.preventDefault(); moveInSeg(t, k); }
@@ -2384,7 +2999,7 @@ document.addEventListener('keydown', function (e) {
   }
   else if (k === 'ArrowDown' && document.querySelector('.topbar').contains(t)) {
     e.preventDefault();
-    if ($('library').hidden) fields()[0].focus(); else focusChip();
+    focusView();
   }
 });
 document.addEventListener('focusin', function (e) {
@@ -2399,12 +3014,16 @@ function renderAll() {
   applyStatic();
   fillLangSelect();
   setText($('logtoggle'), t(logOpen ? 'hideLog' : 'showLog'));
-  ['offline', 'lowspace', 'paused', 'smsg', 'eject'].forEach(function (id) { if ($(id)._live) live($(id), $(id)._live); });
+  ['offline', 'lowspace', 'paused', 'waiting', 'smsg', 'eject', 'i-msg'].forEach(function (id) { if ($(id)._live) live($(id), $(id)._live); });
+  $('i-path').placeholder = t('iManualPh');
+  $('i-path').setAttribute('aria-label', t('iManualAria'));
+  if (inst) renderInst(true);
   if (state) {
     var games = Array.isArray(state.games) ? state.games : [];
     renderChips(games);
     renderStorage(state.drives);
     renderGrid(games);
+    renderImages(state.images);
     if (modalOpen()) { renderModal(); if ($('m-legend')._redo) $('m-legend')._redo(); }
     renderSettingsInfo();
   }
