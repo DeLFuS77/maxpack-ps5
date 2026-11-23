@@ -38,6 +38,13 @@ jobs:
           restore-keys: host-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
       - name: Identity (tools/check_identity.sh)
         run: bash tools/check_identity.sh
+      - name: Identity self-test (a planted old name must fail)
+        run: |
+          t=$(mktemp -d)
+          cp -r tools src ps5 .github docs "$t"/
+          echo Kraken-Mount | tr - ' ' >> "$t/docs/planted.md"
+          if bash "$t/tools/check_identity.sh"; then echo "self-test: planted name not detected"; exit 1; fi
+          echo "self-test: planted name detected"
       - name: cargo check --workspace
         run: cargo check --workspace --locked --target x86_64-unknown-freebsd
       - name: node --check (src/ui.html script)

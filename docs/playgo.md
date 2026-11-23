@@ -1,14 +1,14 @@
 # PlayGo stub (pgo_stub)
 
-Kraken Mount mounts games instead of installing them, so the console has no PlayGo install record for
+MaxPack mounts games instead of installing them, so the console has no PlayGo install record for
 them. A game that asks PlayGo about its install state can then decide it is not fully installed and ask
-you to finish the download. Kraken Mount bundles drakmor's
+you to finish the download. MaxPack bundles drakmor's
 [pgo_stub](https://github.com/drakmor/pgo_stub) (release 0.6, GPL-3.0), a replacement
 `libScePlayGo.sprx` that reports every chunk as available and installed.
 
 ## When it is added
 
-When Kraken Mount builds or refreshes a game's cache, it adds `libScePlayGo.sprx` to the cache's
+When MaxPack builds or refreshes a game's cache, it adds `libScePlayGo.sprx` to the cache's
 `fakelib/` if both are true:
 
 - the game's `eboot.bin` imports `libScePlayGo` (with a backport that has its own `eboot.bin`, that
@@ -21,7 +21,7 @@ copy is kept as it is.
 
 ## Check that it was added
 
-Look in `/data/krakenmount/kraken.log` for a line like this:
+Look in `/data/maxpack/maxpack.log` for a line like this:
 
 ```text
 <TID>: fakelib: added libScePlayGo.sprx (pgo_stub 0.6)
@@ -36,8 +36,8 @@ The stub reads `/app0/playgo_stub.dat` when the game runs. Without it, the stub 
 all languages, and everything installed. To change that, put `playgo_stub.dat` here:
 
 - folder game: in the game folder, next to `eboot.bin`;
-- pkg game: in the root of the pkg, and Kraken Mount extracts it to the cache. You can also put it
-  straight into `/data/krakenmount/caches/<TID>/`, which is the pkg game's `/app0`.
+- pkg game: in the root of the pkg, and MaxPack extracts it to the cache. You can also put it
+  straight into `/data/maxpack/caches/<TID>/`, which is the pkg game's `/app0`.
 
 The file has up to 3 lines:
 
@@ -57,7 +57,7 @@ The upstream README lists every language name and the fallback for each invalid 
 
 ## Use another build
 
-Put your own `libScePlayGo.sprx` into the game's `fakelib/`. Kraken Mount sees that the game ships one
+Put your own `libScePlayGo.sprx` into the game's `fakelib/`. MaxPack sees that the game ships one
 and leaves it alone.
 
 ## Turn it off for one game
@@ -66,14 +66,14 @@ Open the game's details in the web UI and clear "PlayGo stub". The switch is sho
 `eboot.bin` imports PlayGo, or when the stub is already off for it. Turn it off if the game stays on a
 black screen with the stub; turn it back on if the game asks you to finish the download.
 
-Kraken Mount stores the choice in `/data/krakenmount/config.toml` as a list of title IDs,
+MaxPack stores the choice in `/data/maxpack/config.toml` as a list of title IDs,
 `playgo_off = ["PPSA01556"]`, and refreshes the game's `fakelib/`. For a title in the list the bundled
 stub is neither added nor upgraded (log line `fakelib: PlayGo stub off (playgo_off)`); a
 `libScePlayGo.sprx` that the game or backport ships stays as it is. The DLC emulator is not affected.
 
 ## Turn it off for all games
 
-Set `add_emulators = false` in `/data/krakenmount/config.toml`, or clear the "Add the bundled DLC
+Set `add_emulators = false` in `/data/maxpack/config.toml`, or clear the "Add the bundled DLC
 (dlc_emu) and PlayGo (pgo_stub) emulators" checkbox in the web UI. This also turns off the bundled DLC
 emulator (dlc_emu).
 
