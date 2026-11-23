@@ -92,7 +92,8 @@ pub fn title_id_repeats(body: &[u8]) -> bool {
 }
 
 /// The title id of an uninstall request's body (`{"title_id": "PPSA01234", "confirm": true}`), when
-/// it is a game title id.
+/// it is a game title id. None for anything else it cannot read exactly (not JSON or UTF-8, a
+/// number serde rejects, a missing, repeated or non-string key): web.rs then refuses the request.
 /// None when `title_id` repeats (title_id_repeats): the engine reads the first, serde the last.
 pub fn uninstall_title(body: &[u8]) -> Option<String> {
     if title_id_repeats(body) {
@@ -265,6 +266,31 @@ mod tests {
         let dup = br#"{"title_id":"PPSA01234","title_id":"CUSA00001","confirm":true}"#;
         assert_eq!(uninstall_title(dup), None);
         assert_eq!(uninstall_title(br#"{"title_id":"PPSA01234","confirm":true}"#).as_deref(), Some("PPSA01234"));
+    }
+
+    /// The gate must read what it forwards: web.rs refuses (400 bad_json) every uninstall body
+    /// for which `uninstall_title` is None, so each of these must be None, and the normal one Some.
+    #[test]
+    fn uninstall_body_fails_closed() {
+        let tid = br#"{"title_id":"PPSA01234","confirm":true}"#;
+        assert_eq!(uninstall_title(tid).as_deref(), Some("PPSA01234"));
+        let mut bad_utf8 = br#"{"title_id":"PPSA01234","x":""#.to_vec();
+        bad_utf8.extend_from_slice(b"\xff\"}");
+        let bodies: Vec<&[u8]> = vec![
+            &bad_utf8,
+            br#"{"title_id":"PPSA01234","x":1e999}"#,
+            br#"{"confirm":true}"#,
+            br#"{"title_id":1,"confirm":true}"#,
+            br#"{"title_id":"PPSA01234","title_id":"CUSA00001"}"#,
+            br#"{"title_id":"PPSA01234"} junk"#,
+            br#"{"title_id":"PPSA01234""#,
+            b"",
+        ];
+        for b in bodies {
+            assert_eq!(uninstall_title(b), None, "{}", String::from_utf8_lossy(b));
+        }
+        // "title_id" inside another string is not a second key.
+        assert_eq!(uninstall_title(br#"{"x":"title_id","title_id":"PPSA01234"}"#).as_deref(), Some("PPSA01234"));
     }
 
     #[test]

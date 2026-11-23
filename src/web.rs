@@ -457,22 +457,25 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
 /// uninstall it accepts is followed to its end (installer::after_uninstall), so MaxPack's home
 /// entry and mount of that game go with it.
 fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
-    use maxpack_logic::inst::{answer_ok, game_blocks, header, installer_path, needs_no_game, title_id_repeats, uninstall_title};
+    use maxpack_logic::inst::{answer_ok, game_blocks, header, installer_path, needs_no_game, uninstall_title};
     let Some(path) = installer_path(method, target) else { return not_found() };
-    // A repeated `title_id` is read differently by the gate (the last) and the engine (the first):
-    // it never reaches the engine.
-    if path == "/api/uninstall" && title_id_repeats(body) {
-        log!("installer: {path} refused: title_id repeated");
-        let body = serde_json::json!({"ok": false, "code": "bad_json", "detail": "title_id repeated"}).to_string();
+    // The gate must read what it forwards: an uninstall whose body is not exactly one top-level
+    // string `title_id` it can parse (invalid JSON or UTF-8, a repeated, missing or non-string key;
+    // the engine's parser is laxer, and reads the first of a repeated key) never reaches the engine.
+    let uninstall = (method == "POST" && path == "/api/uninstall").then(|| uninstall_title(body));
+    if uninstall == Some(None) {
+        log!("installer: {path} refused: no single readable title_id");
+        let body = serde_json::json!({"ok": false, "code": "bad_json", "detail": "title_id"}).to_string();
         return reply(400, "application/json", body);
     }
+    let uninstall = uninstall.flatten();
     // `paused()` only knows the titles MaxPack tracks: for an uninstall (it names its title id) the
     // process list is asked too, so a game another mounter launched blocks it as well, and a failed
     // walk refuses. A replace carries paths, not a title id: it stays on `paused()` alone.
     let blocked = needs_no_game(method, &path, body) && {
         let paused = state.paused();
-        let walk = match (paused, path == "/api/uninstall", uninstall_title(body)) {
-            (false, true, Some(tid)) => crate::launch::title_runs(&tid),
+        let walk = match (paused, path == "/api/uninstall", uninstall.as_deref()) {
+            (false, true, Some(tid)) => crate::launch::title_runs(tid),
             _ => Some(false),
         };
         game_blocks(paused, walk)
@@ -482,7 +485,6 @@ fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8],
         let body = serde_json::json!({"ok": false, "code": "game_running", "detail": "a game is running"}).to_string();
         return reply(409, "application/json", body);
     }
-    let uninstall = (path == "/api/uninstall").then(|| uninstall_title(body)).flatten();
     // The library's copy of that title now: the one MaxPack mounts, if any.
     let source = uninstall.as_deref().and_then(|t| state.source(t)).map(|s| s.path);
     let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
