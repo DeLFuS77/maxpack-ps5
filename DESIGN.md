@@ -1,16 +1,16 @@
-# krakenmount design
+# MaxPack design
 
 A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/extended drives,
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
 The ampr-emu-ng runtime is NOT built here: its released `libSceAmpr.sprx` is bundled from
 `vendor/ampr-emu-ng/` (`VERSION`, `SHA256SUMS` from the GitHub release, checked by `ps5/build.sh`)
-and installed into `/data/krakenmount/ampr/` at start.
+and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from
 their GitHub releases, checked by `ps5/build.sh`; GPL-3.0, `THIRD_PARTY_NOTICES`): drakmor's dlc_emu
 (`vendor/dlc_emu/`: `libSceAppContent.sprx`, `libSceNpEntitlementAccess.sprx`, `libSceGameUpdate.sprx`)
 and pgo_stub (`vendor/pgo_stub/`: `libScePlayGo.sprx`). They are embedded in the payload and written
-only into a cache's `fakelib/`, never into `/data/krakenmount/ampr/`.
+only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
 `crates/kraken-mount-pkg` reads debug FPKGs (the reader plus its Kraken block decoder, module `decoder`).
 
 ## Supported sources (nothing else)
@@ -23,12 +23,12 @@ only into a cache's `fakelib/`, never into `/data/krakenmount/ampr/`.
 ## Paths
 | Path | What |
 |---|---|
-| `/data/krakenmount/config.toml` | settings (created with defaults on first start) |
-| `/data/krakenmount/caches/<TID>/` | per-game cache |
-| `/data/krakenmount/ampr.bundled` | `<version> <len> <crc32>` of the `libSceAmpr.sprx` we last wrote, bundled or downloaded (v0.4.0 builds wrote `<len> <crc32>`: ours, version unknown; outside `ampr/`, whose files all go into fakelib) |
-| `/data/krakenmount/ampr/` | ampr-emu-ng files (`libSceAmpr.sprx`, ...), copied on top of every game's `fakelib/` in its cache (chmod 0777 at start; a `libkernel.sprx` there is never copied and logs a warning) |
-| `/data/krakenmount/kraken.log` | log (setting `log`); each line starts with the UTC time and the milliseconds since boot (`2026-11-19 20:51:03Z [10643021] `); starts over past 1 MiB, no kept copy |
-| `/data/krakenmount/kraken-mount.elf` | self copy the tile starts (Dump Forge style, below) |
+| `/data/maxpack/config.toml` | settings (created with defaults on first start) |
+| `/data/maxpack/caches/<TID>/` | per-game cache |
+| `/data/maxpack/ampr.bundled` | `<version> <len> <crc32>` of the `libSceAmpr.sprx` we last wrote, bundled or downloaded (v0.4.0 builds wrote `<len> <crc32>`: ours, version unknown; outside `ampr/`, whose files all go into fakelib) |
+| `/data/maxpack/ampr/` | ampr-emu-ng files (`libSceAmpr.sprx`, ...), copied on top of every game's `fakelib/` in its cache (chmod 0777 at start; a `libkernel.sprx` there is never copied and logs a warning) |
+| `/data/maxpack/maxpack.log` | log (setting `log`); each line starts with the UTC time and the milliseconds since boot (`2026-11-19 20:51:03Z [10643021] `); starts over past 1 MiB, no kept copy |
+| `/data/maxpack/maxpack.elf` | self copy the tile starts (Dump Forge style, below) |
 
 ## Drives and scan roots (`src/storage.rs`)
 Drives: `/data` (label "Internal") always, plus each of `/mnt/usb0..7` ("USB n+1") and
@@ -54,12 +54,12 @@ SMP `sm_usb_mount_path`). The request goes to the system automounter over IPMI t
 in `ps5/usb.c` (`km_usb_eject`, a port of SMP `sm_usb.c`), which checks the mount still has the
 source and fsid seen at request time; the payload never unmounts the drive itself.
 
-## Settings (`src/config.rs`, file `/data/krakenmount/config.toml`)
+## Settings (`src/config.rs`, file `/data/maxpack/config.toml`)
 A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arrays of strings; `#` comments.
 | Key | Default | Meaning |
 |---|---|---|
 | `scanpath` | (defaults above) | array of paths; replaces the default scan roots |
-| `inject_ampr` | true | copy `/data/krakenmount/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
+| `inject_ampr` | true | copy `/data/maxpack/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
 | `add_emulators` | true | add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes `fakelib/`) |
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
 | `ampr_auto_update` | true | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
@@ -70,15 +70,15 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `auto_remove_missing` | true | remove a title from the home screen when its source stays missing for `auto_remove_delay_seconds` (the cache stays; see Flow) |
 | `auto_remove_delay_seconds` | 300 | how long a source must stay missing before `auto_remove_missing` removes its title (1..86400) |
 | `notify` | true | system toasts |
-| `log` | true | write `/data/krakenmount/kraken.log` (stdout always gets the lines) |
-| `debug` | false | klog capture to `/data/krakenmount/klog.txt` and the `/file/data/...` route |
+| `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
+| `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
 Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `playgo_off`) that is not
 a valid value is logged and skipped, the other items stay (an array that does not parse, such as one with a number in it,
 is ignored as a whole). The web UI edits the same file.
 
 ## Cache (`src/cache.rs`)
-`/data/krakenmount/caches/<TID>/`, stamp file `.done` written last.
+`/data/maxpack/caches/<TID>/`, stamp file `.done` written last.
 - Folder: `fakelib/` only. `/app0` is the game folder itself.
 - FPKG: it IS `/app0`: `sce_sys/**` (with the files only the pkg container holds: `save_data.png`,
   `pic0`/`pic1`, `snd0.at9`, `trophy00.ucp`, `nptitle.dat`, `npbind.dat`, which save data and
@@ -121,7 +121,7 @@ is ignored as a whole). The web UI edits the same file.
   A title in `playgo_off` skips pgo_stub entirely (no add, no upgrade, the eboot is not searched), logged
   `<TID>: fakelib: PlayGo stub off (playgo_off)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
-  `.pkg` named in `kraken.image`), every file of `/data/krakenmount/ampr/` (not `libkernel.sprx`) is copied on top,
+  `.pkg` named in `kraken.image`), every file of `/data/maxpack/ampr/` (not `libkernel.sprx`) is copied on top,
   so ours wins over the game's own `libSceAmpr.sprx`, except a game's or backport's ampr-emu-ng strictly newer than
   ours (the `ampr-emu-ng X.Y.Z` identity in both files; ours without one counts as older), which is kept and logged
   `<TID>: fakelib: kept the game's ampr-emu-ng <v> (newer than <v>)` (no ng downgrade, also over a hand-placed copy). `.ampr` records what fakelib was composed from: `{"ampr": {name: [size, mtime]} or null,
@@ -169,7 +169,7 @@ is ignored as a whole). The web UI edits the same file.
 
 ## Flow (`src/main.rs`)
 Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as SMP, which mkdirs
-0777) whatever elfldr passes; then create dirs, load config, take port 8097 (asks an older copy to quit), install the bundled
+0777) whatever elfldr passes; then create dirs, load config, take port 8095 (asks an older copy to quit), install the bundled
 `libSceAmpr.sprx` when `ampr/libSceAmpr.sprx` is missing or matches `ampr.bundled` (an older bundled
 copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web thread, klog thread when `debug`, then wait
 (2 s poll, one toast per reason, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
@@ -207,26 +207,26 @@ A title with an installed copy (`/user/app/<TID>/app.pkg` or `/mnt/ext{0,1}/user
 ENOENT/ENOTDIR counts as one) or no staged `/user/app/<TID>/sce_sys/param.json` is never removed (`register::is_ours`,
 rechecked every pass, logged once per run).
 Auto-update (ampr-emu-ng): at start, when `ampr_auto_update` is on (whatever `inject_ampr` says: pkg games always use the ampr dir), a background thread asks
-`https://api.github.com/repos/quer3q/ampr-emu-ng/releases/latest` (stable releases only; betas are
+`https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest` (stable releases only; betas are
 pre-releases and skipped). When its `tag_name` is newer than the installed version, it downloads the
 asset `libSceAmpr.sprx` (size must equal the asset size, max 16 MiB, ELF or SELF magic), writes a temp
-file in `/data/krakenmount`, chmod 0777, renames it to `/data/krakenmount/ampr/libSceAmpr.sprx`, records
+file in `/data/maxpack`, chmod 0777, renames it to `/data/maxpack/ampr/libSceAmpr.sprx`, records
 it in `ampr.bundled` as `<tag> <len> <crc32>` and toasts `i18n::ampr_updated`. A copy we wrote (bundled
 or downloaded) is ours: the bundled copy replaces ours only when the bundled version is newer; a
 hand-placed file is kept by both, and ownership is checked again after the download. Network errors are
 logged and retried up to 3 times 20 s apart, then nothing until the next start. An install wakes the scan
 loop (fakelib refresh); one update runs at a time. Settings has "Update ampr-emu-ng now"
 (`POST /api/ampr/update`): forced, one attempt, installs the latest stable release whatever is
-installed; a hand-placed file is first moved to `/data/krakenmount/libSceAmpr.sprx.hand` (one backup,
+installed; a hand-placed file is first moved to `/data/maxpack/libSceAmpr.sprx.hand` (one backup,
 outside `ampr/`). HTTPS goes through the console's sceHttp/sceSsl with 4 built-in root CAs
 (from SMP).
 Running game: while `launch::watch` reports a live session (`running`), the loop does no
 scan/build/register/purge (a game starting mid-scan stops the scan before the next title);
 rescan/rebuild/purge requests stay queued and run after the game exits (2 s poll).
-Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/data/krakenmount/notify-icon.png`),
+Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/data/maxpack/notify-icon.png`),
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
-cannot be read; "Kraken Mount", title names and paths stay as they are. A failed game is retried
+cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
 only when its inputs change or a rebuild is forced. Duplicate title ids: a folder beats a pkg, then the first scan root wins;
 the others show `duplicate`. Low `/data` space (checked before the games, before and after each
 build, after the scan): toast once per run and a UI banner.
@@ -242,10 +242,10 @@ when the pass stopped for a game start: nothing registers while a game runs, and
 so far are not registered yet, so the pass after the game exits stages them again and installs them. Logged `<TIDs>: <dlsym error>; sceAppInstUtilAppInstallAll:
 <rc> (<ms> ms)`; a failure marks each of those titles failed. A batch of more than one title
 gets one toast (`<n> games registered` / `<n> games failed`) instead of one per title.
-The tile (`KRKN00001`) is staged the same way on FW 12+ (`tile_staged`): the pass calls InstallAll
+The tile (`MXPK00001`) is staged the same way on FW 12+ (`tile_staged`): the pass calls InstallAll
 for it even with no game staged (not while a game runs), and `tile.ok` gets its hash once that succeeds
 (a failed call leaves it `pending`, retried at the next start). The tile registers again whenever
-`tile.ok` lacks its param.json hash, a tile file changed, or app.db's `tbl_contentinfo` has no `KRKN00001`
+`tile.ok` lacks its param.json hash, a tile file changed, or app.db's `tbl_contentinfo` has no `MXPK00001`
 row (`SELECT COUNT(*)`; an unreadable app.db trusts `tile.ok`).
 Every staged copy (sce_sys, `icon0.png`, appmeta, trophy files) is set to 0666 after writing: a
 copy keeps the source's mode, and a 0600 file from a game folder would stay unreadable for the
@@ -288,7 +288,7 @@ No overlay when neither layer applies.
 ## Module interfaces (contract between modules; keep these names)
 ```rust
 // config.rs
-pub const CONFIG_PATH: &str = "/data/krakenmount/config.toml";
+pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings { pub scan_paths: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
   pub playgo_off: Vec<String>, pub ampr_auto_update: bool,
@@ -324,8 +324,8 @@ pub fn parse_param(json: &[u8]) -> std::io::Result<(String, String, String)>; //
 pub fn valid_tid(t: &str) -> bool;
 
 // cache.rs
-pub const CACHES: &str = "/data/krakenmount/caches";
-pub const AMPR_DIR: &str = "/data/krakenmount/ampr";
+pub const CACHES: &str = "/data/maxpack/caches";
+pub const AMPR_DIR: &str = "/data/maxpack/ampr";
 pub fn dir(tid: &str) -> std::path::PathBuf;
 pub fn peek_pkg(pkg: &std::path::Path) -> std::io::Result<(String, String, String)>; // title_id, name, version (via scan::parse_param)
 pub fn pkg_file(pkg: &std::path::Path, name: &str) -> std::io::Result<Vec<u8>>; // one file, e.g. "sce_sys/icon0.png"
@@ -369,8 +369,8 @@ pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<Str
 pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
 ```
 
-## Web API (`src/web.rs`, port 8097, served to `src/ui.html`)
-Rest mode can close the listening socket: on an accept error the server binds port 8097 again every second.
+## Web API (`src/web.rs`, port 8095, served to `src/ui.html`)
+Rest mode can close the listening socket: on an accept error the server binds port 8095 again every second.
 If a newer copy took the port meanwhile, this copy quits (not while a game runs).
 - `GET /` ui.html (`__VERSION__` filled in); `GET /app-icon.png` the app icon (`ps5/icon0.png`);
   `GET /kraken.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
@@ -423,10 +423,10 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
 
 ## Self copy and start on open (as Dump Forge)
 `ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `KRAKEN_SELF_ELF`) embedding
-stage 1. The pushed stage 2 saves stage 1 to `/data/krakenmount/kraken-mount.elf` at start when the bytes differ
+stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at start when the bytes differ
 (temp + fsync + rename; the last pushed wins). The tile opens the AppCache'd page; on the console's own browser
-(127.0.0.1:8097) a failed `/api/state` makes it ask elfldr once per page load:
-`GET http://127.0.0.1:9021/data/krakenmount/kraken-mount.elf?args=serve&pipe=0&n=<nonce>`, then it keeps polling.
+(127.0.0.1:8095) a failed `/api/state` makes it ask elfldr once per page load:
+`GET http://127.0.0.1:9021/data/maxpack/maxpack.elf?args=serve&pipe=0&n=<nonce>`, then it keeps polling.
 - Requests are capped at 16 KiB: head too large 431, head + Content-Length too large (or overflowing) 413,
   non-numeric Content-Length 400.
 

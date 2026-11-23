@@ -1,8 +1,8 @@
-//! Settings from /data/krakenmount/config.toml (DESIGN.md "Settings").
+//! Settings from /data/maxpack/config.toml (DESIGN.md "Settings").
 //! ponytail: a flat TOML subset (key = string | bool | integer | array of strings, # comments),
 //! no tables; a toml crate when the file needs more.
 use serde_json::{json, Value};
-pub const CONFIG_PATH: &str = "/data/krakenmount/config.toml";
+pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings {
@@ -21,7 +21,7 @@ pub struct Settings {
     pub auto_remove_missing: bool,
     pub auto_remove_delay_secs: u64,
     pub notify: bool,
-    /// Write /data/krakenmount/kraken.log (the payload's stdout always gets the lines).
+    /// Write /data/maxpack/maxpack.log (the payload's stdout always gets the lines).
     pub log: bool,
     pub debug: bool,
 }
@@ -50,7 +50,7 @@ impl Default for Settings {
 
 const HELP: &[(&str, &str)] = &[
     ("scanpath", "replaces the default scan roots (/data/homebrew, /data/etaHEN/games, <drive>/homebrew, ...)"),
-    ("inject_ampr", "true = copy /data/krakenmount/ampr/* on top of a folder game's fakelib (pkg games always get it; a change only refreshes fakelib/)"),
+    ("inject_ampr", "true = copy /data/maxpack/ampr/* on top of a folder game's fakelib (pkg games always get it; a change only refreshes fakelib/)"),
     ("add_emulators", "true = add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes fakelib/)"),
     ("playgo_off", "title ids that get no bundled PlayGo stub (pgo_stub): not added, not upgraded; a libScePlayGo.sprx the game ships stays (a change only refreshes fakelib/)"),
     ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed libSceAmpr.sprx is kept)"),
@@ -61,8 +61,8 @@ const HELP: &[(&str, &str)] = &[
     ("auto_remove_missing", "true = remove a title from the home screen when its source is missing for auto_remove_delay_seconds (the cache stays; not while a game runs, not with DLC in /user/addcont/<TID>)"),
     ("auto_remove_delay_seconds", "how long a source must stay missing before auto_remove_missing removes its title, 1..86400"),
     ("notify", "true = system toasts"),
-    ("log", "true = write /data/krakenmount/kraken.log (starts over past 1 MiB)"),
-    ("debug", "true = klog capture to /data/krakenmount/klog.txt and the /file/data/... route"),
+    ("log", "true = write /data/maxpack/maxpack.log (starts over past 1 MiB)"),
+    ("debug", "true = klog capture to /data/maxpack/klog.txt and the /file/data/... route"),
 ];
 
 fn flag(v: &str) -> Result<bool, String> {
@@ -265,7 +265,7 @@ fn parse(text: &str) -> Settings {
 }
 
 fn render(s: &Settings) -> String {
-    let mut out = String::from("# Kraken Mount settings (TOML). The web UI edits this file.\n");
+    let mut out = String::from("# MaxPack settings (TOML). The web UI edits this file.\n");
     for &(k, help) in HELP {
         out += &format!("\n# {help}\n");
         match k {

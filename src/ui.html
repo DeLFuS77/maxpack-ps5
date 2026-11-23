@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" manifest="kraken.appcache">
+<html lang="en" manifest="maxpack.appcache">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kraken Mount v__VERSION__</title>
+<title>MaxPack v__VERSION__</title>
 <style>
 :root {
   --fg: #f4f4f8;
@@ -383,18 +383,18 @@ button:disabled { opacity: 0.5; cursor: default; }
 <header class="topbar">
   <div class="topbar-in">
     <div class="brand-row">
-      <h1 class="brand"><img src="/app-icon.png" alt="Kraken Mount" width="128" height="128"></h1>
+      <h1 class="brand"><img src="/app-icon.png" alt="MaxPack" width="128" height="128"></h1>
     </div>
     <div class="seg nav glass" role="tablist" aria-label="Screens" data-i18n-aria="screens">
       <button class="seg-opt" role="tab" id="tab-library" aria-selected="true" aria-controls="library" data-view="library" data-i18n="library">Library</button>
       <button class="seg-opt" role="tab" id="tab-settings" aria-selected="false" aria-controls="settings" data-view="settings" data-i18n="settings">Settings</button>
     </div>
     <div class="top-actions">
-      <button class="small" id="stop" type="button" title="Stop Kraken Mount" data-i18n-title="stopApp">
+      <button class="small" id="stop" type="button" title="Stop MaxPack" data-i18n-title="stopApp">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
         <span class="stop-label" data-i18n="stop">Stop</span>
       </button>
-      <a class="gh-link button" href="https://github.com/quer3q/kraken-mount" aria-label="Kraken Mount on GitHub" title="Kraken Mount on GitHub" data-i18n-aria="github" data-i18n-title="github">
+      <a class="gh-link button" data-credit="kraken-mount" href="https://github.com/quer3q/kraken-mount" aria-label="Based on Kraken Mount by quer3q (GPL-3.0-or-later)" title="Based on Kraken Mount by quer3q (GPL-3.0-or-later)">
         <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.36-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A8 8 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
       </a>
     </div>
@@ -404,7 +404,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 <div class="banners">
   <div class="banner" id="offline" role="status">Offline: payload not running. Retrying.</div>
   <div class="banner warn" id="lowspace" role="status"></div>
-  <div class="banner warn" id="noampr" role="status" data-i18n="noAmpr" data-args="file=libSceAmpr.sprx;dir=/data/krakenmount/ampr/" data-wrap="file=b">ampr-emu-ng is missing: put <b>libSceAmpr.sprx</b> into /data/krakenmount/ampr/. FPKG games cannot run without it.</div>
+  <div class="banner warn" id="noampr" role="status" data-i18n="noAmpr" data-args="file=libSceAmpr.sprx;dir=/data/maxpack/ampr/" data-wrap="file=b">ampr-emu-ng is missing: put <b>libSceAmpr.sprx</b> into /data/maxpack/ampr/. FPKG games cannot run without it.</div>
   <div class="banner warn" id="paused" role="status"></div>
   <div class="banner warn" id="waiting" role="status"></div>
   <div class="banner" id="eject" role="status"></div>
@@ -431,7 +431,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 <section id="settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
   <form class="settings glass" id="sform" onsubmit="return false">
     <h2 data-i18n="settings">Settings</h2>
-    <div class="banner warn" id="snoampr" data-i18n="sNoAmpr" data-args="file=libSceAmpr.sprx;dir=/data/krakenmount/ampr/">ampr-emu-ng (libSceAmpr.sprx) is not in /data/krakenmount/ampr/.</div>
+    <div class="banner warn" id="snoampr" data-i18n="sNoAmpr" data-args="file=libSceAmpr.sprx;dir=/data/maxpack/ampr/">ampr-emu-ng (libSceAmpr.sprx) is not in /data/maxpack/ampr/.</div>
     <div class="settings-actions">
       <button class="primary" id="rescan" type="button" data-i18n="rescan">Rescan</button>
       <button id="rebuildall" type="button" data-i18n="rebuildAll">Rebuild all</button>
@@ -452,7 +452,7 @@ button:disabled { opacity: 0.5; cursor: default; }
     <label class="row"><span class="lbl" data-i18n="autoRemoveDelay">Remove after missing for, seconds (1-86400)</span><input type="number" id="f_auto_remove_delay_seconds" min="1" max="86400"></label>
     <label class="row"><span class="lbl" data-i18n="lowSpaceGb">Low space warning, GB</span><input type="number" id="f_low_space_gb" min="0"></label>
     <label class="row"><span class="lbl" data-i18n="notify">System notifications</span><input type="checkbox" id="f_notify"></label>
-    <label class="row"><span class="lbl" data-i18n="writeLog">Write kraken.log (up to 1 MB)</span><input type="checkbox" id="f_log"></label>
+    <label class="row"><span class="lbl" data-i18n="writeLog">Write maxpack.log (up to 1 MB)</span><input type="checkbox" id="f_log"></label>
     <label class="row"><span class="lbl" data-i18n="debug">Debug (klog capture, file route)</span><input type="checkbox" id="f_debug"></label>
     <label class="row"><span class="lbl" data-i18n="language">Language</span><select id="f_lang"></select></label>
     <div class="settings-foot">
@@ -518,24 +518,24 @@ button:disabled { opacity: 0.5; cursor: default; }
 var $ = function (id) { return document.getElementById(id); };
 
 // ---- i18n: English is the source and the fallback; t(key, args) fills {name} from args ----
-// Stays as it is in every language: Kraken Mount, paths, file names, title ids, versions,
+// Stays as it is in every language: MaxPack, paths, file names, title ids, versions,
 // L2/R2, PKG/LZ4/ZSTD, ampr-emu-ng, GB/MB. A key missing in a language falls back to `en`.
 // To add a translation: fill its object below with the same keys (all keys are in `en`).
 var MSG = {
   en: {
     // Header, tabs, banners
     screens: 'Screens', library: 'Library', settings: 'Settings',
-    stopApp: 'Stop Kraken Mount', stop: 'Stop', github: 'Kraken Mount on GitHub',
+    stopApp: 'Stop MaxPack', stop: 'Stop',
     offline: 'Offline: payload not running. Retrying.',
-    starting: 'Starting Kraken Mount...',
-    elfMissing: 'kraken-mount.elf is not saved yet: send the ELF to port 9021 once.',
+    starting: 'Starting MaxPack...',
+    elfMissing: 'maxpack.elf is not saved yet: send the ELF to port 9021 once.',
     noAmpr: 'ampr-emu-ng is missing: put {file} into {dir}. FPKG games cannot run without it.',
     lowSpace: 'Low space on the internal SSD: {free} free. Cache builds may fail.',
     paused: 'Game running ({games}), scan paused; requests run after it exits.',
     queued: 'Your request is queued.',
-    stopBusy: 'A game is running: close it first, then stop Kraken Mount.',
-    waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.', waitSmp: 'ShadowMount+ is running: stop it to use Kraken Mount. Games appear once it stops.',
-    stopped: 'Kraken Mount stopped. Open the Kraken Mount tile to start it again.',
+    stopBusy: 'A game is running: close it first, then stop MaxPack.',
+    waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.', waitSmp: 'ShadowMount+ is running: stop it to use MaxPack. Games appear once it stops.',
+    stopped: 'MaxPack stopped. Open the MaxPack tile to start it again.',
     // Library: filters, drives, cards, empty state, log
     prevFilter: 'Previous filter (L2)', nextFilter: 'Next filter (R2)', sourceType: 'Source type',
     kindAll: 'All', kindFolders: 'Folders', badgeFolder: 'Folder',
@@ -569,8 +569,8 @@ var MSG = {
     deleteTitle: 'Delete {name}?',
     deletePkg: 'The .pkg file and its cache will be deleted from the drive: {path}. This cannot be undone.',
     deleteFolder: 'The game folder and its cache will be deleted from the drive: {path}. This cannot be undone.',
-    stopTitle: 'Stop Kraken Mount?',
-    stopText: 'Games stay registered. Open the Kraken Mount tile to start it again.',
+    stopTitle: 'Stop MaxPack?',
+    stopText: 'Games stay registered. Open the MaxPack tile to start it again.',
     stopYes: 'Stop',
     rebuildAllTitle: 'Rebuild all caches?',
     rebuildAllText: 'Every game cache is emptied and built again. Games are unavailable while they rebuild.',
@@ -601,7 +601,7 @@ var MSG = {
     autoRemoveDelay: 'Remove after missing for, seconds (1-86400)',
     lowSpaceGb: 'Low space warning, GB',
     notify: 'System notifications',
-    writeLog: 'Write kraken.log (up to 1 MB)',
+    writeLog: 'Write maxpack.log (up to 1 MB)',
     debug: 'Debug (klog capture, file route)',
     language: 'Language', system: 'System',
     purgeCache: 'Purge cache', save: 'Save',
@@ -613,17 +613,17 @@ var MSG = {
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
-    stopApp: 'Остановить Kraken Mount', stop: 'Остановить', github: 'Kraken Mount на GitHub',
+    stopApp: 'Остановить MaxPack', stop: 'Остановить',
     offline: 'Нет связи: payload не запущен. Повтор.',
-    starting: 'Запуск Kraken Mount...',
-    elfMissing: 'kraken-mount.elf ещё не сохранён: один раз отправьте ELF на порт 9021.',
+    starting: 'Запуск MaxPack...',
+    elfMissing: 'maxpack.elf ещё не сохранён: один раз отправьте ELF на порт 9021.',
     noAmpr: 'Нет ampr-emu-ng: положите {file} в {dir}. Без него игры FPKG не запустятся.',
     lowSpace: 'Мало места на внутреннем SSD: свободно {free}. Сборка кеша может не удаться.',
     paused: 'Идёт игра ({games}), сканирование на паузе; запросы выполнятся после её закрытия.',
     queued: 'Запрос в очереди.',
-    stopBusy: 'Идёт игра: сначала закройте её, затем остановите Kraken Mount.',
-    waitKstuff: 'Ожидание kstuff: он ещё не запущен. Игры появятся после его запуска.', waitSmp: 'Запущен ShadowMount+: остановите его, чтобы использовать Kraken Mount. Игры появятся после его остановки.',
-    stopped: 'Kraken Mount остановлен. Чтобы запустить его снова, откройте плитку Kraken Mount.',
+    stopBusy: 'Идёт игра: сначала закройте её, затем остановите MaxPack.',
+    waitKstuff: 'Ожидание kstuff: он ещё не запущен. Игры появятся после его запуска.', waitSmp: 'Запущен ShadowMount+: остановите его, чтобы использовать MaxPack. Игры появятся после его остановки.',
+    stopped: 'MaxPack остановлен. Чтобы запустить его снова, откройте плитку MaxPack.',
     prevFilter: 'Предыдущий фильтр (L2)', nextFilter: 'Следующий фильтр (R2)', sourceType: 'Тип источника',
     kindAll: 'Все', kindFolders: 'Папки', badgeFolder: 'Папка',
     driveInternal: 'Внутренний', driveUsb: 'USB {n}', driveExt: 'Расширенный {n}',
@@ -654,8 +654,8 @@ var MSG = {
     deleteTitle: 'Удалить {name}?',
     deletePkg: 'Файл .pkg и его кеш будут удалены с накопителя: {path}. Это нельзя отменить.',
     deleteFolder: 'Папка игры и её кеш будут удалены с накопителя: {path}. Это нельзя отменить.',
-    stopTitle: 'Остановить Kraken Mount?',
-    stopText: 'Игры останутся зарегистрированными. Чтобы запустить его снова, откройте плитку Kraken Mount.',
+    stopTitle: 'Остановить MaxPack?',
+    stopText: 'Игры останутся зарегистрированными. Чтобы запустить его снова, откройте плитку MaxPack.',
     stopYes: 'Остановить',
     rebuildAllTitle: 'Пересобрать все кеши?',
     rebuildAllText: 'Кеш каждой игры будет очищен и собран заново. Пока идёт сборка, игры недоступны.',
@@ -685,7 +685,7 @@ var MSG = {
     autoRemoveDelay: 'Убирать после отсутствия в течение, секунды (1-86400)',
     lowSpaceGb: 'Предупреждать о нехватке места, GB',
     notify: 'Системные уведомления',
-    writeLog: 'Писать kraken.log (до 1 MB)',
+    writeLog: 'Писать maxpack.log (до 1 MB)',
     debug: 'Отладка (захват klog, маршрут файлов)',
     language: 'Язык', system: 'Как в системе',
     purgeCache: 'Очистить кеш', save: 'Сохранить',
@@ -697,17 +697,17 @@ var MSG = {
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
-    stopApp: '停止 Kraken Mount', stop: '停止', github: 'GitHub 上的 Kraken Mount',
+    stopApp: '停止 MaxPack', stop: '停止',
     offline: '离线：payload 未运行。正在重试。',
-    starting: '正在启动 Kraken Mount...',
-    elfMissing: 'kraken-mount.elf 尚未保存：请将 ELF 发送到端口 9021 一次。',
+    starting: '正在启动 MaxPack...',
+    elfMissing: 'maxpack.elf 尚未保存：请将 ELF 发送到端口 9021 一次。',
     noAmpr: '缺少 ampr-emu-ng：请将 {file} 放入 {dir}。没有它 FPKG 游戏无法运行。',
     lowSpace: '内部 SSD 空间不足：可用 {free}。缓存构建可能失败。',
     paused: '游戏运行中 ({games})，扫描已暂停；请求将在游戏退出后执行。',
     queued: '你的请求已排队。',
-    stopBusy: '有游戏正在运行：请先关闭游戏，再停止 Kraken Mount。',
-    waitKstuff: '正在等待 kstuff：它尚未运行。启动后游戏将会显示。', waitSmp: 'ShadowMount+ 正在运行：请停止它以使用 Kraken Mount。停止后游戏将会显示。',
-    stopped: 'Kraken Mount 已停止。打开 Kraken Mount 磁贴即可再次启动。',
+    stopBusy: '有游戏正在运行：请先关闭游戏，再停止 MaxPack。',
+    waitKstuff: '正在等待 kstuff：它尚未运行。启动后游戏将会显示。', waitSmp: 'ShadowMount+ 正在运行：请停止它以使用 MaxPack。停止后游戏将会显示。',
+    stopped: 'MaxPack 已停止。打开 MaxPack 磁贴即可再次启动。',
     prevFilter: '上一个筛选 (L2)', nextFilter: '下一个筛选 (R2)', sourceType: '来源类型',
     kindAll: '全部', kindFolders: '文件夹', badgeFolder: '文件夹',
     driveInternal: '内部', driveUsb: 'USB {n}', driveExt: '扩展 {n}',
@@ -738,8 +738,8 @@ var MSG = {
     deleteTitle: '删除 {name}？',
     deletePkg: '将从驱动器删除 .pkg 文件及其缓存：{path}。此操作无法撤销。',
     deleteFolder: '将从驱动器删除游戏文件夹及其缓存：{path}。此操作无法撤销。',
-    stopTitle: '停止 Kraken Mount？',
-    stopText: '游戏将保持注册。打开 Kraken Mount 磁贴即可再次启动。',
+    stopTitle: '停止 MaxPack？',
+    stopText: '游戏将保持注册。打开 MaxPack 磁贴即可再次启动。',
     stopYes: '停止',
     rebuildAllTitle: '重建所有缓存？',
     rebuildAllText: '每个游戏的缓存都会清空并重新构建。重建期间游戏不可用。',
@@ -769,7 +769,7 @@ var MSG = {
     autoRemoveDelay: '缺失多久后移除，秒 (1-86400)',
     lowSpaceGb: '空间不足警告，GB',
     notify: '系统通知',
-    writeLog: '写入 kraken.log（最多 1 MB）',
+    writeLog: '写入 maxpack.log（最多 1 MB）',
     debug: '调试（klog 捕获、文件路由）',
     language: '语言', system: '跟随系统',
     purgeCache: '清除缓存', save: '保存',
@@ -781,17 +781,17 @@ var MSG = {
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
-    stopApp: 'Kraken Mount beenden', stop: 'Beenden', github: 'Kraken Mount auf GitHub',
+    stopApp: 'MaxPack beenden', stop: 'Beenden',
     offline: 'Offline: Payload läuft nicht. Wird erneut versucht.',
-    starting: 'Kraken Mount wird gestartet...',
-    elfMissing: 'kraken-mount.elf ist noch nicht gespeichert: Senden Sie die ELF einmal an Port 9021.',
+    starting: 'MaxPack wird gestartet...',
+    elfMissing: 'maxpack.elf ist noch nicht gespeichert: Senden Sie die ELF einmal an Port 9021.',
     noAmpr: 'ampr-emu-ng fehlt: Legen Sie {file} in {dir} ab. Ohne sie laufen FPKG-Spiele nicht.',
     lowSpace: 'Wenig Platz auf der internen SSD: {free} frei. Cache-Builds können fehlschlagen.',
     paused: 'Spiel läuft ({games}), Scan pausiert; Anfragen laufen, sobald es beendet ist.',
     queued: 'Ihre Anfrage wartet in der Warteschlange.',
-    stopBusy: 'Ein Spiel läuft: Schließen Sie es zuerst und beenden Sie dann Kraken Mount.',
-    waitKstuff: 'Warte auf kstuff: Es läuft noch nicht. Die Spiele erscheinen, sobald es startet.', waitSmp: 'ShadowMount+ läuft: Beenden Sie es, um Kraken Mount zu nutzen. Die Spiele erscheinen, sobald es beendet ist.',
-    stopped: 'Kraken Mount wurde beendet. Öffnen Sie die Kachel Kraken Mount, um es erneut zu starten.',
+    stopBusy: 'Ein Spiel läuft: Schließen Sie es zuerst und beenden Sie dann MaxPack.',
+    waitKstuff: 'Warte auf kstuff: Es läuft noch nicht. Die Spiele erscheinen, sobald es startet.', waitSmp: 'ShadowMount+ läuft: Beenden Sie es, um MaxPack zu nutzen. Die Spiele erscheinen, sobald es beendet ist.',
+    stopped: 'MaxPack wurde beendet. Öffnen Sie die Kachel MaxPack, um es erneut zu starten.',
     prevFilter: 'Vorheriger Filter (L2)', nextFilter: 'Nächster Filter (R2)', sourceType: 'Quelltyp',
     kindAll: 'Alle', kindFolders: 'Ordner', badgeFolder: 'Ordner',
     driveInternal: 'Intern', driveUsb: 'USB {n}', driveExt: 'Erweitert {n}',
@@ -822,8 +822,8 @@ var MSG = {
     deleteTitle: '{name} löschen?',
     deletePkg: 'Die .pkg-Datei und ihr Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.',
     deleteFolder: 'Der Spielordner und sein Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.',
-    stopTitle: 'Kraken Mount beenden?',
-    stopText: 'Die Spiele bleiben registriert. Öffnen Sie die Kachel Kraken Mount, um es erneut zu starten.',
+    stopTitle: 'MaxPack beenden?',
+    stopText: 'Die Spiele bleiben registriert. Öffnen Sie die Kachel MaxPack, um es erneut zu starten.',
     stopYes: 'Beenden',
     rebuildAllTitle: 'Alle Caches neu erstellen?',
     rebuildAllText: 'Jeder Spiel-Cache wird geleert und neu erstellt. Währenddessen sind die Spiele nicht verfügbar.',
@@ -853,7 +853,7 @@ var MSG = {
     autoRemoveDelay: 'Entfernen nach Fehlen von, Sekunden (1-86400)',
     lowSpaceGb: 'Warnung bei wenig Platz, GB',
     notify: 'Systembenachrichtigungen',
-    writeLog: 'kraken.log schreiben (bis 1 MB)',
+    writeLog: 'maxpack.log schreiben (bis 1 MB)',
     debug: 'Debug (klog-Mitschnitt, Dateiroute)',
     language: 'Sprache', system: 'System',
     purgeCache: 'Cache bereinigen', save: 'Speichern',
@@ -865,17 +865,17 @@ var MSG = {
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
-    stopApp: 'Detener Kraken Mount', stop: 'Detener', github: 'Kraken Mount en GitHub',
+    stopApp: 'Detener MaxPack', stop: 'Detener',
     offline: 'Sin conexión: el payload no se está ejecutando. Reintentando.',
-    starting: 'Iniciando Kraken Mount...',
-    elfMissing: 'kraken-mount.elf aún no está guardado: envía el ELF al puerto 9021 una vez.',
+    starting: 'Iniciando MaxPack...',
+    elfMissing: 'maxpack.elf aún no está guardado: envía el ELF al puerto 9021 una vez.',
     noAmpr: 'Falta ampr-emu-ng: pon {file} en {dir}. Sin él, los juegos FPKG no funcionan.',
     lowSpace: 'Poco espacio en el SSD interno: {free} libres. La creación de cachés puede fallar.',
     paused: 'Juego en curso ({games}), escaneo en pausa; las solicitudes se ejecutan cuando se cierre.',
     queued: 'Tu solicitud está en cola.',
-    stopBusy: 'Hay un juego en curso: ciérralo primero y luego detén Kraken Mount.',
-    waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.', waitSmp: 'ShadowMount+ está en ejecución: detenlo para usar Kraken Mount. Los juegos aparecerán cuando se detenga.',
-    stopped: 'Kraken Mount se ha detenido. Abre el icono de Kraken Mount para iniciarlo de nuevo.',
+    stopBusy: 'Hay un juego en curso: ciérralo primero y luego detén MaxPack.',
+    waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.', waitSmp: 'ShadowMount+ está en ejecución: detenlo para usar MaxPack. Los juegos aparecerán cuando se detenga.',
+    stopped: 'MaxPack se ha detenido. Abre el icono de MaxPack para iniciarlo de nuevo.',
     prevFilter: 'Filtro anterior (L2)', nextFilter: 'Filtro siguiente (R2)', sourceType: 'Tipo de origen',
     kindAll: 'Todos', kindFolders: 'Carpetas', badgeFolder: 'Carpeta',
     driveInternal: 'Interno', driveUsb: 'USB {n}', driveExt: 'Ampliado {n}',
@@ -906,8 +906,8 @@ var MSG = {
     deleteTitle: '¿Eliminar {name}?',
     deletePkg: 'El archivo .pkg y su caché se eliminarán de la unidad: {path}. No se puede deshacer.',
     deleteFolder: 'La carpeta del juego y su caché se eliminarán de la unidad: {path}. No se puede deshacer.',
-    stopTitle: '¿Detener Kraken Mount?',
-    stopText: 'Los juegos siguen registrados. Abre el icono de Kraken Mount para iniciarlo de nuevo.',
+    stopTitle: '¿Detener MaxPack?',
+    stopText: 'Los juegos siguen registrados. Abre el icono de MaxPack para iniciarlo de nuevo.',
     stopYes: 'Detener',
     rebuildAllTitle: '¿Recrear todas las cachés?',
     rebuildAllText: 'La caché de cada juego se vacía y se crea de nuevo. Los juegos no están disponibles mientras tanto.',
@@ -937,7 +937,7 @@ var MSG = {
     autoRemoveDelay: 'Quitar tras faltar durante, segundos (1-86400)',
     lowSpaceGb: 'Aviso de poco espacio, GB',
     notify: 'Notificaciones del sistema',
-    writeLog: 'Escribir kraken.log (hasta 1 MB)',
+    writeLog: 'Escribir maxpack.log (hasta 1 MB)',
     debug: 'Depuración (captura de klog, ruta de archivos)',
     language: 'Idioma', system: 'Sistema',
     purgeCache: 'Purgar caché', save: 'Guardar',
@@ -949,17 +949,17 @@ var MSG = {
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
-    stopApp: 'Arrêter Kraken Mount', stop: 'Arrêter', github: 'Kraken Mount sur GitHub',
+    stopApp: 'Arrêter MaxPack', stop: 'Arrêter',
     offline: 'Hors ligne : le payload ne tourne pas. Nouvelle tentative.',
-    starting: 'Démarrage de Kraken Mount...',
-    elfMissing: "kraken-mount.elf n'est pas encore enregistré : envoyez l'ELF une fois sur le port 9021.",
+    starting: 'Démarrage de MaxPack...',
+    elfMissing: "maxpack.elf n'est pas encore enregistré : envoyez l'ELF une fois sur le port 9021.",
     noAmpr: 'ampr-emu-ng est absent : placez {file} dans {dir}. Sans lui, les jeux FPKG ne peuvent pas tourner.',
     lowSpace: 'Peu de place sur le SSD interne : {free} libres. La création des caches peut échouer.',
     paused: "Jeu en cours ({games}), analyse en pause ; les demandes s'exécutent après sa fermeture.",
     queued: 'Votre demande est en attente.',
-    stopBusy: 'Un jeu est en cours : fermez-le, puis arrêtez Kraken Mount.',
-    waitKstuff: 'En attente de kstuff : il n\'est pas encore lancé. Les jeux apparaîtront dès son démarrage.', waitSmp: 'ShadowMount+ est en cours d\'exécution : arrêtez-le pour utiliser Kraken Mount. Les jeux apparaîtront dès son arrêt.',
-    stopped: 'Kraken Mount est arrêté. Ouvrez la vignette Kraken Mount pour le relancer.',
+    stopBusy: 'Un jeu est en cours : fermez-le, puis arrêtez MaxPack.',
+    waitKstuff: 'En attente de kstuff : il n\'est pas encore lancé. Les jeux apparaîtront dès son démarrage.', waitSmp: 'ShadowMount+ est en cours d\'exécution : arrêtez-le pour utiliser MaxPack. Les jeux apparaîtront dès son arrêt.',
+    stopped: 'MaxPack est arrêté. Ouvrez la vignette MaxPack pour le relancer.',
     prevFilter: 'Filtre précédent (L2)', nextFilter: 'Filtre suivant (R2)', sourceType: 'Type de source',
     kindAll: 'Tous', kindFolders: 'Dossiers', badgeFolder: 'Dossier',
     driveInternal: 'Interne', driveUsb: 'USB {n}', driveExt: 'Étendu {n}',
@@ -990,8 +990,8 @@ var MSG = {
     deleteTitle: 'Supprimer {name} ?',
     deletePkg: 'Le fichier .pkg et son cache seront supprimés du disque : {path}. Action irréversible.',
     deleteFolder: 'Le dossier du jeu et son cache seront supprimés du disque : {path}. Action irréversible.',
-    stopTitle: 'Arrêter Kraken Mount ?',
-    stopText: 'Les jeux restent enregistrés. Ouvrez la vignette Kraken Mount pour le relancer.',
+    stopTitle: 'Arrêter MaxPack ?',
+    stopText: 'Les jeux restent enregistrés. Ouvrez la vignette MaxPack pour le relancer.',
     stopYes: 'Arrêter',
     rebuildAllTitle: 'Recréer tous les caches ?',
     rebuildAllText: 'Le cache de chaque jeu est vidé et recréé. Les jeux sont indisponibles pendant ce temps.',
@@ -1021,7 +1021,7 @@ var MSG = {
     autoRemoveDelay: 'Retirer après une absence de, secondes (1-86400)',
     lowSpaceGb: 'Alerte de place faible, GB',
     notify: 'Notifications système',
-    writeLog: "Écrire kraken.log (jusqu'à 1 MB)",
+    writeLog: "Écrire maxpack.log (jusqu'à 1 MB)",
     debug: 'Débogage (capture klog, route des fichiers)',
     language: 'Langue', system: 'Système',
     purgeCache: 'Purger le cache', save: 'Enregistrer',
@@ -1033,17 +1033,17 @@ var MSG = {
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
-    stopApp: 'Kraken Mount を停止', stop: '停止', github: 'GitHub の Kraken Mount',
+    stopApp: 'MaxPack を停止', stop: '停止',
     offline: 'オフライン: payload が動作していません。再試行しています。',
-    starting: 'Kraken Mount を起動しています...',
-    elfMissing: 'kraken-mount.elf はまだ保存されていません: ELF をポート 9021 に一度送信してください。',
+    starting: 'MaxPack を起動しています...',
+    elfMissing: 'maxpack.elf はまだ保存されていません: ELF をポート 9021 に一度送信してください。',
     noAmpr: 'ampr-emu-ng がありません: {file} を {dir} に置いてください。これがないと FPKG ゲームは動作しません。',
     lowSpace: '内蔵 SSD の空き容量が不足しています: 空き {free}。キャッシュの作成に失敗することがあります。',
     paused: 'ゲーム実行中 ({games})、スキャンを一時停止中。リクエストはゲーム終了後に実行されます。',
     queued: 'リクエストは待機中です。',
-    stopBusy: 'ゲームが実行中です: 先にゲームを閉じてから Kraken Mount を停止してください。',
-    waitKstuff: 'kstuff を待っています: まだ起動していません。起動するとゲームが表示されます。', waitSmp: 'ShadowMount+ が実行中です: Kraken Mount を使うには停止してください。停止するとゲームが表示されます。',
-    stopped: 'Kraken Mount は停止しました。再び起動するには Kraken Mount タイルを開いてください。',
+    stopBusy: 'ゲームが実行中です: 先にゲームを閉じてから MaxPack を停止してください。',
+    waitKstuff: 'kstuff を待っています: まだ起動していません。起動するとゲームが表示されます。', waitSmp: 'ShadowMount+ が実行中です: MaxPack を使うには停止してください。停止するとゲームが表示されます。',
+    stopped: 'MaxPack は停止しました。再び起動するには MaxPack タイルを開いてください。',
     prevFilter: '前のフィルター (L2)', nextFilter: '次のフィルター (R2)', sourceType: 'ソースの種類',
     kindAll: 'すべて', kindFolders: 'フォルダー', badgeFolder: 'フォルダー',
     driveInternal: '内蔵', driveUsb: 'USB {n}', driveExt: '拡張 {n}',
@@ -1074,8 +1074,8 @@ var MSG = {
     deleteTitle: '{name} を削除しますか？',
     deletePkg: '.pkg ファイルとそのキャッシュをドライブから削除します: {path}。元に戻せません。',
     deleteFolder: 'ゲームフォルダーとそのキャッシュをドライブから削除します: {path}。元に戻せません。',
-    stopTitle: 'Kraken Mount を停止しますか？',
-    stopText: 'ゲームは登録されたままです。再び起動するには Kraken Mount タイルを開いてください。',
+    stopTitle: 'MaxPack を停止しますか？',
+    stopText: 'ゲームは登録されたままです。再び起動するには MaxPack タイルを開いてください。',
     stopYes: '停止',
     rebuildAllTitle: 'すべてのキャッシュを再作成しますか？',
     rebuildAllText: 'すべてのゲームのキャッシュを空にして作り直します。再作成中はゲームを使用できません。',
@@ -1105,7 +1105,7 @@ var MSG = {
     autoRemoveDelay: '削除までの不在時間、秒 (1-86400)',
     lowSpaceGb: '空き容量不足の警告、GB',
     notify: 'システム通知',
-    writeLog: 'kraken.log に書き込む（最大 1 MB）',
+    writeLog: 'maxpack.log に書き込む（最大 1 MB）',
     debug: 'デバッグ（klog キャプチャ、ファイルルート）',
     language: '言語', system: 'システム',
     purgeCache: 'キャッシュを消去', save: '保存',
@@ -1117,17 +1117,17 @@ var MSG = {
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
-    stopApp: 'Parar o Kraken Mount', stop: 'Parar', github: 'Kraken Mount no GitHub',
+    stopApp: 'Parar o MaxPack', stop: 'Parar',
     offline: 'Offline: o payload não está em execução. Tentando de novo.',
-    starting: 'Iniciando o Kraken Mount...',
-    elfMissing: 'kraken-mount.elf ainda não foi salvo: envie o ELF para a porta 9021 uma vez.',
+    starting: 'Iniciando o MaxPack...',
+    elfMissing: 'maxpack.elf ainda não foi salvo: envie o ELF para a porta 9021 uma vez.',
     noAmpr: 'ampr-emu-ng não encontrado: coloque {file} em {dir}. Sem ele, os jogos FPKG não rodam.',
     lowSpace: 'Pouco espaço no SSD interno: {free} livres. A criação de caches pode falhar.',
     paused: 'Jogo em execução ({games}), varredura pausada; as solicitações rodam quando ele fechar.',
     queued: 'Sua solicitação está na fila.',
-    stopBusy: 'Há um jogo em execução: feche-o primeiro e depois pare o Kraken Mount.',
-    waitKstuff: 'Aguardando o kstuff: ele ainda não está em execução. Os jogos aparecem quando ele iniciar.', waitSmp: 'O ShadowMount+ está em execução: pare-o para usar o Kraken Mount. Os jogos aparecem quando ele parar.',
-    stopped: 'O Kraken Mount foi parado. Abra o bloco do Kraken Mount para iniciá-lo de novo.',
+    stopBusy: 'Há um jogo em execução: feche-o primeiro e depois pare o MaxPack.',
+    waitKstuff: 'Aguardando o kstuff: ele ainda não está em execução. Os jogos aparecem quando ele iniciar.', waitSmp: 'O ShadowMount+ está em execução: pare-o para usar o MaxPack. Os jogos aparecem quando ele parar.',
+    stopped: 'O MaxPack foi parado. Abra o bloco do MaxPack para iniciá-lo de novo.',
     prevFilter: 'Filtro anterior (L2)', nextFilter: 'Próximo filtro (R2)', sourceType: 'Tipo de origem',
     kindAll: 'Todos', kindFolders: 'Pastas', badgeFolder: 'Pasta',
     driveInternal: 'Interno', driveUsb: 'USB {n}', driveExt: 'Estendido {n}',
@@ -1158,8 +1158,8 @@ var MSG = {
     deleteTitle: 'Excluir {name}?',
     deletePkg: 'O arquivo .pkg e o cache dele serão excluídos do drive: {path}. Não é possível desfazer.',
     deleteFolder: 'A pasta do jogo e o cache dela serão excluídos do drive: {path}. Não é possível desfazer.',
-    stopTitle: 'Parar o Kraken Mount?',
-    stopText: 'Os jogos continuam registrados. Abra o bloco do Kraken Mount para iniciá-lo de novo.',
+    stopTitle: 'Parar o MaxPack?',
+    stopText: 'Os jogos continuam registrados. Abra o bloco do MaxPack para iniciá-lo de novo.',
     stopYes: 'Parar',
     rebuildAllTitle: 'Recriar todos os caches?',
     rebuildAllText: 'O cache de cada jogo é esvaziado e criado de novo. Os jogos ficam indisponíveis enquanto isso.',
@@ -1189,7 +1189,7 @@ var MSG = {
     autoRemoveDelay: 'Remover após ausência de, segundos (1-86400)',
     lowSpaceGb: 'Aviso de pouco espaço, GB',
     notify: 'Notificações do sistema',
-    writeLog: 'Gravar kraken.log (até 1 MB)',
+    writeLog: 'Gravar maxpack.log (até 1 MB)',
     debug: 'Depuração (captura de klog, rota de arquivos)',
     language: 'Idioma', system: 'Sistema',
     purgeCache: 'Limpar cache', save: 'Salvar',
@@ -1201,17 +1201,17 @@ var MSG = {
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
-    stopApp: 'Arresta Kraken Mount', stop: 'Arresta', github: 'Kraken Mount su GitHub',
+    stopApp: 'Arresta MaxPack', stop: 'Arresta',
     offline: 'Offline: il payload non è in esecuzione. Nuovo tentativo in corso.',
-    starting: 'Avvio di Kraken Mount...',
-    elfMissing: 'kraken-mount.elf non è ancora salvato: invia una volta il file ELF alla porta 9021.',
+    starting: 'Avvio di MaxPack...',
+    elfMissing: 'maxpack.elf non è ancora salvato: invia una volta il file ELF alla porta 9021.',
     noAmpr: 'Manca ampr-emu-ng: metti {file} in {dir}. Senza di esso i giochi FPKG non funzionano.',
     lowSpace: "Poco spazio sull'SSD interno: {free} liberi. La creazione delle cache può non riuscire.",
     paused: 'Gioco in esecuzione ({games}), scansione in pausa; le richieste partono quando viene chiuso.',
     queued: 'La richiesta è in coda.',
-    stopBusy: 'Un gioco è in esecuzione: chiudilo prima, poi arresta Kraken Mount.',
-    waitKstuff: 'In attesa di kstuff: non è ancora in esecuzione. I giochi compariranno quando si avvia.', waitSmp: 'ShadowMount+ è in esecuzione: arrestalo per usare Kraken Mount. I giochi compariranno quando si arresta.',
-    stopped: 'Kraken Mount è stato arrestato. Apri il riquadro Kraken Mount per avviarlo di nuovo.',
+    stopBusy: 'Un gioco è in esecuzione: chiudilo prima, poi arresta MaxPack.',
+    waitKstuff: 'In attesa di kstuff: non è ancora in esecuzione. I giochi compariranno quando si avvia.', waitSmp: 'ShadowMount+ è in esecuzione: arrestalo per usare MaxPack. I giochi compariranno quando si arresta.',
+    stopped: 'MaxPack è stato arrestato. Apri il riquadro MaxPack per avviarlo di nuovo.',
     prevFilter: 'Filtro precedente (L2)', nextFilter: 'Filtro successivo (R2)', sourceType: 'Tipo di sorgente',
     kindAll: 'Tutti', kindFolders: 'Cartelle', badgeFolder: 'Cartella',
     driveInternal: 'Interno', driveUsb: 'USB {n}', driveExt: 'Esteso {n}',
@@ -1242,8 +1242,8 @@ var MSG = {
     deleteTitle: 'Eliminare {name}?',
     deletePkg: "Il file .pkg e la sua cache verranno eliminati dall'unità: {path}. L'operazione non è reversibile.",
     deleteFolder: "La cartella del gioco e la sua cache verranno eliminate dall'unità: {path}. L'operazione non è reversibile.",
-    stopTitle: 'Arrestare Kraken Mount?',
-    stopText: 'I giochi restano registrati. Apri il riquadro Kraken Mount per avviarlo di nuovo.',
+    stopTitle: 'Arrestare MaxPack?',
+    stopText: 'I giochi restano registrati. Apri il riquadro MaxPack per avviarlo di nuovo.',
     stopYes: 'Arresta',
     rebuildAllTitle: 'Ricreare tutte le cache?',
     rebuildAllText: 'La cache di ogni gioco viene svuotata e creata di nuovo. Nel frattempo i giochi non sono disponibili.',
@@ -1273,7 +1273,7 @@ var MSG = {
     autoRemoveDelay: "Rimuovi dopo un'assenza di, secondi (1-86400)",
     lowSpaceGb: 'Avviso spazio insufficiente, GB',
     notify: 'Notifiche di sistema',
-    writeLog: 'Scrivi kraken.log (fino a 1 MB)',
+    writeLog: 'Scrivi maxpack.log (fino a 1 MB)',
     debug: 'Debug (acquisizione klog, instradamento file)',
     language: 'Lingua', system: 'Sistema',
     purgeCache: 'Pulisci cache', save: 'Salva',
@@ -1285,17 +1285,17 @@ var MSG = {
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
-    stopApp: 'Kraken Mount 중지', stop: '중지', github: 'GitHub의 Kraken Mount',
+    stopApp: 'MaxPack 중지', stop: '중지',
     offline: '오프라인: payload가 실행되고 있지 않습니다. 다시 시도하는 중입니다.',
-    starting: 'Kraken Mount를 시작하는 중...',
-    elfMissing: 'kraken-mount.elf가 아직 저장되지 않았습니다: ELF를 포트 9021로 한 번 보내세요.',
+    starting: 'MaxPack를 시작하는 중...',
+    elfMissing: 'maxpack.elf가 아직 저장되지 않았습니다: ELF를 포트 9021로 한 번 보내세요.',
     noAmpr: 'ampr-emu-ng가 없습니다: {file} 파일을 {dir}에 넣으세요. 없으면 FPKG 게임을 실행할 수 없습니다.',
     lowSpace: '내장 SSD의 공간이 부족합니다: {free} 사용 가능. 캐시 생성이 실패할 수 있습니다.',
     paused: '게임 실행 중({games}), 스캔 일시 중지됨. 요청은 게임이 종료된 후 실행됩니다.',
     queued: '요청이 대기 중입니다.',
-    stopBusy: '게임이 실행 중입니다: 먼저 게임을 닫은 다음 Kraken Mount를 중지하세요.',
-    waitKstuff: 'kstuff를 기다리는 중: 아직 실행되지 않았습니다. 실행되면 게임이 표시됩니다.', waitSmp: 'ShadowMount+가 실행 중입니다: Kraken Mount를 사용하려면 중지하세요. 중지되면 게임이 표시됩니다.',
-    stopped: 'Kraken Mount가 중지되었습니다. 다시 시작하려면 Kraken Mount 타일을 여세요.',
+    stopBusy: '게임이 실행 중입니다: 먼저 게임을 닫은 다음 MaxPack를 중지하세요.',
+    waitKstuff: 'kstuff를 기다리는 중: 아직 실행되지 않았습니다. 실행되면 게임이 표시됩니다.', waitSmp: 'ShadowMount+가 실행 중입니다: MaxPack를 사용하려면 중지하세요. 중지되면 게임이 표시됩니다.',
+    stopped: 'MaxPack가 중지되었습니다. 다시 시작하려면 MaxPack 타일을 여세요.',
     prevFilter: '이전 필터 (L2)', nextFilter: '다음 필터 (R2)', sourceType: '소스 유형',
     kindAll: '전체', kindFolders: '폴더', badgeFolder: '폴더',
     driveInternal: '내장', driveUsb: 'USB {n}', driveExt: '확장 {n}',
@@ -1326,8 +1326,8 @@ var MSG = {
     deleteTitle: '{name}을(를) 삭제할까요?',
     deletePkg: '.pkg 파일과 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.',
     deleteFolder: '게임 폴더와 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.',
-    stopTitle: 'Kraken Mount를 중지할까요?',
-    stopText: '게임은 등록된 상태로 유지됩니다. 다시 시작하려면 Kraken Mount 타일을 여세요.',
+    stopTitle: 'MaxPack를 중지할까요?',
+    stopText: '게임은 등록된 상태로 유지됩니다. 다시 시작하려면 MaxPack 타일을 여세요.',
     stopYes: '중지',
     rebuildAllTitle: '모든 캐시를 다시 생성할까요?',
     rebuildAllText: '모든 게임 캐시를 비우고 다시 생성합니다. 다시 생성하는 동안 게임을 사용할 수 없습니다.',
@@ -1357,7 +1357,7 @@ var MSG = {
     autoRemoveDelay: '없어진 뒤 제거까지, 초 (1-86400)',
     lowSpaceGb: '공간 부족 경고, GB',
     notify: '시스템 알림',
-    writeLog: 'kraken.log 기록 (최대 1 MB)',
+    writeLog: 'maxpack.log 기록 (최대 1 MB)',
     debug: '디버그 (klog 캡처, 파일 경로 추적)',
     language: '언어', system: '시스템',
     purgeCache: '캐시 정리', save: '저장',
@@ -1369,17 +1369,17 @@ var MSG = {
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
-    stopApp: 'إيقاف Kraken Mount', stop: 'إيقاف', github: 'Kraken Mount على GitHub',
+    stopApp: 'إيقاف MaxPack', stop: 'إيقاف',
     offline: 'غير متصل: الـ payload لا يعمل. جارٍ إعادة المحاولة.',
-    starting: 'جارٍ تشغيل Kraken Mount...',
-    elfMissing: 'لم يُحفظ kraken-mount.elf بعد: أرسل ملف ELF إلى المنفذ 9021 مرة واحدة.',
+    starting: 'جارٍ تشغيل MaxPack...',
+    elfMissing: 'لم يُحفظ maxpack.elf بعد: أرسل ملف ELF إلى المنفذ 9021 مرة واحدة.',
     noAmpr: 'ampr-emu-ng غير موجود: ضع {file} في {dir}. لا تعمل ألعاب FPKG بدونه.',
     lowSpace: 'المساحة قليلة على SSD الداخلي: المتاح {free}. قد يفشل إنشاء ذاكرة التخزين المؤقت.',
     paused: 'لعبة قيد التشغيل ({games})، المسح متوقف مؤقتًا؛ تُنفَّذ الطلبات بعد إغلاقها.',
     queued: 'طلبك في الانتظار.',
-    stopBusy: 'هناك لعبة قيد التشغيل: أغلقها أولًا، ثم أوقف Kraken Mount.',
-    waitKstuff: 'في انتظار kstuff: لم يبدأ تشغيله بعد. ستظهر الألعاب عند تشغيله.', waitSmp: 'ShadowMount+ قيد التشغيل: أوقفه لاستخدام Kraken Mount. ستظهر الألعاب عند إيقافه.',
-    stopped: 'توقّف Kraken Mount. افتح لوحة Kraken Mount لتشغيله مرة أخرى.',
+    stopBusy: 'هناك لعبة قيد التشغيل: أغلقها أولًا، ثم أوقف MaxPack.',
+    waitKstuff: 'في انتظار kstuff: لم يبدأ تشغيله بعد. ستظهر الألعاب عند تشغيله.', waitSmp: 'ShadowMount+ قيد التشغيل: أوقفه لاستخدام MaxPack. ستظهر الألعاب عند إيقافه.',
+    stopped: 'توقّف MaxPack. افتح لوحة MaxPack لتشغيله مرة أخرى.',
     prevFilter: 'الفلتر السابق (L2)', nextFilter: 'الفلتر التالي (R2)', sourceType: 'نوع المصدر',
     kindAll: 'الكل', kindFolders: 'المجلدات', badgeFolder: 'مجلد',
     driveInternal: 'داخلي', driveUsb: 'USB {n}', driveExt: 'موسّع {n}',
@@ -1410,8 +1410,8 @@ var MSG = {
     deleteTitle: 'حذف {name}؟',
     deletePkg: 'سيُحذف ملف .pkg وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.',
     deleteFolder: 'سيُحذف مجلد اللعبة وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.',
-    stopTitle: 'إيقاف Kraken Mount؟',
-    stopText: 'تبقى الألعاب مسجّلة. افتح لوحة Kraken Mount لتشغيله مرة أخرى.',
+    stopTitle: 'إيقاف MaxPack؟',
+    stopText: 'تبقى الألعاب مسجّلة. افتح لوحة MaxPack لتشغيله مرة أخرى.',
     stopYes: 'إيقاف',
     rebuildAllTitle: 'إعادة إنشاء كل الذاكرات المؤقتة؟',
     rebuildAllText: 'تُفرَّغ الذاكرة المؤقتة لكل لعبة وتُنشأ من جديد. الألعاب غير متاحة أثناء ذلك.',
@@ -1441,7 +1441,7 @@ var MSG = {
     autoRemoveDelay: 'الإزالة بعد الغياب لمدة، بالثواني (1-86400)',
     lowSpaceGb: 'تحذير المساحة القليلة، GB',
     notify: 'إشعارات النظام',
-    writeLog: 'كتابة kraken.log (حتى 1 MB)',
+    writeLog: 'كتابة maxpack.log (حتى 1 MB)',
     debug: 'تصحيح الأخطاء (التقاط klog، مسار الملفات)',
     language: 'اللغة', system: 'لغة النظام',
     purgeCache: 'تنظيف الذاكرة المؤقتة', save: 'حفظ',
@@ -1460,7 +1460,7 @@ var LANGS = {
   pt: { name: 'Português (Brasil)', tag: 'pt-BR' }, it: { name: 'Italiano' }, ko: { name: '한국어' },
   ar: { name: 'العربية', rtl: true }
 };
-var LANG_KEY = 'kraken.lang';
+var LANG_KEY = 'maxpack.lang';
 function isLang(v) { return typeof v === 'string' && Object.prototype.hasOwnProperty.call(LANGS, v); }
 function storedLang() {
   try { var v = localStorage.getItem(LANG_KEY); return isLang(v) ? v : null; } catch (e) { return null; }
@@ -1556,8 +1556,8 @@ var state = null, cardsById = {}, filter = 'all', openTid = null, opener = null;
 var confirmFn = null, confirmOpener = null, timer = null, queued = false;
 var logOpen = false, settingsLoaded = false, sizesRequest = 0, modalActionError = '';
 var PS = /PlayStation (?:4|5)\b/i.test(navigator.userAgent || '');
-var ELF = 'http://127.0.0.1:9021/data/krakenmount/kraken-mount.elf';
-var LOOPBACK = (location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '8097';
+var ELF = 'http://127.0.0.1:9021/data/maxpack/maxpack.elf';
+var LOOPBACK = (location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '8095';
 var stopped = false, launchTried = false;
 var KINDS = [
   { id: 'all', key: 'kindAll' }, { id: 'pkg', label: 'PKG' }, { id: 'folder', key: 'kindFolders' },
@@ -1907,7 +1907,7 @@ function renderModal() {
     [t('fTitleId'), g.title_id, 'mono'], [t('fVersion'), g.version || '—'], [t('fStatus'), status, 'tag'],
     [t('fType'), badgeText(g) + ' (' + g.kind + ')'], [t('fDrive'), driveLabel(g.drive)],
     [t('fPath'), g.path || '—', 'mono'],
-    [t('fCachePath'), (state.cache && state.cache.path ? state.cache.path : '/data/krakenmount/caches') + '/' + g.title_id, 'mono'],
+    [t('fCachePath'), (state.cache && state.cache.path ? state.cache.path : '/data/maxpack/caches') + '/' + g.title_id, 'mono'],
     [t('fCacheSize'), fmtSize(g.cache_size)], [t('fCacheBuilt'), fmtTime(g.cache_built)], [t('fBackport'), backport]
   ];
   var fields = $('m-fields'), sig = JSON.stringify(rows);
@@ -2133,7 +2133,7 @@ function readSettings() {
 }
 function renderSettingsInfo() {
   var c = (state && state.cache) || {};
-  setText($('scache'), t('cacheInfo', { size: fmtSize(c.size), path: c.path || '/data/krakenmount/caches', free: gb(c.free) }));
+  setText($('scache'), t('cacheInfo', { size: fmtSize(c.size), path: c.path || '/data/maxpack/caches', free: gb(c.free) }));
   var drives = (state && Array.isArray(state.drives)) ? state.drives : [];
   setText($('sdrives'), drives.map(function (d) {
     return t('driveInfo', { drive: driveLabel(d.mount), free: gb(d.free), total: gb(d.total) });
@@ -2171,7 +2171,7 @@ async function runAmprUpdate() {
 }
 $('amprupdate').onclick = function () {
   if (amprInfo && amprInfo.kind === 'hand')
-    ask(t('amprReplaceTitle'), t('amprReplaceText', { backup: '/data/krakenmount/libSceAmpr.sprx.hand' }),
+    ask(t('amprReplaceTitle'), t('amprReplaceText', { backup: '/data/maxpack/libSceAmpr.sprx.hand' }),
       t('amprReplaceYes'), runAmprUpdate);
   else runAmprUpdate();
 };

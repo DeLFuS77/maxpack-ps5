@@ -1,5 +1,5 @@
 /* PS5 syscall trampolines with POSIX -1/errno translation.
- * Numbers: ps5-payload-dev/sdk v0.43 for <512, with PS5-specific numbers
+ * Numbers: ps5-payload-dev/sdk v0.45 for <512, with PS5-specific numbers
  * verified against McCaulay/mast1c0re sdk/include/ps/syscall/table.hpp.
  * Raw kernel error numbers must never be mistaken for successful fds/stat.
  */

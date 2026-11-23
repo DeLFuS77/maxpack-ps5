@@ -1,5 +1,5 @@
-//! Kraken Mount (kraken-mount): finds FPKG .pkg files and game folders on the internal SSD and USB/extended
-//! drives, keeps a per-game cache in /data/krakenmount/caches/<TID>, registers each game on the
+//! MaxPack (maxpack-ps5): finds FPKG .pkg files and game folders on the internal SSD and USB/extended
+//! drives, keeps a per-game cache in /data/maxpack/caches/<TID>, registers each game on the
 //! home screen and overlays its fakelib at launch (DESIGN.md). Web UI on port web::PORT.
 
 // ponytail: ampr_index keeps two unused format constants (FILE_STREAMING, CHUNK_STREAMING).
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use web::State;
 
-pub const DATA_DIR: &str = "/data/krakenmount";
+pub const DATA_DIR: &str = "/data/maxpack";
 
 /// A system toast when `notify=1`; always logged.
 fn toast(s: &Settings, msg: &str) {
@@ -260,11 +260,11 @@ fn publish(state: &State, r: &scan::ScanResult) {
     }
 }
 /// Debug: copies the kernel log (/dev/klog: module load failures, process crashes) to
-/// /data/krakenmount/klog.txt, read through the web UI's /file route.
+/// /data/maxpack/klog.txt, read through the web UI's /file route.
 /// ponytail: restarts the file at 4 MiB; only one reader of /dev/klog can exist.
 fn klog_capture() {
     use std::io::{Read, Write};
-    const OUT: &str = "/data/krakenmount/klog.txt";
+    const OUT: &str = "/data/maxpack/klog.txt";
     let mut klog = match std::fs::File::open("/dev/klog") {
         Ok(f) => f,
         Err(e) => {
@@ -300,10 +300,10 @@ fn klog_capture() {
 }
 
 /// The ELF the tile's page asks elfldr to start (ui.html `ELF`), as Dump Forge saves itself.
-pub const SELF_COPY: &str = "/data/krakenmount/kraken-mount.elf";
+pub const SELF_COPY: &str = "/data/maxpack/maxpack.elf";
 /// Stage 1 of ps5/build.sh, embedded only in the pushed (stage 2) ELF; the saved copy has none.
 #[cfg(feature = "self-copy")]
-const SELF_ELF: &[u8] = include_bytes!(env!("KRAKEN_SELF_ELF"));
+const SELF_ELF: &[u8] = include_bytes!(env!("MAXPACK_SELF_ELF"));
 #[cfg(not(feature = "self-copy"))]
 const SELF_ELF: &[u8] = &[];
 
@@ -328,8 +328,8 @@ const BUNDLED_AMPR: &[u8] = include_bytes!("../vendor/ampr-emu-ng/libSceAmpr.spr
 const BUNDLED_AMPR_VERSION: &str = include_str!("../vendor/ampr-emu-ng/VERSION");
 /// `<version> <len> <crc32>` of the copy we last wrote (bundled or downloaded); v0.4.0 wrote
 /// `<len> <crc32>` (version unknown). Outside AMPR_DIR: every file there goes into fakelib/.
-const BUNDLED_MARK: &str = "/data/krakenmount/ampr.bundled";
-const AMPR_RELEASE_URL: &str = "https://api.github.com/repos/quer3q/ampr-emu-ng/releases/latest";
+const BUNDLED_MARK: &str = "/data/maxpack/ampr.bundled";
+const AMPR_RELEASE_URL: &str = "https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest";
 const AMPR_ASSET: &str = "libSceAmpr.sprx";
 
 fn mark_format(version: &str, len: usize, crc: u32) -> String {
@@ -503,7 +503,7 @@ fn get_retry(url: &str, max: usize, attempts: u32) -> Result<Vec<u8>, String> {
 
 /// A hand-placed libSceAmpr.sprx moved aside by a forced update (outside AMPR_DIR: never copied).
 /// ponytail: one backup; a second forced update over another hand-placed file replaces it.
-const HAND_BACKUP: &str = "/data/krakenmount/libSceAmpr.sprx.hand";
+const HAND_BACKUP: &str = "/data/maxpack/libSceAmpr.sprx.hand";
 const AMPR_MAX: usize = 16 << 20;
 /// One update at a time: the start-up check and the web UI's "Update now" share it.
 static AMPR_UPDATING: AtomicBool = AtomicBool::new(false);
@@ -749,7 +749,7 @@ fn main() {
     // which mkdirs 0777) whatever elfldr passes: the game and the system services (save data,
     // trophies) read them with another uid. Code that wants a narrower mode sets it explicitly.
     unsafe { libc::umask(0) };
-    // panic=abort: record the panic in kraken.log before the payload dies.
+    // panic=abort: record the panic in maxpack.log before the payload dies.
     std::panic::set_hook(Box::new(|info| sys::log_line(&format!("PANIC: {info}"))));
     for dir in [DATA_DIR, cache::CACHES, cache::AMPR_DIR] {
         if let Err(e) = std::fs::create_dir_all(dir) {

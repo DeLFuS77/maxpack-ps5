@@ -471,7 +471,7 @@ pub fn spawn_snd0info(title_id: &str, delay_ms: u64) {
     });
 }
 
-/// Ok when the home-screen title looks like one Kraken Mount staged; Err(path) when the path
+/// Ok when the home-screen title looks like one MaxPack staged; Err(path) when the path
 /// shows a real install: /user/app/<TID>/app.pkg, a copy on an M.2 drive
 /// (/mnt/ext{0,1}/user/app/<TID>), or no /user/app/<TID>/sce_sys/param.json (we write one).
 /// ponytail: a layout heuristic, not an app.db lookup; an install laid out like ours reads as ours.
@@ -578,13 +578,13 @@ fn mount_inner(title_id: &str, app0: &Path, backport: Option<&Path>, keep_active
     Ok(())
 }
 
-/// The home-screen tile: /user/app/KRKN00001/sce_sys/{param.json,icon0.png}, a web shortcut
+/// The home-screen tile: /user/app/MXPK00001/sce_sys/{param.json,icon0.png}, a web shortcut
 /// whose deeplinkUri opens the payload's web UI in the console's browser (shape from
 /// ps5-dump-forge tile.rs). Only sce_sys is written, as dump-forge does: no appmeta, no
 /// /system_ex, no eboot.
-const TILE_ID: &str = "KRKN00001";
+const TILE_ID: &str = "MXPK00001";
 /// "pending" while not yet registered, else the param.json hash of the last successful registration.
-const TILE_MARKER: &str = "/data/krakenmount/tile.ok";
+const TILE_MARKER: &str = "/data/maxpack/tile.ok";
 const TILE_ICON: &[u8] = include_bytes!("../ps5/icon0.png");
 /// FW 12+ (no TitleDir): the param.json hash of a tile staged in /user/app, waiting for the scan
 /// pass's `install_all` (InstallAll registers it with every other /user/app folder).
@@ -601,7 +601,7 @@ fn tile_param_json(port: u16) -> Vec<u8> {
         "titleId": TILE_ID,
         "localizedParameters": {
             "defaultLanguage": "en-US",
-            "en-US": { "titleName": "Kraken Mount" },
+            "en-US": { "titleName": "MaxPack" },
         },
         "deeplinkUri": format!("http://127.0.0.1:{port}/"),
     });
@@ -621,7 +621,7 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> io::Result<bool> {
     if fs::read(path).ok().as_deref() == Some(bytes) {
         return Ok(false);
     }
-    let tmp = path.with_extension("krkn-tmp");
+    let tmp = path.with_extension("mxpk-tmp");
     ctx(fs::write(&tmp, bytes), || format!("write {}", tmp.display()))?;
     ctx(fs::rename(&tmp, path), || format!("rename -> {}", path.display()))?;
     Ok(true)
@@ -644,7 +644,7 @@ fn tile_in_app_db() -> Option<bool> {
 }
 
 /// Registers the tile when tile.ok lacks the current param.json hash, a file changed, or app.db
-/// has no row for it (a wiped /data/krakenmount, or the system dropped it).
+/// has no row for it (a wiped /data/maxpack, or the system dropped it).
 fn ensure_tile(port: u16) -> io::Result<String> {
     let app_dir = Path::new(APP_BASE).join(TILE_ID);
     let marker = fs::read_to_string(TILE_MARKER).ok().map(|s| s.trim().to_string());

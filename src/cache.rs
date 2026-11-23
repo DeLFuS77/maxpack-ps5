@@ -1,13 +1,13 @@
-//! Per-game cache /data/krakenmount/caches/<TID> (DESIGN.md "Cache"). Folder: fakelib/ only.
+//! Per-game cache /data/maxpack/caches/<TID> (DESIGN.md "Cache"). Folder: fakelib/ only.
 //! FPKG: the cache is /app0: sce_sys, eboot.bin and every PRX and ELF extracted, fakelib/, kraken/ (launch.rs
 //! mounts the pkg's folder there), the two AMPR indexes; `.done` (JSON stamp, mtime = build start) last.
-//! fakelib/ (both kinds) = the game's or backport's libs, then /data/krakenmount/ampr/* copied on
+//! fakelib/ (both kinds) = the game's or backport's libs, then /data/maxpack/ampr/* copied on
 //! top (inject_ampr; always for a pkg); in between, the bundled DLC (dlc_emu) and PlayGo (pgo_stub)
 //! emulators when the game needs one and ships none (add_emulators; no pgo_stub for playgo_off). A change of the ampr files,
 //! inject_ampr or the emulator inputs only recomposes fakelib/ (refresh_fakelib), no full rebuild.
 //! /app0 is writable: files the game writes here stay across rebuilds (`.built` lists what a build
 //! made, a rebuild removes only that); purge() deletes them too.
-//! /data/krakenmount/ampr is never copied here: launch.rs mounts it as its own layer.
+//! /data/maxpack/ampr is never copied here: launch.rs mounts it as its own layer.
 use crate::ampr_index::{self, Chunk, IndexFile, Kraken};
 use crate::config::Settings;
 use crate::scan::{Kind, Source};
@@ -19,8 +19,8 @@ use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-pub const CACHES: &str = "/data/krakenmount/caches";
-pub const AMPR_DIR: &str = "/data/krakenmount/ampr";
+pub const CACHES: &str = "/data/maxpack/caches";
+pub const AMPR_DIR: &str = "/data/maxpack/ampr";
 pub const DONE: &str = ".done";
 /// The game lib dirs, SMP priority first. fakelib2/ is never a game file.
 const LIB_DIRS: [&str; 2] = ["fakelib2/", "fakelib/"];
@@ -539,7 +539,7 @@ fn same_files(src: &Source, s: &Settings, old: &serde_json::Value, done_mtime: S
     older && old[PKG_ID].as_str().is_some_and(|id| pkg_id(&src.path).ok().as_deref() == Some(id))
 }
 
-/// The ampr files fakelib/ should carry: {name: [size, mtime]} of /data/krakenmount/ampr's
+/// The ampr files fakelib/ should carry: {name: [size, mtime]} of /data/maxpack/ampr's
 /// regular files (libkernel.sprx never copied), or null when `injects_ampr` is false.
 fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value {
     if !injects_ampr(src, s) {

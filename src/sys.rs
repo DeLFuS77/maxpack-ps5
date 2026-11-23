@@ -3,9 +3,9 @@
 use std::ffi::CString;
 use std::io::{self, Write};
 
-pub const LOG_PATH: &str = "/data/krakenmount/kraken.log";
+pub const LOG_PATH: &str = "/data/maxpack/maxpack.log";
 
-/// Prints a line to stdout and appends it to /data/krakenmount/kraken.log.
+/// Prints a line to stdout and appends it to /data/maxpack/maxpack.log.
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {
@@ -13,9 +13,9 @@ macro_rules! log {
     };
 }
 
-/// kraken.log starts over once it passes this size (no kept copy).
+/// maxpack.log starts over once it passes this size (no kept copy).
 const LOG_MAX: u64 = 1 << 20;
-/// Settings `log`: false = no kraken.log writes (stdout still gets every line). Set by main on each
+/// Settings `log`: false = no maxpack.log writes (stdout still gets every line). Set by main on each
 /// config load; true until the first one, so start-up problems are logged.
 pub static LOG_FILE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
@@ -138,7 +138,7 @@ extern "C" {
 
 /// The toast's icon (the tile's), where the notification overlay reads it (SMP and dump-forge
 /// keep theirs under /user/data too).
-const TOAST_ICON: &str = "/user/data/krakenmount/notify-icon.png";
+const TOAST_ICON: &str = "/user/data/maxpack/notify-icon.png";
 const ICON: &[u8] = include_bytes!("../ps5/icon0.png");
 
 extern "C" {
@@ -152,7 +152,7 @@ fn toast_icon() -> bool {
         return true;
     }
     let tmp = format!("{TOAST_ICON}.{}.tmp", std::process::id());
-    let ok = std::fs::create_dir_all("/user/data/krakenmount").is_ok()
+    let ok = std::fs::create_dir_all("/user/data/maxpack").is_ok()
         && std::fs::write(&tmp, ICON).is_ok()
         && std::fs::rename(&tmp, TOAST_ICON).is_ok();
     if !ok {
@@ -177,7 +177,7 @@ fn utc_time(secs: u64) -> String {
 }
 
 /// The ShadowMountPlus toast shape (its TOASTS.md, via dump-forge notice.rs):
-/// InteractiveToastTemplateB with Kraken Mount's icon, no action.
+/// InteractiveToastTemplateB with MaxPack's icon, no action.
 fn toast_json(msg: &str, now: u64) -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static SEQ: AtomicU32 = AtomicU32::new(0);
@@ -186,7 +186,7 @@ fn toast_json(msg: &str, now: u64) -> String {
         "rawData": {
             "viewTemplateType": "InteractiveToastTemplateB",
             "channelType": "ServiceFeedback",
-            "bundleName": "kraken-mount",
+            "bundleName": "maxpack",
             "useCaseId": "IDC",
             "soundEffect": "none",
             "toastOverwriteType": "No",
@@ -195,7 +195,7 @@ fn toast_json(msg: &str, now: u64) -> String {
             "viewData": {
                 "icon": { "type": "Url", "parameters": { "url": TOAST_ICON } },
                 "message": { "body": msg },
-                "subMessage": { "body": "Kraken Mount" },
+                "subMessage": { "body": "MaxPack" },
             },
             "platformViews": {
                 "previewDisabled": {

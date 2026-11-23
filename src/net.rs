@@ -109,7 +109,7 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
     });
     let c_url = CString::new(url).map_err(|_| io::Error::other(format!("bad url {url}")))?;
     unsafe {
-        let pool = handle("sceNetPoolCreate", url, sceNetPoolCreate(c"kraken-mount".as_ptr(), NET_POOL_SIZE, 0))?;
+        let pool = handle("sceNetPoolCreate", url, sceNetPoolCreate(c"maxpack".as_ptr(), NET_POOL_SIZE, 0))?;
         let _pool = Guard(pool, sceNetPoolDestroy);
         let ssl = handle("sceSslInit", url, sceSslInit(SSL_POOL_SIZE))?;
         let _ssl = Guard(ssl, sceSslTerm);
@@ -126,7 +126,7 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
         // Blocking HTTP/1.1 avoids libhttp2's internal event-thread affinity (SMP).
         let http = handle("sceHttpInit", url, sceHttpInit(pool, ssl, HTTP_POOL_SIZE))?;
         let _http = Guard(http, sceHttpTerm);
-        let agent = concat!("kraken-mount/", env!("CARGO_PKG_VERSION"), "\0");
+        let agent = concat!("maxpack/", env!("CARGO_PKG_VERSION"), "\0");
         let tmpl = sceHttpCreateTemplate(http, agent.as_ptr().cast(), HTTP_VERSION_1_1, 1);
         let tmpl = handle("sceHttpCreateTemplate", url, tmpl)?;
         let _tmpl = Guard(tmpl, sceHttpDeleteTemplate);
@@ -167,7 +167,7 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
 // PEM trust anchors for the certificate chains used by GitHub releases (from SMP's
 // sm_ampr_ca.inc); each size excludes a trailing NUL, as SMP's sizeof - 1.
 // ponytail: pinned to these 4 roots; when GitHub or its asset CDN moves to another root every
-// request fails (sceHttpSendRequest error in kraken.log): refresh the list from SMP then.
+// request fails (sceHttpSendRequest error in maxpack.log): refresh the list from SMP then.
 const CAS: [&[u8]; 4] = [CA_SECTIGO_E46_USERTRUST, CA_ISRG_ROOT_YR_BY_X1, CA_USERTRUST_ECC, CA_ISRG_ROOT_X1];
 
 const CA_SECTIGO_E46_USERTRUST: &[u8] = b"-----BEGIN CERTIFICATE-----\n\

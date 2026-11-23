@@ -10,8 +10,8 @@ ENV PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk LLVM_CONFIG=/usr/bin/llvm-config-19
 ENV PATH=/usr/lib/llvm-19/bin:$PATH
 # Override the repo's rust-toolchain.toml (stable): build-std needs this toolchain's patched rust-src.
 ENV RUSTUP_TOOLCHAIN=1.99.0 RUSTUP_AUTO_INSTALL=0
-ARG SDK_URL=https://github.com/ps5-payload-dev/sdk/releases/download/v0.43/ps5-payload-sdk.zip
-ARG SDK_SHA256=a9cc9929f21b2b2c5d5b309f3bab4997067c45281c0622cf4838b1aecba66fcb
+ARG SDK_URL=https://github.com/ps5-payload-dev/sdk/releases/download/v0.45/ps5-payload-sdk.zip
+ARG SDK_SHA256=5fac64093d0e3e69f2584ce7935f24f703f622d9681f1495c85b9f00d1291a2c
 RUN curl -fsSL --proto =https --retry 3 "$SDK_URL" -o /tmp/sdk.zip \
     && echo "$SDK_SHA256  /tmp/sdk.zip" | sha256sum -c - \
     && unzip -q /tmp/sdk.zip -d /opt && rm /tmp/sdk.zip \

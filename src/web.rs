@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-pub const PORT: u16 = 8097;
+pub const PORT: u16 = 8095;
 const MAX_REQUEST: usize = 16 << 10;
 const LOG_LINES: usize = 100;
 const UI: &str = include_str!("ui.html");
@@ -314,7 +314,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     match (method, path) {
         ("GET", "/") => cached("text/html; charset=utf-8", UI.replace("__VERSION__", env!("CARGO_PKG_VERSION"))),
-        ("GET", "/kraken.appcache") => cached("text/cache-manifest", appcache()),
+        ("GET", "/maxpack.appcache") => cached("text/cache-manifest", appcache()),
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
         ("GET", "/api/state") => reply(200, "application/json", api_state(state)),
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
@@ -510,7 +510,7 @@ fn api_state(state: &State) -> Vec<u8> {
     v.to_string().into_bytes()
 }
 
-/// The last LOG_TAIL bytes of kraken.log (sys.rs rotates it at ~4 MiB), from a line start.
+/// The last LOG_TAIL bytes of maxpack.log (sys.rs rotates it at ~4 MiB), from a line start.
 fn log_tail() -> Vec<u8> {
     use std::io::{Seek, SeekFrom};
     const LOG_TAIL: u64 = 64 << 10;

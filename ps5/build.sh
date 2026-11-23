@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds target/ps5/kraken-mount.elf, the PS5 payload, in Docker (toolchain from ps5-dump-forge).
+# Builds target/ps5/maxpack.elf, the PS5 payload, in Docker (toolchain from ps5-dump-forge).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ "${1:-}" != --inside ]]; then
-  docker build -t kraken-mount-ps5 ps5
+  docker build -t maxpack-ps5 ps5
   exec docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
-    -e CARGO_HOME=/work/target/ps5/cargo -v "$PWD:/work" kraken-mount-ps5 ps5/build.sh --inside
+    -e CARGO_HOME=/work/target/ps5/cargo -v "$PWD:/work" maxpack-ps5 ps5/build.sh --inside
 fi
 
 # The bundled ampr-emu-ng must be the released file (SHA256SUMS copied from its GitHub release).
@@ -37,16 +37,16 @@ export CARGO_TARGET_X86_64_PS5_FREEBSD_LINKER=/work/ps5/linker.sh
 export CC_x86_64_ps5_freebsd="$cc" AR_x86_64_ps5_freebsd="$PS5_PAYLOAD_SDK/bin/prospero-ar"
 # Cargo doesn't see the C objects or linker.sh: drop the linked output so a shim change relinks.
 build() {
-  rm -f "$out"/x86_64-ps5-freebsd/release/deps/kraken_mount-*
+  rm -f "$out"/x86_64-ps5-freebsd/release/deps/maxpack_ps5-*
   cargo build --release --locked \
     --target ps5/x86_64-ps5-freebsd.json -Z json-target-spec \
     -Z build-std=std,panic_abort -Z build-std-features=panic-unwind "$@"
 }
-# Stage 1 is the copy the tile starts (/data/krakenmount/kraken-mount.elf); stage 2, the ELF you
+# Stage 1 is the copy the tile starts (/data/maxpack/maxpack.elf); stage 2, the ELF you
 # push, embeds it and saves it there (as Dump Forge's self copy).
 build
-cp "$out/x86_64-ps5-freebsd/release/kraken-mount" "$out/kraken-mount-stage1.elf"
-KRAKEN_SELF_ELF="/work/$out/kraken-mount-stage1.elf" build --features self-copy
-cp "$out/x86_64-ps5-freebsd/release/kraken-mount" "$out/kraken-mount.elf"
-llvm-readelf -h -d "$out/kraken-mount.elf" > "$out/kraken-mount.elf.txt"
-ls -l "$out/kraken-mount.elf"
+cp "$out/x86_64-ps5-freebsd/release/maxpack-ps5" "$out/maxpack-stage1.elf"
+MAXPACK_SELF_ELF="/work/$out/maxpack-stage1.elf" build --features self-copy
+cp "$out/x86_64-ps5-freebsd/release/maxpack-ps5" "$out/maxpack.elf"
+llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
+ls -l "$out/maxpack.elf"

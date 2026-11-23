@@ -13,8 +13,6 @@ EXCEPTIONS=(
   'kraken-mount-pkg'
   # The "about" credit link in ui.html (marked data-credit) names the project MaxPack is based on.
   '^src/ui\.html:[0-9]+:.*data-credit='
-  # Credits of the same kind in comments, marked "credit:".
-  'credit:'
 )
 # The ampr-emu-ng contract (kraken.image, /app0/kraken/, kraken.pkg, kraken_zero.dat, "ampr-emu-ng ")
 # does not need an entry: none of those names match PATTERN.

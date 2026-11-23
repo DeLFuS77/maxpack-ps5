@@ -1,5 +1,5 @@
 //! Toast texts in the console's language (System Settings > Language), as ps5-dump-forge's
-//! notice.rs: the same 11 languages, English when the language can't be read. "Kraken Mount"
+//! notice.rs: the same 11 languages, English when the language can't be read. "MaxPack"
 //! stays untranslated; arguments (title names, sizes, paths) are kept as given.
 
 /// A toast language, by the console's `SceSystemParamLang` code.
@@ -76,85 +76,85 @@ pub fn title_tag() -> &'static str {
 /// The payload is up and serving the web UI.
 pub fn started(l: Lang) -> &'static str {
     match l {
-        Lang::En => "Kraken Mount started",
-        Lang::Ru => "Kraken Mount запущен",
-        Lang::Zh => "Kraken Mount 已启动",
-        Lang::De => "Kraken Mount wurde gestartet",
-        Lang::Es => "Kraken Mount se ha iniciado",
-        Lang::Fr => "Kraken Mount est lancé",
-        Lang::Ja => "Kraken Mount を起動しました",
-        Lang::Pt => "O Kraken Mount foi iniciado",
-        Lang::It => "Kraken Mount è stato avviato",
-        Lang::Ko => "Kraken Mount가 실행되었습니다",
-        Lang::Ar => "تم تشغيل Kraken Mount",
+        Lang::En => "MaxPack started",
+        Lang::Ru => "MaxPack запущен",
+        Lang::Zh => "MaxPack 已启动",
+        Lang::De => "MaxPack wurde gestartet",
+        Lang::Es => "MaxPack se ha iniciado",
+        Lang::Fr => "MaxPack est lancé",
+        Lang::Ja => "MaxPack を起動しました",
+        Lang::Pt => "O MaxPack foi iniciado",
+        Lang::It => "MaxPack è stato avviato",
+        Lang::Ko => "MaxPack가 실행되었습니다",
+        Lang::Ar => "تم تشغيل MaxPack",
     }
 }
 
 /// Shut down from the web UI.
 pub fn stopped(l: Lang) -> &'static str {
     match l {
-        Lang::En => "Kraken Mount stopped",
-        Lang::Ru => "Kraken Mount остановлен",
-        Lang::Zh => "Kraken Mount 已停止",
-        Lang::De => "Kraken Mount wurde beendet",
-        Lang::Es => "Kraken Mount se ha detenido",
-        Lang::Fr => "Kraken Mount est arrêté",
-        Lang::Ja => "Kraken Mount は停止しました",
-        Lang::Pt => "O Kraken Mount foi parado",
-        Lang::It => "Kraken Mount è stato arrestato",
-        Lang::Ko => "Kraken Mount가 중지되었습니다",
-        Lang::Ar => "توقّف Kraken Mount",
+        Lang::En => "MaxPack stopped",
+        Lang::Ru => "MaxPack остановлен",
+        Lang::Zh => "MaxPack 已停止",
+        Lang::De => "MaxPack wurde beendet",
+        Lang::Es => "MaxPack se ha detenido",
+        Lang::Fr => "MaxPack est arrêté",
+        Lang::Ja => "MaxPack は停止しました",
+        Lang::Pt => "O MaxPack foi parado",
+        Lang::It => "MaxPack è stato arrestato",
+        Lang::Ko => "MaxPack가 중지되었습니다",
+        Lang::Ar => "توقّف MaxPack",
     }
 }
 
 /// The web UI port is taken: an older copy with a game running, or another app.
 pub fn port_busy(l: Lang, port: u16) -> String {
     match l {
-        Lang::En => format!("Kraken Mount: port {port} busy (an older copy that has a game running, or another app?); not started"),
-        Lang::Ru => format!("Kraken Mount: порт {port} занят (старая копия с запущенной игрой или другое приложение?); не запущен"),
-        Lang::Zh => format!("Kraken Mount：端口 {port} 已被占用（正在运行游戏的旧版本，或其他应用？）；未启动"),
-        Lang::De => format!("Kraken Mount: Port {port} belegt (eine ältere Kopie mit laufendem Spiel oder eine andere App?); nicht gestartet"),
-        Lang::Es => format!("Kraken Mount: el puerto {port} está ocupado (¿una copia anterior con un juego en curso u otra aplicación?); no se ha iniciado"),
-        Lang::Fr => format!("Kraken Mount\u{202f}: le port {port} est occupé (une ancienne copie avec un jeu en cours, ou une autre application\u{202f}?)\u{202f}; non lancé"),
-        Lang::Ja => format!("Kraken Mount：ポート {port} は使用中です（ゲーム実行中の古いコピー、または別のアプリ？）。起動しませんでした"),
-        Lang::Pt => format!("Kraken Mount: a porta {port} está ocupada (uma cópia antiga com um jogo em execução ou outro aplicativo?); não foi iniciado"),
-        Lang::It => format!("Kraken Mount: la porta {port} è occupata (una copia precedente con un gioco in corso o un'altra app?); non avviato"),
-        Lang::Ko => format!("Kraken Mount: 포트 {port}이(가) 사용 중입니다(게임이 실행 중인 이전 사본 또는 다른 앱?). 시작하지 않았습니다"),
-        Lang::Ar => format!("Kraken Mount: المنفذ {port} مشغول (نسخة أقدم تشغّل لعبة، أو تطبيق آخر؟)؛ لم يتم التشغيل"),
+        Lang::En => format!("MaxPack: port {port} busy (an older copy that has a game running, or another app?); not started"),
+        Lang::Ru => format!("MaxPack: порт {port} занят (старая копия с запущенной игрой или другое приложение?); не запущен"),
+        Lang::Zh => format!("MaxPack：端口 {port} 已被占用（正在运行游戏的旧版本，或其他应用？）；未启动"),
+        Lang::De => format!("MaxPack: Port {port} belegt (eine ältere Kopie mit laufendem Spiel oder eine andere App?); nicht gestartet"),
+        Lang::Es => format!("MaxPack: el puerto {port} está ocupado (¿una copia anterior con un juego en curso u otra aplicación?); no se ha iniciado"),
+        Lang::Fr => format!("MaxPack\u{202f}: le port {port} est occupé (une ancienne copie avec un jeu en cours, ou une autre application\u{202f}?)\u{202f}; non lancé"),
+        Lang::Ja => format!("MaxPack：ポート {port} は使用中です（ゲーム実行中の古いコピー、または別のアプリ？）。起動しませんでした"),
+        Lang::Pt => format!("MaxPack: a porta {port} está ocupada (uma cópia antiga com um jogo em execução ou outro aplicativo?); não foi iniciado"),
+        Lang::It => format!("MaxPack: la porta {port} è occupata (una copia precedente con un gioco in corso o un'altra app?); non avviato"),
+        Lang::Ko => format!("MaxPack: 포트 {port}이(가) 사용 중입니다(게임이 실행 중인 이전 사본 또는 다른 앱?). 시작하지 않았습니다"),
+        Lang::Ar => format!("MaxPack: المنفذ {port} مشغول (نسخة أقدم تشغّل لعبة، أو تطبيق آخر؟)؛ لم يتم التشغيل"),
     }
 }
 
 /// `/data` free space is below `low_space_gb`.
 pub fn low_space(l: Lang, gb: u64) -> String {
     match l {
-        Lang::En => format!("Kraken Mount: /data has only {gb} GB free"),
-        Lang::Ru => format!("Kraken Mount: на /data свободно всего {gb} ГБ"),
-        Lang::Zh => format!("Kraken Mount：/data 仅剩 {gb} GB 可用空间"),
-        Lang::De => format!("Kraken Mount: /data hat nur noch {gb} GB frei"),
-        Lang::Es => format!("Kraken Mount: /data solo tiene {gb} GB libres"),
-        Lang::Fr => format!("Kraken Mount\u{202f}: /data n’a plus que {gb} Go libres"),
-        Lang::Ja => format!("Kraken Mount：/data の空き容量は {gb} GB のみです"),
-        Lang::Pt => format!("Kraken Mount: /data tem apenas {gb} GB livres"),
-        Lang::It => format!("Kraken Mount: /data ha solo {gb} GB liberi"),
-        Lang::Ko => format!("Kraken Mount: /data의 여유 공간이 {gb}GB밖에 없습니다"),
-        Lang::Ar => format!("Kraken Mount: لا يتوفر في /data سوى {gb} غيغابايت"),
+        Lang::En => format!("MaxPack: /data has only {gb} GB free"),
+        Lang::Ru => format!("MaxPack: на /data свободно всего {gb} ГБ"),
+        Lang::Zh => format!("MaxPack：/data 仅剩 {gb} GB 可用空间"),
+        Lang::De => format!("MaxPack: /data hat nur noch {gb} GB frei"),
+        Lang::Es => format!("MaxPack: /data solo tiene {gb} GB libres"),
+        Lang::Fr => format!("MaxPack\u{202f}: /data n’a plus que {gb} Go libres"),
+        Lang::Ja => format!("MaxPack：/data の空き容量は {gb} GB のみです"),
+        Lang::Pt => format!("MaxPack: /data tem apenas {gb} GB livres"),
+        Lang::It => format!("MaxPack: /data ha solo {gb} GB liberi"),
+        Lang::Ko => format!("MaxPack: /data의 여유 공간이 {gb}GB밖에 없습니다"),
+        Lang::Ar => format!("MaxPack: لا يتوفر في /data سوى {gb} غيغابايت"),
     }
 }
 
 /// A data directory can't be created at start-up; `err` is the OS error (English).
 pub fn cannot_create(l: Lang, dir: &str, err: &str) -> String {
     match l {
-        Lang::En => format!("Kraken Mount: cannot create {dir}: {err}"),
-        Lang::Ru => format!("Kraken Mount: не удаётся создать {dir}: {err}"),
-        Lang::Zh => format!("Kraken Mount：无法创建 {dir}：{err}"),
-        Lang::De => format!("Kraken Mount: {dir} kann nicht erstellt werden: {err}"),
-        Lang::Es => format!("Kraken Mount: no se puede crear {dir}: {err}"),
-        Lang::Fr => format!("Kraken Mount\u{202f}: impossible de créer {dir}\u{202f}: {err}"),
-        Lang::Ja => format!("Kraken Mount：{dir} を作成できません：{err}"),
-        Lang::Pt => format!("Kraken Mount: não é possível criar {dir}: {err}"),
-        Lang::It => format!("Kraken Mount: impossibile creare {dir}: {err}"),
-        Lang::Ko => format!("Kraken Mount: {dir}을(를) 만들 수 없습니다: {err}"),
-        Lang::Ar => format!("Kraken Mount: تعذّر إنشاء {dir}: {err}"),
+        Lang::En => format!("MaxPack: cannot create {dir}: {err}"),
+        Lang::Ru => format!("MaxPack: не удаётся создать {dir}: {err}"),
+        Lang::Zh => format!("MaxPack：无法创建 {dir}：{err}"),
+        Lang::De => format!("MaxPack: {dir} kann nicht erstellt werden: {err}"),
+        Lang::Es => format!("MaxPack: no se puede crear {dir}: {err}"),
+        Lang::Fr => format!("MaxPack\u{202f}: impossible de créer {dir}\u{202f}: {err}"),
+        Lang::Ja => format!("MaxPack：{dir} を作成できません：{err}"),
+        Lang::Pt => format!("MaxPack: não é possível criar {dir}: {err}"),
+        Lang::It => format!("MaxPack: impossibile creare {dir}: {err}"),
+        Lang::Ko => format!("MaxPack: {dir}을(를) 만들 수 없습니다: {err}"),
+        Lang::Ar => format!("MaxPack: تعذّر إنشاء {dir}: {err}"),
     }
 }
 
@@ -226,7 +226,7 @@ pub fn moved(l: Lang, name: &str, path: &str) -> String {
     }
 }
 
-/// A game's build or registration failed; the error is in kraken.log and the UI.
+/// A game's build or registration failed; the error is in maxpack.log and the UI.
 pub fn failed(l: Lang, name: &str) -> String {
     match l {
         Lang::En => format!("{name}: failed, see the log"),
@@ -243,7 +243,7 @@ pub fn failed(l: Lang, name: &str) -> String {
     }
 }
 
-/// The install call for a batch of `n` games failed; each error is in kraken.log and the UI.
+/// The install call for a batch of `n` games failed; each error is in maxpack.log and the UI.
 pub fn failed_many(l: Lang, n: usize) -> String {
     match l {
         Lang::En => format!("{n} games failed, see the log"),
@@ -280,33 +280,33 @@ pub fn deleted(l: Lang, name: &str) -> String {
 /// kstuff does not answer its readiness probe: start-up waits for it (SMP SM_L10N_KSTUFF_WAITING).
 pub fn kstuff_waiting(l: Lang) -> &'static str {
     match l {
-        Lang::En => "Kraken Mount: kstuff not found; waiting for it to start",
-        Lang::Ru => "Kraken Mount: kstuff не найден; ожидание его запуска",
-        Lang::Zh => "Kraken Mount：未找到 kstuff，正在等待其启动",
-        Lang::De => "Kraken Mount: kstuff nicht gefunden; warte auf den Start",
-        Lang::Es => "Kraken Mount: no se encontró kstuff; esperando a que se inicie",
-        Lang::Fr => "Kraken Mount : kstuff introuvable ; en attente de son démarrage",
-        Lang::Ja => "Kraken Mount: kstuff が見つかりません。起動を待っています",
-        Lang::Pt => "Kraken Mount: kstuff não encontrado; aguardando sua inicialização",
-        Lang::It => "Kraken Mount: kstuff non trovato; in attesa del suo avvio",
-        Lang::Ko => "Kraken Mount: kstuff를 찾을 수 없습니다. 시작될 때까지 기다리는 중입니다",
-        Lang::Ar => "Kraken Mount: لم يتم العثور على kstuff؛ جارٍ انتظار تشغيله",
+        Lang::En => "MaxPack: kstuff not found; waiting for it to start",
+        Lang::Ru => "MaxPack: kstuff не найден; ожидание его запуска",
+        Lang::Zh => "MaxPack：未找到 kstuff，正在等待其启动",
+        Lang::De => "MaxPack: kstuff nicht gefunden; warte auf den Start",
+        Lang::Es => "MaxPack: no se encontró kstuff; esperando a que se inicie",
+        Lang::Fr => "MaxPack : kstuff introuvable ; en attente de son démarrage",
+        Lang::Ja => "MaxPack: kstuff が見つかりません。起動を待っています",
+        Lang::Pt => "MaxPack: kstuff não encontrado; aguardando sua inicialização",
+        Lang::It => "MaxPack: kstuff non trovato; in attesa del suo avvio",
+        Lang::Ko => "MaxPack: kstuff를 찾을 수 없습니다. 시작될 때까지 기다리는 중입니다",
+        Lang::Ar => "MaxPack: لم يتم العثور على kstuff؛ جارٍ انتظار تشغيله",
     }
 }
 
 /// ShadowMount+ is running (it mounts the same titles): start-up waits for it to stop.
 pub fn smp_running(l: Lang) -> &'static str {
     match l {
-        Lang::En => "Kraken Mount: ShadowMount+ is running; waiting for it to stop",
-        Lang::Ru => "Kraken Mount: запущен ShadowMount+; ожидание его остановки",
-        Lang::Zh => "Kraken Mount：ShadowMount+ 正在运行，正在等待其停止",
-        Lang::De => "Kraken Mount: ShadowMount+ läuft; warte, bis es beendet wird",
-        Lang::Es => "Kraken Mount: ShadowMount+ está en ejecución; esperando a que se detenga",
-        Lang::Fr => "Kraken Mount : ShadowMount+ est en cours d'exécution ; en attente de son arrêt",
-        Lang::Ja => "Kraken Mount: ShadowMount+ が実行中です。停止を待っています",
-        Lang::Pt => "Kraken Mount: o ShadowMount+ está em execução; aguardando que ele pare",
-        Lang::It => "Kraken Mount: ShadowMount+ è in esecuzione; in attesa che si arresti",
-        Lang::Ko => "Kraken Mount: ShadowMount+가 실행 중입니다. 종료될 때까지 기다리는 중입니다",
-        Lang::Ar => "Kraken Mount: ShadowMount+ قيد التشغيل؛ جارٍ انتظار إيقافه",
+        Lang::En => "MaxPack: ShadowMount+ is running; waiting for it to stop",
+        Lang::Ru => "MaxPack: запущен ShadowMount+; ожидание его остановки",
+        Lang::Zh => "MaxPack：ShadowMount+ 正在运行，正在等待其停止",
+        Lang::De => "MaxPack: ShadowMount+ läuft; warte, bis es beendet wird",
+        Lang::Es => "MaxPack: ShadowMount+ está en ejecución; esperando a que se detenga",
+        Lang::Fr => "MaxPack : ShadowMount+ est en cours d'exécution ; en attente de son arrêt",
+        Lang::Ja => "MaxPack: ShadowMount+ が実行中です。停止を待っています",
+        Lang::Pt => "MaxPack: o ShadowMount+ está em execução; aguardando que ele pare",
+        Lang::It => "MaxPack: ShadowMount+ è in esecuzione; in attesa che si arresti",
+        Lang::Ko => "MaxPack: ShadowMount+가 실행 중입니다. 종료될 때까지 기다리는 중입니다",
+        Lang::Ar => "MaxPack: ShadowMount+ قيد التشغيل؛ جارٍ انتظار إيقافه",
     }
 }

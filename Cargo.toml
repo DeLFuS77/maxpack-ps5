@@ -1,5 +1,5 @@
 [package]
-name = "kraken-mount"
+name = "maxpack-ps5"
 version = "0.3.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
@@ -8,7 +8,7 @@ license = "GPL-3.0-or-later"
 members = [".", "crates/kraken-mount-pkg"]
 
 [features]
-# Stage 2 of ps5/build.sh: embeds stage 1 (env KRAKEN_SELF_ELF) to save it as the tile's copy.
+# Stage 2 of ps5/build.sh: embeds stage 1 (env MAXPACK_SELF_ELF) to save it as the tile's copy.
 self-copy = []
 
 [dependencies]

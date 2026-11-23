@@ -62,13 +62,13 @@ jobs:
         run: ./ps5/build.sh
       - name: sha256
         run: |
-          cp target/ps5/kraken-mount.elf .
-          sha256sum kraken-mount.elf | tee SHA256SUMS
+          cp target/ps5/maxpack.elf .
+          sha256sum maxpack.elf | tee SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: payload
           path: |
-            kraken-mount.elf
+            maxpack.elf
             SHA256SUMS
           if-no-files-found: error
 
@@ -94,4 +94,4 @@ jobs:
             --title "$TAG" \
             --draft \
             --generate-notes \
-            kraken-mount.elf SHA256SUMS
+            maxpack.elf SHA256SUMS

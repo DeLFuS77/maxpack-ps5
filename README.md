@@ -1,51 +1,56 @@
-<p align="center"><img src="docs/logo.png" width="128" alt="Kraken Mount"></p>
+<p align="center"><img src="ps5/icon0.png" width="128" alt="MaxPack"></p>
 
-A PS5 game mounter. It finds games on the internal SSD, the M.2 drive and USB drives.
+# MaxPack para la consola
 
-**Supported formats**: debug FPKG (`.pkg`) and game folders (plain, or packed with zstd or LZ4).
-For large, demanding games, use the zstd pack format: it performs better than FPKG.
+MaxPack es la herramienta de juegos de PS5 de DeLFuS77, en su versión para la consola: un payload
+(ELF) en Rust que busca juegos en el SSD interno, en la unidad M.2 y en unidades USB, los registra en
+la pantalla de inicio y los monta al lanzarlos. Está basado en
+[Kraken Mount](https://github.com/quer3q/kraken-mount), de quer3q, y conserva su historial y su licencia.
 
-## How to
+**Formatos admitidos**: FPKG de depuración (`.pkg`) y carpetas de juego (sin comprimir, o empaquetadas
+con zstd o LZ4).
 
-1. Download `kraken-mount.elf` from [Releases](https://github.com/quer3q/kraken-mount/releases)
-   and send it to your jailbroken PS5 with the ELF loader (elfldr, port 9021) or payload-manager:
-   `nc -w 3 <ps5-ip> 9021 < kraken-mount.elf`. kstuff must be loaded, and ShadowMount+ must not be
-   running: Kraken Mount waits until both are true.
-2. Put each game in a scan root, or in a folder directly inside one (for example
-   `/data/homebrew/rpg/<game>`; deeper folders are not scanned, and on a drive root only the root itself):
-   - internal SSD: `/data/homebrew`, `/data/etaHEN/games`
-   - M.2 or extended drive (`/mnt/ext0`, `/mnt/ext1`): `homebrew`, `etaHEN/games` or the drive root
-   - USB drive (`/mnt/usb0` to `/mnt/usb7`): `homebrew`, `etaHEN/games` or the drive root
-3. Each game gets a "<name> registered" notification and its own home-screen tile.
+## Estado
 
-[ampr-emu-ng](https://github.com/quer3q/ampr-emu-ng) comes bundled and is installed into
-`/data/krakenmount/ampr/` at start. To run another build, put its `libSceAmpr.sprx` there; it is
-kept until you delete it.
+**Sin probar en consola.** Esta versión solo cambia la identidad respecto a Kraken Mount (nombre,
+rutas, icono, puerto y SDK); el comportamiento es el de Kraken Mount 0.3.1. El payload se compila en
+GitHub Actions, pero todavía no se ha ejecutado en una PS5.
 
-A game that needs the DLC or PlayGo emulator and ships none gets the bundled one in its fakelib
-(setting `add_emulators`, on by default); a game's own copy is kept, unless it is a known older
-release of the bundled one, which is upgraded. The PlayGo stub can be turned off per game in the
-game's details. Details:
-[DLC emulator](docs/dlcemu.md), [PlayGo stub](docs/playgo.md).
+## Identidad
 
-Caches live in `/data/krakenmount/caches/<TITLE_ID>`, settings in
-`/data/krakenmount/config.toml` and the log in `/data/krakenmount/kraken.log`.
+- Binario: `maxpack.elf`; copia propia en `/data/maxpack/maxpack.elf`.
+- Datos en `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`.
+- Icono de la pantalla de inicio: `MXPK00001`. Interfaz web en el puerto **8095**.
+- La parte que habla con [ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) no cambia de nombre
+  (`kraken.image`, `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`), y el crate interno sigue
+  llamándose `kraken-mount-pkg` para facilitar las mezclas con el original.
 
-To build it yourself: `ps5/build.sh` (needs Docker), output `target/ps5/kraken-mount.elf`.
+## Cómo compilar
 
-## Thanks
+```
+ps5/build.sh
+```
 
-- [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus): home-screen
-  registration, the fakelib sandbox overlay and backports are ported from it.
-- [drakmor/dlc_emu](https://github.com/drakmor/dlc_emu): the bundled DLC emulator
-  (`libSceAppContent.sprx`, `libSceNpEntitlementAccess.sprx`, `libSceGameUpdate.sprx`), added to a
-  game's fakelib when the game has a `dlc_emu.ini` at its root; a known older release the game ships
-  is upgraded, any other copy is kept.
-- [drakmor/pgo_stub](https://github.com/drakmor/pgo_stub): the bundled PlayGo stub
-  (`libScePlayGo.sprx`), added to a game's fakelib when its `eboot.bin` imports `libScePlayGo` and the
-  game ships none.
-- [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk): the PS5 toolchain.
+Necesita Docker. Compila en dos etapas (la primera es la copia que arranca el icono, la segunda la
+incluye) y deja `target/ps5/maxpack.elf`. La imagen de Docker es `maxpack-ps5` y usa el SDK de PS5
+v0.45. La comprobación rápida en el PC, sin Docker:
+`cargo check --workspace --locked --target x86_64-unknown-freebsd`. En CI, el trabajo `check` también
+ejecuta `tools/check_identity.sh`, que falla si reaparece el nombre o una ruta antiguos.
 
-## License
+Para enviarlo a una PS5 con el cargador de ELF (elfldr, puerto 9021):
+`nc -w 3 <ip-de-la-ps5> 9021 < maxpack.elf`. kstuff debe estar cargado y ShadowMount+ no debe estar en
+ejecución.
 
-GPL-3.0-or-later (`LICENSE`). Third-party notices are in `THIRD_PARTY_NOTICES`.
+## Créditos
+
+- [quer3q/kraken-mount](https://github.com/quer3q/kraken-mount): Kraken Mount, la base de este
+  proyecto, y [ampr-emu-ng](https://github.com/quer3q/ampr-emu-ng), del mismo autor.
+- [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus): el registro en la pantalla de
+  inicio, la superposición de `fakelib` y los backports están portados de ahí.
+- [drakmor/dlc_emu](https://github.com/drakmor/dlc_emu): el emulador de DLC incluido.
+- [drakmor/pgo_stub](https://github.com/drakmor/pgo_stub): el stub de PlayGo incluido.
+- [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk): la cadena de herramientas de PS5.
+
+## Licencia
+
+GPL-3.0-or-later (`LICENSE`). Los avisos de terceros están en `THIRD_PARTY_NOTICES`.

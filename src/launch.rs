@@ -1,6 +1,6 @@
-//! Launch watcher: puts /data/krakenmount/caches/<TID>/fakelib (our ng libSceAmpr.sprx) on top of the
+//! Launch watcher: puts /data/maxpack/caches/<TID>/fakelib (our ng libSceAmpr.sprx) on top of the
 //! game sandbox's system library dir /mnt/sandbox/<TID>_<n>/<x>/common/lib with a unionfs, so the
-//! game loads ng instead of the system libSceAmpr (cache.rs copies /data/krakenmount/ampr into that
+//! game loads ng instead of the system libSceAmpr (cache.rs copies /data/maxpack/ampr into that
 //! fakelib; there is no mount of the ampr dir). Port of ShadowMountPlus sm_fakelib.c (sandbox
 //! lookup, unionfs layer, cleanup) and sm_game_lifecycle.c (SceSysCore kqueue), without the
 //! ShellCore hooks. Order: /mnt/sandbox vnode event (before spawn), NOTE_EXEC fallback, then
