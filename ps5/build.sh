@@ -82,9 +82,12 @@ llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
     echo "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+/ /g'
   done
   # zstd's dictBuilder (ZDICT_trainFromBuffer, used by the engine's mp_v2exp.c) can bring
-  # libdivsufsort-lite (MIT) along: whether it is in decides its notice in THIRD_PARTY_NOTICES.
-  if grep -qE '[[:space:]]divsufsort$' "$out/maxpack.map"; then
+  # libdivsufsort-lite (MIT) along. Not linked today (the payload pulls no dictionary training);
+  # if a later engine sync links it, the build stops until THIRD_PARTY_NOTICES carries its notice.
+  if grep -qE '[[:space:]]divsufsort$|divsufsort\.c\.o' "$out/maxpack.map"; then
     echo "zstd dictBuilder divsufsort: linked"
+    grep -q 'divsufsort' THIRD_PARTY_NOTICES \
+      || { echo "build.sh: divsufsort (MIT) is linked: add its notice to THIRD_PARTY_NOTICES" >&2; exit 1; }
   else
     echo "zstd dictBuilder divsufsort: not linked"
   fi
