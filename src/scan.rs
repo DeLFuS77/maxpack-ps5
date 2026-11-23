@@ -283,7 +283,9 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
     order.extend(later);
     for (root, path, nested) in order {
         // Never a source there: a game's app0 is written (fix_access, the game's own writes, delete).
-        if maxpack_logic::roots::in_other_mounter_data(&path.to_string_lossy()) {
+        // maxpack_logic::roots::never_source: the system, Sony's user data and installed games, the
+        // sandboxes, MaxPack's and the other mounters' data folders.
+        if maxpack_logic::roots::never_source(&path.to_string_lossy()).is_some() {
             continue;
         }
         let metadata = match fs::metadata(&path) {

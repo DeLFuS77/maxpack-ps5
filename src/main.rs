@@ -154,6 +154,34 @@ fn process(
     staged: &mut Vec<Source>,
 ) {
     let tid = &src.title_id;
+    // Never over a title id installed on the console (a retail game, or an FPKG installed through
+    // the system): no register, no mount on its /system_ex/app/<TID>, no overlay at its launch.
+    // Looked at every pass: the title goes on as usual once that install is gone.
+    static INSTALLED_LOGGED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let installed = register::installed_copy(tid);
+    {
+        let mut logged = INSTALLED_LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        let first = !logged.contains(tid);
+        match &installed {
+            Some(p) if first => {
+                log!("{tid} ({}): an installed copy of this title exists ({}): MaxPack does not register or mount this copy",
+                    src.path.display(), p.display());
+                logged.push(tid.clone());
+            }
+            None if !first => logged.retain(|t| t != tid),
+            _ => {}
+        }
+    }
+    if let Some(p) = installed {
+        registered.remove(tid);
+        state.titles.lock().unwrap().remove(tid);
+        let e = format!("{tid} ({}): an installed copy of this title exists ({}): MaxPack does not register or mount this copy",
+            src.path.display(), p.display());
+        state.update(&src.path, |g| {
+            (g.status, g.error, g.installed_copy) = ("error", Some(e), Some(p.to_string_lossy().into_owned()));
+        });
+        return;
+    }
     let forced = state.forced.lock().unwrap().remove(tid);
     let mut fresh = cache::check(src, s);
     if let (false, Fresh::Moved(from)) = (forced, &fresh) {
@@ -228,7 +256,7 @@ fn finish(
             registered.insert(tid.clone());
             state.titles.lock().unwrap().insert(tid.clone());
             state.update(&src.path, |g| {
-                (g.status, g.error, g.cache_size, g.cache_built) = ("ready", None, size, built);
+                (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("ready", None, None, size, built);
             });
             if new && notify {
                 toast(s, &i18n::registered(i18n::lang(), &src.title_name));
@@ -239,7 +267,7 @@ fn finish(
             log!("{e}");
             failed.insert(src.path.clone(), inputs_key(src, s));
             state.update(&src.path, |g| {
-                (g.status, g.error, g.cache_size, g.cache_built) = ("error", Some(e.clone()), size, built);
+                (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
             });
             if notify {
                 toast(s, &i18n::failed(i18n::lang(), &src.title_name));
@@ -258,11 +286,15 @@ fn publish(state: &State, r: &scan::ScanResult) {
         let prev = old.iter().find(|g| g.src.path == src.path && g.src.title_id == src.title_id && g.status != "duplicate");
         games.push(match prev {
             Some(g) => web::Game { src: src.clone(), ..g.clone() },
-            None => web::Game { src: src.clone(), status: "pending", error: None, cache_size: 0, cache_built: None },
+            None => web::Game {
+                src: src.clone(), status: "pending", error: None, installed_copy: None, cache_size: 0, cache_built: None,
+            },
         });
     }
     for src in &r.duplicates {
-        games.push(web::Game { src: src.clone(), status: "duplicate", error: None, cache_size: 0, cache_built: None });
+        games.push(web::Game {
+            src: src.clone(), status: "duplicate", error: None, installed_copy: None, cache_size: 0, cache_built: None,
+        });
     }
     for (path, _) in &r.unstable {
         if let Some(g) = old.iter().find(|g| &g.src.path == path && g.status != "duplicate") {
@@ -758,7 +790,7 @@ impl MissingTimers {
 }
 
 /// ENOENT/ENOTDIR only: any other stat error (a drive that answers badly) is not "gone".
-fn gone(path: &std::path::Path) -> bool {
+pub(crate) fn gone(path: &std::path::Path) -> bool {
     matches!(std::fs::symlink_metadata(path),
         Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT | libc::ENOTDIR)))
 }
@@ -878,10 +910,12 @@ fn main() {
         std::thread::spawn(move || register_tile_when_mounting(&state));
     }
     let (titles, running, mounter) = (state.titles.clone(), state.running.clone(), state.mounter.clone());
-    // Built caches are launchable before the first scan ends: watch them from the start.
+    // Built caches are launchable before the first scan ends: watch them from the start (not a
+    // title id installed on the console: its launch is the installed game's, never overlaid).
     for e in std::fs::read_dir(cache::CACHES).into_iter().flatten().flatten() {
-        if e.path().join(cache::DONE).is_file() {
-            titles.lock().unwrap().insert(e.file_name().to_string_lossy().into_owned());
+        let tid = e.file_name().to_string_lossy().into_owned();
+        if e.path().join(cache::DONE).is_file() && register::installed_copy(&tid).is_none() {
+            titles.lock().unwrap().insert(tid);
         }
     }
     std::thread::spawn(move || launch::watch(titles, running, mounter));
@@ -955,9 +989,12 @@ fn main() {
         // A source still being copied stays registered (skipped this pass, not gone).
         registered.retain(|t| r.games.iter().any(|g| &g.title_id == t)
             || r.unstable.iter().any(|(_, u)| u.as_ref() == Some(t)));
-        // Built caches are overlaid at launch from the start, not only once the scan reaches them.
+        // Built caches are overlaid at launch from the start, not only once the scan reaches them
+        // (never a title id installed on the console: `process` leaves those alone).
         state.titles.lock().unwrap().extend(
-            r.games.iter().filter(|g| cache::built_at(&g.title_id).is_some()).map(|g| g.title_id.clone()),
+            r.games.iter()
+                .filter(|g| cache::built_at(&g.title_id).is_some() && register::installed_copy(&g.title_id).is_none())
+                .map(|g| g.title_id.clone()),
         );
         check_space(&state, &s);
         let (mut full, mut staged) = (true, Vec::new());
@@ -1002,18 +1039,27 @@ fn main() {
     }
 }
 
-/// `roots` without those inside the other mounters' data folders, which MaxPack only reads
-/// (maxpack_logic::roots::in_other_mounter_data); each one left out is logged once.
+/// `roots` without those MaxPack never scans (maxpack_logic::roots::never_root: `/`, the system,
+/// Sony's user data and installed games, the sandboxes, MaxPack's and the other mounters' data
+/// folders); each one left out is logged once. A hand-edited config.toml can still list them.
 fn usable_roots(mut roots: Vec<String>) -> Vec<String> {
+    use maxpack_logic::roots::{never_root, Forbidden};
     static LOGGED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
     roots.retain(|r| {
-        let inside = maxpack_logic::roots::in_other_mounter_data(r);
+        let why = never_root(r);
         let mut logged = LOGGED.lock().unwrap_or_else(|e| e.into_inner());
-        if inside && !logged.contains(r) {
-            log!("scan root {r} is inside another mounter's data folder: not scanned (MaxPack never writes there)");
-            logged.push(r.clone());
+        match why {
+            Some(w) if !logged.contains(r) => {
+                if w == Forbidden::OtherMounterData {
+                    log!("scan root {r} is inside another mounter's data folder: not scanned (MaxPack never writes there)");
+                } else {
+                    log!("scan root {r} is {}: not scanned (MaxPack never mounts games from there)", w.why());
+                }
+                logged.push(r.clone());
+            }
+            _ => {}
         }
-        !inside
+        why.is_none()
     });
     roots
 }

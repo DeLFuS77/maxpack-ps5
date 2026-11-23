@@ -26,6 +26,9 @@ pub struct Game {
     /// "pending" | "checking" | "building" | "ready" | "error" | "duplicate"
     pub status: &'static str,
     pub error: Option<String>,
+    /// Set with status "error" when the title id is installed on the console
+    /// (register::installed_copy): the path that shows it.
+    pub installed_copy: Option<String>,
     pub cache_size: u64,
     pub cache_built: Option<u64>,
 }
@@ -119,7 +122,7 @@ impl State {
         games.iter().filter(|g| g.status != "duplicate").map(|g| g.src.title_id.clone()).collect()
     }
 
-    fn source(&self, tid: &str) -> Option<Source> {
+    pub fn source(&self, tid: &str) -> Option<Source> {
         let games = self.games.lock().unwrap();
         games.iter().find(|g| g.src.title_id == tid && g.status != "duplicate").map(|g| g.src.clone())
     }
@@ -145,6 +148,8 @@ fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
         "size": g.src.size,
         "status": g.status,
         "error": g.error,
+        // The path that shows an installed copy of this title id (main::process): the UI says why.
+        "installed_copy": g.installed_copy,
         "cache_size": g.cache_size,
         "cache_built": g.cache_built,
         "backport": g.src.backport.as_ref().map(|b| b.to_string_lossy()),
@@ -155,8 +160,8 @@ fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
 }
 
 /// Single instance: binds PORT, asking an older copy on it to quit first (POST /api/quit),
-/// retrying for 5 s. None: the port stays taken (an older build without /api/quit, or another
-/// app), so this copy must not run.
+/// retrying for 5 s. None: the port stays taken (the phase-2 maxpack.elf, whose server refuses that
+/// quit, an older build without /api/quit, or another app), so this copy must not run.
 pub fn take_port() -> Option<TcpListener> {
     if let Ok(l) = TcpListener::bind(("0.0.0.0", PORT)) {
         return Some(l);
@@ -258,7 +263,10 @@ fn handle(state: &State, mut conn: TcpStream) -> std::io::Result<()> {
     conn.set_write_timeout(Some(Duration::from_secs(10)))?;
     let loopback = conn.peer_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
     let r = match read_request(&mut conn)? {
-        Ok((head, body)) => route(state, &head, &body, loopback),
+        Ok((head, body)) => match maxpack_logic::http::check(&head) {
+            Ok(()) => route(state, &head, &body, loopback),
+            Err(why) => refused(&head, why),
+        },
         Err(code) => reply(code, "text/plain", "bad or too large request"),
     };
     let reason = match r.code {
@@ -330,6 +338,40 @@ fn read_request(conn: &mut TcpStream) -> std::io::Result<Result<(String, Vec<u8>
     }
 }
 
+/// 403 for a request that maxpack_logic::http::check refuses: a Host that is not an IP or
+/// localhost (the page opened by a name, or DNS rebinding), or a state change from another site.
+/// The installer's routes answer as the engine does (JSON, code `forbidden`), the rest plain text in
+/// Spanish and English (it may be the page itself that is refused). Logged at most once a minute.
+fn refused(head: &str, why: maxpack_logic::http::Refusal) -> Reply {
+    use maxpack_logic::http::Refusal;
+    use maxpack_logic::inst::header;
+    static LOGGED: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+    let line = head.lines().next().unwrap_or("");
+    {
+        let mut last = LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_none_or(|t| t.elapsed() >= Duration::from_secs(60)) {
+            *last = Some(std::time::Instant::now());
+            log!("web: refused {line:?} ({why:?}): Host {:?}, Origin {:?}, Sec-Fetch-Site {:?} (one line a minute at most)",
+                header(head, "host").unwrap_or(""), header(head, "origin"), header(head, "sec-fetch-site"));
+        }
+    }
+    let (es, en) = match why {
+        Refusal::Host => (
+            "MaxPack: abre esta página con la dirección IP de la consola (http://<IP de la PS5>:8095), no con un nombre.",
+            "MaxPack: open this page at the console's IP address (http://<PS5 IP>:8095), not by a name.",
+        ),
+        Refusal::CrossSite => (
+            "MaxPack: petición rechazada: no viene de la página de MaxPack.",
+            "MaxPack: request refused: it did not come from the MaxPack page.",
+        ),
+    };
+    if line.split(' ').nth(1).is_some_and(|t| t.starts_with("/api/inst/")) {
+        let body = serde_json::json!({"ok": false, "code": "forbidden", "detail": es}).to_string();
+        return reply(403, "application/json", body);
+    }
+    reply(403, "text/plain; charset=utf-8", format!("{es}\n{en}\n"))
+}
+
 fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
     let mut parts = head.lines().next().unwrap_or("").split(' ');
     let method = parts.next().unwrap_or("");
@@ -337,7 +379,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     match (method, path) {
         // The installer's routes (also in installer-only mode: never gated on the mounter state).
-        (_, p) if p.starts_with("/api/inst/") => installer(head, method, target, body, loopback),
+        (_, p) if p.starts_with("/api/inst/") => installer(state, head, method, target, body, loopback),
         ("GET", "/") => cached("text/html; charset=utf-8", UI.replace("__VERSION__", env!("CARGO_PKG_VERSION"))),
         ("GET", "/maxpack.appcache") => cached("text/cache-manifest", appcache()),
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
@@ -356,7 +398,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             Err(e) => reply(502, "text/plain", e),
         },
         // A newer copy taking over the port (loopback, empty body) or the UI's Shut down (body
-        // "shutdown", from any host, as Dump Forge's Stop).
+        // "shutdown", as Dump Forge's Stop: from any IP, but only from the page itself, as every POST).
         ("POST", "/api/quit") if (loopback || body == b"shutdown") && state.paused() => {
             log!("quit refused: a game is running (its overlay would stay mounted)");
             reply(409, "text/plain", "a game is running")
@@ -410,18 +452,105 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
 /// `/api/inst/<x>`: the installer's `/api/<x>` (maxpack_logic::inst::installer_path), with the
 /// method, Host, Content-Type and body as sent and `loopback` from the TCP peer; its answer as it
 /// is. Its POST bodies are small JSON (paths): MAX_REQUEST is plenty.
-fn installer(head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
-    use maxpack_logic::inst::{header, installer_path};
+/// As the mounter, around it: an uninstall, or an install that replaces other copies, is refused
+/// while a game runs (409 `game_running`: the engine deletes folders with no such check); and an
+/// uninstall it accepts is followed to its end (installer::after_uninstall), so MaxPack's home
+/// entry and mount of that game go with it.
+fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
+    use maxpack_logic::inst::{answer_ok, header, installer_path, needs_no_game, uninstall_title};
     let Some(path) = installer_path(method, target) else { return not_found() };
+    if needs_no_game(method, &path, body) && state.paused() {
+        log!("installer: {path} refused: a game is running");
+        let body = serde_json::json!({"ok": false, "code": "game_running", "detail": "a game is running"}).to_string();
+        return reply(409, "application/json", body);
+    }
+    let uninstall = (path == "/api/uninstall").then(|| uninstall_title(body)).flatten();
+    // The library's copy of that title now: the one MaxPack mounts, if any.
+    let source = uninstall.as_deref().and_then(|t| state.source(t)).map(|s| s.path);
     let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
     let a = crate::installer::call(method, &path, host, ctype, body, loopback);
+    if let (Some(tid), true) = (uninstall, a.status == 200 && answer_ok(&a.body)) {
+        crate::installer::after_uninstall(tid, source);
+    }
     reply(a.status, a.ctype, a.body)
 }
 
+/// The end of an installer uninstall of `tid` (installer::after_uninstall), as /api/delete ends
+/// after it removed a source: unmount without force, off the home screen (register::uninstall,
+/// forget), out of `titles` and the library, cache deleted. Only while MaxPack mounts (in
+/// "installer only" mode the other mounter owns the home entries: nothing here), and only for a
+/// title MaxPack mounts from the copy that is now gone (`source`, the library's copy when the
+/// uninstall was asked for). Never a title id installed on the console. Waits for a running game
+/// to exit (up to `deadline`); a failure is logged and left to auto-remove.
+pub fn uninstalled(state: &State, tid: &str, source: Option<&Path>, deadline: std::time::Instant) {
+    let Some(src) = source else {
+        log!("{tid}: uninstalled by the installer; not in MaxPack's library, so nothing of MaxPack's to remove");
+        return;
+    };
+    if !crate::gone(src) {
+        log!("{tid}: uninstalled by the installer; the library copy {} is still there: kept", src.display());
+        return;
+    }
+    // The scan loop holds `work` for a whole pass; a running game pauses it, and its mount stays.
+    let _work = loop {
+        if !state.paused() {
+            let work = state.work.lock().unwrap_or_else(|e| e.into_inner());
+            if !state.paused() {
+                break work;
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            log!("{tid}: uninstalled by the installer; a game kept running: its home entry is left to auto-remove");
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    };
+    if !state.mounts() {
+        log!("{tid}: uninstalled by the installer while MaxPack does not mount: its home entry is left to the mounter in charge");
+        return;
+    }
+    if !state.titles.lock().unwrap().contains(tid) {
+        log!("{tid}: uninstalled by the installer; not a title MaxPack registered or built: nothing to remove");
+        return;
+    }
+    if let Some(p) = register::installed_copy(tid) {
+        log!("{tid}: uninstalled by the installer; an installed copy exists ({}): its home entry is kept", p.display());
+        return;
+    }
+    if let Err(e) = register::unmount_title(tid) {
+        log!("{tid}: uninstalled by the installer; unmount: {e} (auto-remove tries again)");
+        return;
+    }
+    match register::uninstall(tid) {
+        Ok(()) => register::forget(tid),
+        Err(e) => log!("{tid}: uninstall {}: {e}", src.display()),
+    }
+    state.titles.lock().unwrap().remove(tid);
+    state.games.lock().unwrap().retain(|g| g.src.path != src);
+    let cache_dir = cache::dir(tid);
+    if cache_dir.exists() {
+        if let Err(e) = fs::remove_dir_all(&cache_dir) {
+            log!("{tid}: delete cache {}: {e}", cache_dir.display());
+        }
+    }
+    log!("{tid}: uninstalled by the installer ({}): unmounted and removed from the home screen", src.display());
+    state.wake();
+}
+
 fn post_settings(state: &State, body: &[u8]) -> Reply {
-    let parsed = serde_json::from_slice::<serde_json::Value>(body)
-        .map_err(|e| format!("settings: {e}"))
-        .and_then(|v| Ok((config::from_json(&v)?, v.get("playgo_off").is_some())));
+    let value = serde_json::from_slice::<serde_json::Value>(body).map_err(|e| format!("settings: {e}"));
+    // A scan path MaxPack never scans (maxpack_logic::roots::never_root): JSON for the UI, which
+    // says it in the page's language.
+    let roots = value.as_ref().ok().and_then(|v| v.get("scanpath")).and_then(|v| v.as_array());
+    for r in roots.into_iter().flatten().filter_map(|r| r.as_str()) {
+        if let Some(why) = maxpack_logic::roots::never_root(r.trim()) {
+            log!("settings rejected: scanpath {r:?} is {}", why.why());
+            let body = serde_json::json!({"code": "forbidden_root", "path": r.trim(),
+                "detail": format!("scanpath {r:?} is {}: MaxPack never scans it", why.why())});
+            return reply(400, "application/json", body.to_string());
+        }
+    }
+    let parsed = value.and_then(|v| Ok((config::from_json(&v)?, v.get("playgo_off").is_some())));
     let (mut s, has_playgo_off) = match parsed {
         Ok(s) => s,
         Err(e) => {

@@ -479,25 +479,29 @@ pub fn spawn_snd0info(title_id: &str, delay_ms: u64) {
     });
 }
 
-/// Ok when the home-screen title looks like one MaxPack staged; Err(path) when the path
-/// shows a real install: /user/app/<TID>/app.pkg, a copy on an M.2 drive
-/// (/mnt/ext{0,1}/user/app/<TID>), or no /user/app/<TID>/sce_sys/param.json (we write one).
-/// ponytail: a layout heuristic, not an app.db lookup; an install laid out like ours reads as ours.
-pub fn is_ours(title_id: &str) -> Result<(), PathBuf> {
-    is_ours_in(Path::new("/"), title_id)
+/// The path that shows a real install of `title_id` on the console (maxpack_logic::sony:
+/// /user/app/<TID>/app.pkg, or a copy on an M.2 or USB extended drive, /mnt/ext{0,1}/user/app/<TID>);
+/// None when there is none. Only ENOENT/ENOTDIR is "absent": any other stat error (a drive that
+/// answers badly) protects. MaxPack never registers, mounts or uninstalls such a title id.
+pub fn installed_copy(title_id: &str) -> Option<PathBuf> {
+    use maxpack_logic::sony::Look;
+    let look = |p: &str| match fs::symlink_metadata(p) {
+        Ok(_) => Look::Present,
+        Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT | libc::ENOTDIR)) => Look::Absent,
+        Err(_) => Look::Unknown,
+    };
+    maxpack_logic::sony::installed_copy(title_id, look).map(PathBuf::from)
 }
 
-/// `is_ours` under `root` (a fake tree in tests).
-fn is_ours_in(root: &Path, title_id: &str) -> Result<(), PathBuf> {
-    let app = root.join("user/app").join(title_id);
-    for p in [app.join("app.pkg"), root.join("mnt/ext0/user/app").join(title_id),
-        root.join("mnt/ext1/user/app").join(title_id)]
-    {
-        // Only ENOENT/ENOTDIR is "absent": a stat error (a drive that answers badly) protects.
-        if !matches!(fs::symlink_metadata(&p), Err(e) if matches!(e.raw_os_error(), Some(libc::ENOENT | libc::ENOTDIR))) {
-            return Err(p);
-        }
+/// Ok when the home-screen title looks like one MaxPack staged; Err(path) when the path
+/// shows a real install (`installed_copy`), or there is no /user/app/<TID>/sce_sys/param.json
+/// (we write one).
+/// ponytail: a layout heuristic, not an app.db lookup; an install laid out like ours reads as ours.
+pub fn is_ours(title_id: &str) -> Result<(), PathBuf> {
+    if let Some(p) = installed_copy(title_id) {
+        return Err(p);
     }
+    let app = Path::new(APP_BASE).join(title_id);
     if !app.join("sce_sys/param.json").is_file() {
         return Err(app);
     }

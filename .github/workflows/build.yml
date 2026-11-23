@@ -68,6 +68,10 @@ jobs:
           mk
           echo "# https://github.com/$url" > "$t/tools/planted.sh"
           expect_fail "quer3q releases URL in tools/"
+          mk
+          # An About credit line with more on it than the allowed text (the name in pieces, as above).
+          printf "    aboutBased: 'Based on Kraken%sMount by quer3q.', aboutMore: 'x',\n" ' ' >> "$t/src/ui.html"
+          expect_fail "old name in ui.html beyond the credit lines"
       - name: cargo check --workspace
         run: cargo check --workspace --locked --target x86_64-unknown-freebsd
       - name: node --check (src/ui.html script)

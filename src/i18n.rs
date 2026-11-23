@@ -107,14 +107,17 @@ pub fn stopped(l: Lang) -> &'static str {
     }
 }
 
-/// The web UI port is taken: an older copy with a game running, or another app.
+/// The web UI port is taken: the phase-2 maxpack.elf (it has no quit for us to ask), an older copy
+/// with a game running, or another app.
 pub fn port_busy(l: Lang, port: u16) -> String {
     match l {
-        Lang::En => format!("MaxPack: port {port} busy (an older copy that has a game running, or another app?); not started"),
+        // The phase-2 maxpack.elf has the same name and port but no quit for a newer copy to ask
+        // (web::take_port): it is the likely case, so English and Spanish name it.
+        Lang::En => format!("MaxPack: port {port} busy, not started. Is the earlier MaxPack (the phase-2 installer) still running? Restart the console. Or an older copy with a game open, or another app"),
         Lang::Ru => format!("MaxPack: порт {port} занят (старая копия с запущенной игрой или другое приложение?); не запущен"),
         Lang::Zh => format!("MaxPack：端口 {port} 已被占用（正在运行游戏的旧版本，或其他应用？）；未启动"),
         Lang::De => format!("MaxPack: Port {port} belegt (eine ältere Kopie mit laufendem Spiel oder eine andere App?); nicht gestartet"),
-        Lang::Es => format!("MaxPack: el puerto {port} está ocupado (¿una copia anterior con un juego en curso u otra aplicación?); no se ha iniciado"),
+        Lang::Es => format!("MaxPack: puerto {port} ocupado, no se ha iniciado. ¿Sigue en marcha el MaxPack anterior (instalador de la fase 2)? Reinicia la consola. O una copia anterior con un juego abierto, u otra aplicación"),
         Lang::Fr => format!("MaxPack\u{202f}: le port {port} est occupé (une ancienne copie avec un jeu en cours, ou une autre application\u{202f}?)\u{202f}; non lancé"),
         Lang::Ja => format!("MaxPack：ポート {port} は使用中です（ゲーム実行中の古いコピー、または別のアプリ？）。起動しませんでした"),
         Lang::Pt => format!("MaxPack: a porta {port} está ocupada (uma cópia antiga com um jogo em execução ou outro aplicativo?); não foi iniciado"),

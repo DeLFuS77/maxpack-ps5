@@ -12,6 +12,10 @@ PATTERN='Kraken Mount|krakenmount|kraken-mount|KRKN00001|(^|[^0-9])8097([^0-9]|$
 EXCEPTIONS=(
   # The "about" credit link in ui.html names the project MaxPack is based on: exactly this line.
   '^src/ui\.html:[0-9]+: *<a class="gh-link button" data-credit="kraken-mount" href="https://github\.com/quer3q/kraken-mount" aria-label="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)" title="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)">$'
+  # The credit line of Settings > About, in its markup and its English and Spanish texts: exactly these.
+  '^src/ui\.html:[0-9]+: *<p data-i18n="aboutBased">Based on Kraken Mount by quer3q\.</p>$'
+  "^src/ui\.html:[0-9]+: *aboutBased: 'Based on Kraken Mount by quer3q\.',$"
+  "^src/ui\.html:[0-9]+: *aboutBased: 'Basado en Kraken Mount, de quer3q\.',$"
 )
 # The console checklist tests the original mounter itself (before anything, coming from it and
 # going back to it), so there, and only there, it may name it, its data folder and its process:

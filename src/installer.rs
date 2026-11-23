@@ -5,6 +5,7 @@
 //! "installer only" mode): nothing here looks at the mounter state.
 use crate::web::State;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -180,6 +181,42 @@ fn raw_call(api: *mut MpApi, method: &str, path: &str, host: &str, ctype: &str, 
     let ctype = c_text(&out.ctype);
     unsafe { mp_api_out_free(&mut out) };
     Answer { status, ctype, body }
+}
+
+/// How long an accepted uninstall is followed (it deletes a whole game folder; a USB drive is slow).
+const UNINSTALL_WAIT: Duration = Duration::from_secs(3600);
+
+/// After the installer accepted an uninstall of `tid` (web.rs): its `/api/state` is read every
+/// 500 ms (maxpack_logic::inst::UninstallWatch) until the job ends; once the game is uninstalled the
+/// scan loop is woken and web::uninstalled takes MaxPack's home entry and mount of it away.
+/// `source`: the library's copy of `tid` when the uninstall was asked for.
+pub fn after_uninstall(tid: String, source: Option<PathBuf>) {
+    use maxpack_logic::inst::{Uninstall, UninstallWatch};
+    let Some(state) = STATE.get().cloned() else { return };
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + UNINSTALL_WAIT;
+        let mut watch = UninstallWatch::default();
+        loop {
+            std::thread::sleep(Duration::from_millis(500));
+            let a = call("GET", "/api/state", "127.0.0.1", "", b"", true);
+            match watch.see(&a.body, &tid) {
+                Uninstall::Done => break,
+                Uninstall::Failed => {
+                    log!("{tid}: the installer's uninstall failed; MaxPack's home entry and mount stay");
+                    state.wake();
+                    return;
+                }
+                Uninstall::Pending if Instant::now() >= deadline => {
+                    log!("{tid}: the installer's uninstall did not end in {} s; MaxPack leaves its home entry to auto-remove",
+                        UNINSTALL_WAIT.as_secs());
+                    return;
+                }
+                Uninstall::Pending => {}
+            }
+        }
+        state.wake();
+        crate::web::uninstalled(&state, &tid, source.as_deref(), deadline);
+    });
 }
 
 /// Before the payload quits (POST /api/quit, or another copy took the port): the running install

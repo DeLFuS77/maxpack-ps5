@@ -14,11 +14,12 @@
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
-// /api/inst/* checks Host as the engine does (host_ok: an IPv4, an [IPv6] or localhost), so the
-// banner's address can be checked from another device: opened at this PC's LAN IP
-// (http://192.168.x.y:8095/) the banner shows that address; opened by a name (http://<pc-name>:8095/)
-// it shows http://<PS5-IP>:8095 and Install answers 403, as on the console; on localhost or
-// 127.0.0.1 it shows the placeholder too (a loopback means nothing to a phone).
+// Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
+// an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
+// (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
+// is not http(s)://<this Host>, or Sec-Fetch-Site: cross-site) gets 403. Opened at this PC's LAN IP
+// (http://192.168.x.y:8095/) the "installer only" banner shows that address; on localhost or
+// 127.0.0.1 it shows the http://<PS5-IP>:8095 placeholder (a loopback means nothing to a phone).
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -54,7 +55,7 @@ function games() {
   if (mock.empty) return [];
   const g = (tid, name, kind, packing, status, extra) => Object.assign({
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
-    drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, cache_size: 210 * MB,
+    drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
     cache_built: BUILT, backport: null, playgo: false, playgo_off: false,
   }, extra || {});
   return [
@@ -63,6 +64,10 @@ function games() {
     g('PPSA03456', 'Plain Racer', 'folder', 'plain', 'building', { cache_built: null, cache_size: 0 }),
     g('PPSA04567', 'Lz4 Tactics', 'folder', 'lz4', 'pending'),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
+    // A dump whose title id is installed on the console: left alone, the sheet says why.
+    g('PPSA06000', 'Installed Twin', 'folder', 'plain', 'error', { cache_built: null, cache_size: 0,
+      error: 'PPSA06000 (/data/homebrew/PPSA06000): an installed copy of this title exists (/user/app/PPSA06000/app.pkg): MaxPack does not register or mount this copy',
+      installed_copy: '/user/app/PPSA06000/app.pkg' }),
   ];
 }
 
@@ -222,13 +227,37 @@ function send(res, status, type, body) {
   res.end(body);
 }
 const json = (res, status, v) => send(res, status, 'application/json', JSON.stringify(v));
-// The engine's host_ok (vendor/maxpack src/web/mp_api.c): an IP, an [IPv6] or localhost, with a port or not.
+// maxpack_logic::http::host_ok: an IPv4 (four groups of 0-255), an [IPv6] or localhost, with an
+// optional :port (0-65535).
 function hostOk(h) {
-  if (!h) return false;
-  if (h[0] === '[') return h.indexOf(']') >= 0;
-  const name = h.split(':')[0];
-  return name === 'localhost' || /^[0-9.]*$/.test(name) && name.split('.').length === 4;
+  const m = /^(?:\[([0-9A-Fa-f:.]*)\]|([^:\[\]]*))(?::(\d+))?$/.exec(h || '');
+  if (!m || (m[3] !== undefined && Number(m[3]) > 65535)) return false;
+  if (m[1] !== undefined) return m[1].indexOf(':') >= 0;
+  const g = m[2].split('.');
+  return m[2] === 'localhost' || g.length === 4 && g.every((x) => /^\d{1,3}$/.test(x) && Number(x) <= 255);
 }
+// maxpack_logic::http::same_origin: no Sec-Fetch-Site cross-site, and an Origin (when sent) that is
+// http(s):// and this very Host.
+function sameOrigin(host, origin, fetchSite) {
+  if (fetchSite && fetchSite.toLowerCase() === 'cross-site') return false;
+  if (origin === undefined) return true;
+  const o = origin.toLowerCase(), h = String(host).toLowerCase();
+  return o === 'http://' + h || o === 'https://' + h;
+}
+// maxpack_logic::http::check, and src/web.rs `refused`'s answers.
+function refusal(req) {
+  const host = req.headers.host;
+  if (!hostOk(host)) return 'host';
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(host, req.headers.origin, req.headers['sec-fetch-site']))
+    return 'cross';
+  return null;
+}
+const REFUSED = {
+  host: ['MaxPack: abre esta página con la dirección IP de la consola (http://<IP de la PS5>:8095), no con un nombre.',
+    "MaxPack: open this page at the console's IP address (http://<PS5 IP>:8095), not by a name."],
+  cross: ['MaxPack: petición rechazada: no viene de la página de MaxPack.',
+    'MaxPack: request refused: it did not come from the MaxPack page.'],
+};
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -236,6 +265,12 @@ http.createServer((req, res) => {
   let chunks = '';
   req.on('data', (c) => { chunks += c; });
   req.on('end', () => {
+    const why = refusal(req);
+    if (why) {
+      console.log(`refused ${req.method} ${req.url} (${why}): Host ${req.headers.host}, Origin ${req.headers.origin}`);
+      if (p.startsWith('/api/inst/')) return json(res, 403, { ok: false, code: 'forbidden', detail: REFUSED[why][0] });
+      return send(res, 403, 'text/plain; charset=utf-8', REFUSED[why].join('\n') + '\n');
+    }
     if (req.method === 'GET' && p === '/') {
       const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '0.3.1-mock');
       return send(res, 200, 'text/html; charset=utf-8', html);
@@ -252,8 +287,6 @@ http.createServer((req, res) => {
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
     if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.0', updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
-    if (p.startsWith('/api/inst/') && !hostOk(req.headers.host))
-      return json(res, 403, { ok: false, code: 'forbidden', detail: 'petición rechazada: solo se acepta la página de MaxPack' });
     if (req.method === 'GET' && p === '/api/inst/state') return json(res, 200, instState());
     if (req.method === 'GET' && p === '/api/inst/icon') {
       const which = url.searchParams.get('p5z') || '';
@@ -268,6 +301,15 @@ http.createServer((req, res) => {
       const out = instPost(p.slice('/api/inst/'.length), body);
       return out ? json(res, 200, out) : send(res, 404, 'text/plain', 'not found');
     }
+    if (req.method === 'POST' && p === '/api/settings') {
+      let v = {};
+      try { v = JSON.parse(chunks); } catch (e) { return send(res, 400, 'text/plain', 'settings: bad JSON'); }
+      // A few of maxpack_logic::roots::never_root's paths, enough to see the page's message.
+      const bad = (v.scanpath || []).find((r) => /^\/(system[^/]*|user(?!\/data(\/|$))|mnt\/sandbox|data\/maxpack)(\/|$)|^\/+$/.test(r));
+      if (bad !== undefined) return json(res, 400, { code: 'forbidden_root', path: bad, detail: `scanpath ${bad} is never scanned` });
+      Object.assign(settings, v);
+      return send(res, 204, 'text/plain', '');
+    }
     if (req.method === 'POST' && p.startsWith('/api/')) return send(res, 204, 'text/plain', '');
     return send(res, 404, 'text/plain', 'not found');
   });
@@ -277,5 +319,5 @@ http.createServer((req, res) => {
   // The addresses to try the banner's URL with (see the top of the file).
   const lan = Object.values(require('os').networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
   for (const a of lan) console.log(`banner shows this address: http://${a.address}:${port}/`);
-  console.log(`banner shows the placeholder, Install answers 403: http://${require('os').hostname()}:${port}/`);
+  console.log(`opened by a name, every request answers 403: http://${require('os').hostname()}:${port}/`);
 });

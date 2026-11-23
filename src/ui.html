@@ -256,6 +256,10 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 .settings-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
 .settings-foot p { color: var(--muted); font-size: 0.9rem; }
 .settings-foot .btns { display: flex; gap: 0.6rem; }
+.about { margin-top: 1.6rem; padding-top: 1.2rem; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.about h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem; }
+.about p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.about p + p { margin-top: 0.35rem; }
 
 /* ---------- Narrower screens ---------- */
 @media (max-width: 1100px) {
@@ -592,6 +596,13 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
         <button class="primary" id="ssave" type="button" data-i18n="save">Save</button>
       </div>
     </div>
+    <div class="about" id="about">
+      <h3 data-i18n="aboutTitle">About</h3>
+      <p data-i18n="aboutMaxPack" data-args="version=__VERSION__">MaxPack __VERSION__ mounts and installs PS5 games, with its own build of ampr-emu-ng.</p>
+      <p data-i18n="aboutBased">Based on Kraken Mount by quer3q.</p>
+      <p data-i18n="aboutParts">It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); ps5-payload-sdk; zstd, zlib and SQLite.</p>
+      <p data-i18n="aboutLicense">Free software under GPL-3.0-or-later, with no warranty. The licences are in THIRD_PARTY_NOTICES.</p>
+    </div>
   </form>
 </section>
 </main>
@@ -660,7 +671,7 @@ var MSG = {
     paused: 'Game running ({games}), scan paused; requests run after it exits.',
     queued: 'Your request is queued.',
     stopBusy: 'A game is running: close it first, then stop MaxPack.',
-    waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.', waitSmp: 'ShadowMount+ is running: stop it to use MaxPack. Games appear once it stops.',
+    waitKstuff: 'Waiting for kstuff: it is not running yet. Games appear once it starts.',
     installerOnly: 'Another mounter is running ({name}): MaxPack only installs. It mounts no games until that one stops, and the MaxPack tile may be missing from the home screen: open this page in a browser at {url}.',
     consoleIp: 'PS5-IP',
     stopped: 'MaxPack stopped. Open the MaxPack tile to start it again.',
@@ -739,6 +750,15 @@ var MSG = {
     loading: 'Loading...', saving: 'Saving...', saved: 'Saved.',
     loadFailed: 'Could not load settings: {error}. Close and reopen to retry; Save is off.',
     saveFailed: 'Save failed: {error}',
+    forbiddenRoot: 'MaxPack never scans {path}: it is a system folder, the console\'s user data or installed games, or a data folder of MaxPack or of another mounter.',
+    // Settings: About
+    aboutTitle: 'About',
+    aboutMaxPack: 'MaxPack {version} mounts and installs PS5 games, with its own build of ampr-emu-ng.',
+    aboutBased: 'Based on Kraken Mount by quer3q.',
+    aboutParts: 'It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); ps5-payload-sdk; zstd, zlib and SQLite.',
+    aboutLicense: 'Free software under GPL-3.0-or-later, with no warranty. The licences are in THIRD_PARTY_NOTICES.',
+    // Game sheet: a title id installed on the console (status error)
+    errInstalledCopy: 'This title is installed on the console ({path}): MaxPack does not register or mount this copy, so the installed game stays as it is.',
     // Library: ShadowMountPlus images (listed, not mounted)
     imagesTitle: 'ShadowMountPlus images', imagesHint: 'MaxPack does not mount these images yet.',
     imageWith: 'for now, with ShadowMountPlus',
@@ -793,7 +813,7 @@ var MSG = {
     paused: 'Идёт игра ({games}), сканирование на паузе; запросы выполнятся после её закрытия.',
     queued: 'Запрос в очереди.',
     stopBusy: 'Идёт игра: сначала закройте её, затем остановите MaxPack.',
-    waitKstuff: 'Ожидание kstuff: он ещё не запущен. Игры появятся после его запуска.', waitSmp: 'Запущен ShadowMount+: остановите его, чтобы использовать MaxPack. Игры появятся после его остановки.',
+    waitKstuff: 'Ожидание kstuff: он ещё не запущен. Игры появятся после его запуска.',
     stopped: 'MaxPack остановлен. Чтобы запустить его снова, откройте плитку MaxPack.',
     prevFilter: 'Предыдущий фильтр (L2)', nextFilter: 'Следующий фильтр (R2)', sourceType: 'Тип источника',
     kindAll: 'Все', kindFolders: 'Папки', badgeFolder: 'Папка',
@@ -877,7 +897,7 @@ var MSG = {
     paused: '游戏运行中 ({games})，扫描已暂停；请求将在游戏退出后执行。',
     queued: '你的请求已排队。',
     stopBusy: '有游戏正在运行：请先关闭游戏，再停止 MaxPack。',
-    waitKstuff: '正在等待 kstuff：它尚未运行。启动后游戏将会显示。', waitSmp: 'ShadowMount+ 正在运行：请停止它以使用 MaxPack。停止后游戏将会显示。',
+    waitKstuff: '正在等待 kstuff：它尚未运行。启动后游戏将会显示。',
     stopped: 'MaxPack 已停止。打开 MaxPack 磁贴即可再次启动。',
     prevFilter: '上一个筛选 (L2)', nextFilter: '下一个筛选 (R2)', sourceType: '来源类型',
     kindAll: '全部', kindFolders: '文件夹', badgeFolder: '文件夹',
@@ -961,7 +981,7 @@ var MSG = {
     paused: 'Spiel läuft ({games}), Scan pausiert; Anfragen laufen, sobald es beendet ist.',
     queued: 'Ihre Anfrage wartet in der Warteschlange.',
     stopBusy: 'Ein Spiel läuft: Schließen Sie es zuerst und beenden Sie dann MaxPack.',
-    waitKstuff: 'Warte auf kstuff: Es läuft noch nicht. Die Spiele erscheinen, sobald es startet.', waitSmp: 'ShadowMount+ läuft: Beenden Sie es, um MaxPack zu nutzen. Die Spiele erscheinen, sobald es beendet ist.',
+    waitKstuff: 'Warte auf kstuff: Es läuft noch nicht. Die Spiele erscheinen, sobald es startet.',
     stopped: 'MaxPack wurde beendet. Öffnen Sie die Kachel MaxPack, um es erneut zu starten.',
     prevFilter: 'Vorheriger Filter (L2)', nextFilter: 'Nächster Filter (R2)', sourceType: 'Quelltyp',
     kindAll: 'Alle', kindFolders: 'Ordner', badgeFolder: 'Ordner',
@@ -1045,7 +1065,7 @@ var MSG = {
     paused: 'Juego en curso ({games}), escaneo en pausa; las solicitudes se ejecutan cuando se cierre.',
     queued: 'Tu solicitud está en cola.',
     stopBusy: 'Hay un juego en curso: ciérralo primero y luego detén MaxPack.',
-    waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.', waitSmp: 'ShadowMount+ está en ejecución: detenlo para usar MaxPack. Los juegos aparecerán cuando se detenga.',
+    waitKstuff: 'Esperando a kstuff: aún no se está ejecutando. Los juegos aparecerán cuando se inicie.',
     installerOnly: 'Hay otro montador en marcha ({name}): MaxPack solo instala. No monta juegos hasta que ese se cierre, y el icono de MaxPack puede no estar en el menú: abre esta página en el navegador, en {url}.',
     consoleIp: 'ip-de-la-PS5',
     stopped: 'MaxPack se ha detenido. Abre el icono de MaxPack para iniciarlo de nuevo.',
@@ -1120,6 +1140,13 @@ var MSG = {
     loading: 'Cargando...', saving: 'Guardando...', saved: 'Guardado.',
     loadFailed: 'No se pudieron cargar los ajustes: {error}. Cierra y vuelve a abrir para reintentar; Guardar está desactivado.',
     saveFailed: 'Error al guardar: {error}',
+    forbiddenRoot: 'MaxPack nunca explora {path}: es una carpeta del sistema, los datos de usuario o los juegos instalados de la consola, o una carpeta de datos de MaxPack o de otro montador.',
+    aboutTitle: 'Acerca de',
+    aboutMaxPack: 'MaxPack {version} monta e instala juegos de PS5, con su propia compilación de ampr-emu-ng.',
+    aboutBased: 'Basado en Kraken Mount, de quer3q.',
+    aboutParts: 'Usa ampr-emu-ng (quer3q); código de ShadowMountPlus y los emuladores dlc_emu y pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib y SQLite.',
+    aboutLicense: 'Software libre con licencia GPL-3.0-or-later, sin garantía. Las licencias están en THIRD_PARTY_NOTICES.',
+    errInstalledCopy: 'Este título está instalado en la consola ({path}): MaxPack no registra ni monta esta copia, así que el juego instalado se queda como está.',
     imagesTitle: 'Imágenes de ShadowMountPlus', imagesHint: 'MaxPack aún no monta estas imágenes.',
     imageWith: 'por ahora, con ShadowMountPlus',
     installTab: 'Instalar', iTitle: 'Instalar juegos',
@@ -1172,7 +1199,7 @@ var MSG = {
     paused: "Jeu en cours ({games}), analyse en pause ; les demandes s'exécutent après sa fermeture.",
     queued: 'Votre demande est en attente.',
     stopBusy: 'Un jeu est en cours : fermez-le, puis arrêtez MaxPack.',
-    waitKstuff: 'En attente de kstuff : il n\'est pas encore lancé. Les jeux apparaîtront dès son démarrage.', waitSmp: 'ShadowMount+ est en cours d\'exécution : arrêtez-le pour utiliser MaxPack. Les jeux apparaîtront dès son arrêt.',
+    waitKstuff: 'En attente de kstuff : il n\'est pas encore lancé. Les jeux apparaîtront dès son démarrage.',
     stopped: 'MaxPack est arrêté. Ouvrez la vignette MaxPack pour le relancer.',
     prevFilter: 'Filtre précédent (L2)', nextFilter: 'Filtre suivant (R2)', sourceType: 'Type de source',
     kindAll: 'Tous', kindFolders: 'Dossiers', badgeFolder: 'Dossier',
@@ -1256,7 +1283,7 @@ var MSG = {
     paused: 'ゲーム実行中 ({games})、スキャンを一時停止中。リクエストはゲーム終了後に実行されます。',
     queued: 'リクエストは待機中です。',
     stopBusy: 'ゲームが実行中です: 先にゲームを閉じてから MaxPack を停止してください。',
-    waitKstuff: 'kstuff を待っています: まだ起動していません。起動するとゲームが表示されます。', waitSmp: 'ShadowMount+ が実行中です: MaxPack を使うには停止してください。停止するとゲームが表示されます。',
+    waitKstuff: 'kstuff を待っています: まだ起動していません。起動するとゲームが表示されます。',
     stopped: 'MaxPack は停止しました。再び起動するには MaxPack タイルを開いてください。',
     prevFilter: '前のフィルター (L2)', nextFilter: '次のフィルター (R2)', sourceType: 'ソースの種類',
     kindAll: 'すべて', kindFolders: 'フォルダー', badgeFolder: 'フォルダー',
@@ -1340,7 +1367,7 @@ var MSG = {
     paused: 'Jogo em execução ({games}), varredura pausada; as solicitações rodam quando ele fechar.',
     queued: 'Sua solicitação está na fila.',
     stopBusy: 'Há um jogo em execução: feche-o primeiro e depois pare o MaxPack.',
-    waitKstuff: 'Aguardando o kstuff: ele ainda não está em execução. Os jogos aparecem quando ele iniciar.', waitSmp: 'O ShadowMount+ está em execução: pare-o para usar o MaxPack. Os jogos aparecem quando ele parar.',
+    waitKstuff: 'Aguardando o kstuff: ele ainda não está em execução. Os jogos aparecem quando ele iniciar.',
     stopped: 'O MaxPack foi parado. Abra o bloco do MaxPack para iniciá-lo de novo.',
     prevFilter: 'Filtro anterior (L2)', nextFilter: 'Próximo filtro (R2)', sourceType: 'Tipo de origem',
     kindAll: 'Todos', kindFolders: 'Pastas', badgeFolder: 'Pasta',
@@ -1424,7 +1451,7 @@ var MSG = {
     paused: 'Gioco in esecuzione ({games}), scansione in pausa; le richieste partono quando viene chiuso.',
     queued: 'La richiesta è in coda.',
     stopBusy: 'Un gioco è in esecuzione: chiudilo prima, poi arresta MaxPack.',
-    waitKstuff: 'In attesa di kstuff: non è ancora in esecuzione. I giochi compariranno quando si avvia.', waitSmp: 'ShadowMount+ è in esecuzione: arrestalo per usare MaxPack. I giochi compariranno quando si arresta.',
+    waitKstuff: 'In attesa di kstuff: non è ancora in esecuzione. I giochi compariranno quando si avvia.',
     stopped: 'MaxPack è stato arrestato. Apri il riquadro MaxPack per avviarlo di nuovo.',
     prevFilter: 'Filtro precedente (L2)', nextFilter: 'Filtro successivo (R2)', sourceType: 'Tipo di sorgente',
     kindAll: 'Tutti', kindFolders: 'Cartelle', badgeFolder: 'Cartella',
@@ -1508,7 +1535,7 @@ var MSG = {
     paused: '게임 실행 중({games}), 스캔 일시 중지됨. 요청은 게임이 종료된 후 실행됩니다.',
     queued: '요청이 대기 중입니다.',
     stopBusy: '게임이 실행 중입니다: 먼저 게임을 닫은 다음 MaxPack를 중지하세요.',
-    waitKstuff: 'kstuff를 기다리는 중: 아직 실행되지 않았습니다. 실행되면 게임이 표시됩니다.', waitSmp: 'ShadowMount+가 실행 중입니다: MaxPack를 사용하려면 중지하세요. 중지되면 게임이 표시됩니다.',
+    waitKstuff: 'kstuff를 기다리는 중: 아직 실행되지 않았습니다. 실행되면 게임이 표시됩니다.',
     stopped: 'MaxPack가 중지되었습니다. 다시 시작하려면 MaxPack 타일을 여세요.',
     prevFilter: '이전 필터 (L2)', nextFilter: '다음 필터 (R2)', sourceType: '소스 유형',
     kindAll: '전체', kindFolders: '폴더', badgeFolder: '폴더',
@@ -1592,7 +1619,7 @@ var MSG = {
     paused: 'لعبة قيد التشغيل ({games})، المسح متوقف مؤقتًا؛ تُنفَّذ الطلبات بعد إغلاقها.',
     queued: 'طلبك في الانتظار.',
     stopBusy: 'هناك لعبة قيد التشغيل: أغلقها أولًا، ثم أوقف MaxPack.',
-    waitKstuff: 'في انتظار kstuff: لم يبدأ تشغيله بعد. ستظهر الألعاب عند تشغيله.', waitSmp: 'ShadowMount+ قيد التشغيل: أوقفه لاستخدام MaxPack. ستظهر الألعاب عند إيقافه.',
+    waitKstuff: 'في انتظار kstuff: لم يبدأ تشغيله بعد. ستظهر الألعاب عند تشغيله.',
     stopped: 'توقّف MaxPack. افتح لوحة MaxPack لتشغيله مرة أخرى.',
     prevFilter: 'الفلتر السابق (L2)', nextFilter: 'الفلتر التالي (R2)', sourceType: 'نوع المصدر',
     kindAll: 'الكل', kindFolders: 'المجلدات', badgeFolder: 'مجلد',
@@ -2136,7 +2163,7 @@ function renderModal() {
       fields.appendChild(dd);
     });
   }
-  setText($('m-err'), modalActionError || g.error || '');
+  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : g.error) || '');
   // A duplicate shares the title id of the library copy: the API calls would act on that copy.
   $('m-rebuild').disabled = g.status === 'duplicate' || g.status === 'building';
   $('m-delete').disabled = g.status === 'duplicate';
@@ -2471,7 +2498,15 @@ $('ssave').onclick = async function () {
   try {
     var r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(readSettings()) });
-    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    if (!r.ok) {
+      var txt = await r.text(), j = null;
+      try { j = JSON.parse(txt); } catch (e) { /* plain text */ }
+      if (j && j.code === 'forbidden_root') {
+        live($('smsg'), function () { return t('saveFailed', { error: t('forbiddenRoot', { path: j.path }) }); });
+        return;
+      }
+      throw new Error(txt || 'HTTP ' + r.status);
+    }
     live($('smsg'), function () { return t('saved'); });
     schedule(300);
   } catch (e) { live($('smsg'), function () { return t('saveFailed', { error: e.message }); }); }
