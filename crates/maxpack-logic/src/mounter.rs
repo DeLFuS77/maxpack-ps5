@@ -54,7 +54,18 @@ pub enum Look {
 /// The look for `running(name)`; `None` when the process list could not be read.
 pub fn look(running: Option<&dyn Fn(&str) -> bool>) -> Look {
     let Some(running) = running else { return Look::Error };
-    OTHER_MOUNTERS.into_iter().find(|n| running(n)).map_or(Look::NotFound, Look::Found)
+    walk_look(running, false)
+}
+
+/// The look of one walk of the process list, `failed` when a bad record or a sysctl error cut it
+/// short: a mounter seen before that is Found all the same (never lost to a later bad record);
+/// nothing seen is Error when the walk failed, NotFound when it ran to the end.
+pub fn walk_look(running: &dyn Fn(&str) -> bool, failed: bool) -> Look {
+    match OTHER_MOUNTERS.into_iter().find(|n| running(n)) {
+        Some(n) => Look::Found(n),
+        None if failed => Look::Error,
+        None => Look::NotFound,
+    }
 }
 
 /// How far apart the two clean looks must be before MaxPack mounts again after another mounter.
@@ -133,6 +144,26 @@ mod tests {
         assert_eq!(look(Some(&|n| n == KM)), Look::Found(KM));
         // Both running: OTHER_MOUNTERS order.
         assert_eq!(look(Some(&|_| true)), Look::Found(SMP));
+    }
+
+    #[test]
+    fn walk_cut_short_keeps_what_it_found() {
+        let none: &dyn Fn(&str) -> bool = &|_| false;
+        let smp: &dyn Fn(&str) -> bool = &|n| n == SMP;
+        let km: &dyn Fn(&str) -> bool = &|n| n == KM;
+        let both: &dyn Fn(&str) -> bool = &|_| true;
+        // (seen before the walk ended, walk failed, look)
+        let table: [(&dyn Fn(&str) -> bool, bool, Look); 6] = [
+            (none, false, Look::NotFound),
+            (none, true, Look::Error),
+            (smp, false, Look::Found(SMP)),
+            (smp, true, Look::Found(SMP)), // a later bad record does not lose it
+            (km, true, Look::Found(KM)),
+            (both, true, Look::Found(SMP)),
+        ];
+        for (i, (running, failed, want)) in table.into_iter().enumerate() {
+            assert_eq!(walk_look(running, failed), want, "row {i}");
+        }
     }
 
     #[test]

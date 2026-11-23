@@ -166,7 +166,7 @@ is ignored as a whole). The web UI edits the same file.
   id, modes fixed, failures and the first failed path and error (none when nothing changed).
 - Purge (settings): delete caches of titles not in the library (`register::unmount_title` first;
   a dir whose unmount fails is skipped and logged), empty and rebuild the rest. It stops before the
-  next title once MaxPack must stop mounting (another mounter started) and goes on at the next pass
+  next title once MaxPack must stop mounting (another mounter started, or kstuff went away) and goes on at the next pass
   that mounts.
 
 ## Flow (`src/main.rs`)
@@ -178,8 +178,9 @@ copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web 
 SMP `sm_kstuff_is_loaded`), then the mounter thread and the launch watcher thread.
 Another mounter: kstuff, then one walk of the process list for a `shadowmountplus.elf` or `kraken-mount.elf` process, is looked at every
 2 s (`watch_mounter`, which wakes the loop on a change) and at each loop turn, through `maxpack_logic::mounter::Debounced` into
-`State::mounter`: a mounter found counts at once; it counts as gone only after two clean looks at least 2 s apart, and an unreadable
-process list (`launch::running_names` Err: sysctl failed, a bad record) changes nothing. While it is not Ready: no scan,
+`State::mounter`: a mounter found counts at once; it counts as gone only after two clean looks at least 2 s apart, and a walk of the
+process list cut short (`launch::running_names` error: sysctl failed, a bad record) still counts a mounter seen before it
+(`maxpack_logic::mounter::walk_look`); only an empty failed walk is an Error, which changes nothing. While it is not Ready: no scan,
 build, register, purge or auto-remove (both also stop before their next title), `/api/delete` and `/api/eject` answer 409, a pass in progress stops before its next title (a title built meanwhile is neither registered
 nor mounted), the launch watcher mounts no new overlay (a launch first seen then never gets one; overlays already up still go on
 exit as always), one toast per change, `waiting` = `"other:<process>"`; the web UI stays up (`State::installer_only`). Back to Ready:

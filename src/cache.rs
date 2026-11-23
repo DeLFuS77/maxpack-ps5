@@ -281,8 +281,8 @@ pub fn total_size() -> u64 {
 }
 
 /// Deletes caches/<TID> not in `keep`; empties the kept ones so they rebuild. Stops before the next
-/// title once `go_on()` is false (another mounter started: its mount may be at /system_ex/app/<TID>);
-/// Ok(false) then, Ok(true) when done.
+/// title once `go_on()` is false (MaxPack must stop mounting: another mounter started, whose mount
+/// may be at /system_ex/app/<TID>, or kstuff went away); Ok(false) then, Ok(true) when done.
 pub fn purge(keep: &[String], go_on: &dyn Fn() -> bool) -> Result<bool> {
     let Ok(rd) = fs::read_dir(CACHES) else { return Ok(true) };
     for e in rd.flatten() {

@@ -20,7 +20,7 @@ mod web;
 
 use cache::Fresh;
 use config::Settings;
-use maxpack_logic::mounter::{display_name, look, Debounced, MounterState, OTHER_MOUNTERS};
+use maxpack_logic::mounter::{display_name, walk_look, Debounced, MounterState, OTHER_MOUNTERS};
 use scan::{Kind, Source};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -635,24 +635,21 @@ static OTHER_SEEN: AtomicBool = AtomicBool::new(false);
 /// one) and, with `wake`, the scan loop woken to act on it. Callers are serialized (the debounce
 /// lock), so a later look is never stored before an earlier one.
 fn refresh_mounter(state: &State, wake: bool) -> MounterState {
-    /// The debounce, and whether the last look could not read the process list (logged once).
+    /// The debounce, and whether the last walk of the process list failed (logged once per streak).
     static DEBOUNCED: std::sync::Mutex<(Debounced, bool)> = std::sync::Mutex::new((Debounced::new(), false));
     let mut guard = DEBOUNCED.lock().unwrap_or_else(|e| e.into_inner());
     let (debounced, list_failed) = &mut *guard;
-    let this_look = match launch::running_names(&OTHER_MOUNTERS) {
-        Ok(seen) => {
-            if std::mem::take(list_failed) {
-                log!("process list readable again");
-            }
-            look(Some(&|n: &str| seen.iter().any(|s| *s == n)))
+    let (seen, walk_error) = launch::running_names(&OTHER_MOUNTERS);
+    match &walk_error {
+        Some(e) if !*list_failed => {
+            log!("process list walk failed ({e}); a mounter seen before that counts, else the mounter state stays as it was")
         }
-        Err(e) => {
-            if !std::mem::replace(list_failed, true) {
-                log!("process list unreadable ({e}); the mounter state stays as it was");
-            }
-            look(None)
-        }
-    };
+        None if *list_failed => log!("process list readable again"),
+        _ => {}
+    }
+    *list_failed = walk_error.is_some();
+    // A mounter seen before a bad record is Found; only an empty walk that failed is an Error.
+    let this_look = walk_look(&|n: &str| seen.iter().any(|s| *s == n), walk_error.is_some());
     let m = debounced.update(sys::kstuff_loaded(), this_look, sys::uptime_ms());
     let last = std::mem::replace(&mut *state.mounter.lock().unwrap(), m);
     if matches!(m, MounterState::OtherMounter(_)) {
@@ -916,7 +913,7 @@ fn main() {
             match cache::purge(&keep, &|| state.mounts()) {
                 Ok(true) => log!("caches purged; {} kept for rebuild", keep.len()),
                 Ok(false) => {
-                    log!("purge stopped: another mounter started; it goes on once MaxPack mounts again");
+                    log!("purge stopped: MaxPack does not mount now (another mounter, or no kstuff); it goes on once MaxPack mounts again");
                     state.purge.store(true, Ordering::SeqCst);
                 }
                 Err(e) => log!("purge {}: {e}", cache::CACHES),

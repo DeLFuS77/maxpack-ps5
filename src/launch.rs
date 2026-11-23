@@ -119,15 +119,17 @@ pub fn find_pid(name: &str) -> Option<libc::pid_t> {
     proc_find(|_, td| td == name.as_bytes()).ok().flatten()
 }
 
-/// Which of `names` run, from one walk of the process list. Err when the list could not be read
-/// (sysctl failed, a bad record), which is not the same as none running (main::refresh_mounter).
-pub fn running_names(names: &[&'static str]) -> io::Result<Vec<&'static str>> {
+/// Which of `names` run, from one walk of the process list, and the error that cut the walk short
+/// (sysctl failed, a bad record), if any. The names seen before that error are returned with it,
+/// never dropped: maxpack_logic::mounter::walk_look makes them Found, and only an empty walk that
+/// failed an Error (not the same as none running; main::refresh_mounter).
+pub fn running_names(names: &[&'static str]) -> (Vec<&'static str>, Option<io::Error>) {
     let mut seen = Vec::new();
-    proc_find(|_, td| {
+    let walk = proc_find(|_, td| {
         seen.extend(names.iter().filter(|n| td == n.as_bytes()));
         false
-    })?;
-    Ok(seen)
+    });
+    (seen, walk.err())
 }
 
 /// The first process whose app info title id is `tid` (a game started before this watcher).
