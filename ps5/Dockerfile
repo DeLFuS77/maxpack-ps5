@@ -1,10 +1,11 @@
-# PS5 payload toolchain: Rust (build-std) + ps5-payload-dev SDK. Built by ps5/build.sh.
+# PS5 payload toolchain: Rust (build-std) + ps5-payload-dev SDK (and cmake for the MaxPack engine in
+# vendor/maxpack, through the SDK's prospero-cmake). Built by ps5/build.sh.
 # Runs on arm64 or x86-64 hosts: everything here cross-compiles, nothing is emulated.
 # ponytail: the Rust image is pinned by digest and the SDK by SHA-256; Debian's clang-19 packages
 # float within trixie (point releases only). Pin a snapshot.debian.org date if that ever bites.
 FROM rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates clang-19 lld-19 llvm-19 make curl unzip python3 \
+    ca-certificates clang-19 lld-19 llvm-19 make cmake curl unzip python3 \
     && rm -rf /var/lib/apt/lists/*
 ENV PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk LLVM_CONFIG=/usr/bin/llvm-config-19
 ENV PATH=/usr/lib/llvm-19/bin:$PATH

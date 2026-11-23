@@ -176,6 +176,11 @@ Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as 
 copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web thread, klog thread when `debug`, then wait
 (2 s poll, one toast, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
 SMP `sm_kstuff_is_loaded`), then the mounter thread and the launch watcher thread.
+The installer (`src/installer.rs`) starts on its own thread right after the port is taken, whatever the
+mounter state (see Installer below). The home-screen tile registers once, after that wait, and never
+while another mounter runs (`main::register_tile_when_mounting`: on FW 12+ the tile goes in with
+InstallAll, which installs whatever is staged in `/user/app`, the other mounter's titles too); it is
+registered once that mounter stops, and meanwhile the page opens at `http://<console IP>:8095`.
 Another mounter: kstuff, then one walk of the process list for a `shadowmountplus.elf` or `kraken-mount.elf` process, is looked at every
 2 s (`watch_mounter`, which wakes the loop on a change) and at each loop turn, through `maxpack_logic::mounter::Debounced` into
 `State::mounter`: a mounter found counts at once; it counts as gone only after two clean looks at least 2 s apart, and a walk of the
@@ -374,6 +379,11 @@ pub fn is_ours(title_id: &str) -> Result<(), std::path::PathBuf>; // Err(path) =
 pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32)>; // "X.Y.Z", leading "v" allowed
 pub(crate) fn newer(a: Option<&str>, b: Option<&str>) -> bool;   // a strictly newer than b; an unknown version is older than any
 
+// installer.rs (the MaxPack engine through ps5/installer.c and mp_api_call; Answer = {status, ctype, body})
+pub fn start(state: Arc<State>, runtime: &'static [u8], runtime_version: &'static str); // own thread; 503 until up
+pub fn call(method: &str, path: &str, host: &str, ctype: &str, body: &[u8], loopback: bool) -> Answer; // one at a time
+pub fn stop();                                            // before exit: pause, wait for the queue (3 s at most)
+
 // launch.rs (titles: overlay these; running: title ids with a live session, kept by the watcher)
 pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<String>>>);
 
@@ -432,7 +442,15 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
 - `GET /icon/<TID>` icon0.png, `GET /pic/<TID>` pic0.png (or pic1.png): from the source's sce_sys, fallback
   `/user/appmeta/<TID>/`, then (pkg) from the .pkg itself via `cache::pkg_file`; 404 when none. Keyed by title id; the UI must re-request when the title id appears.
 - `GET /file/data/...` only with `debug=1`. `POST /api/quit`: loopback with an empty body (a newer copy
-  taking over) or body `shutdown` from any host (the UI's Shut down, toast "Kraken Mount stopped"); 409 while a game runs.
+  taking over) or body `shutdown` from any host (the UI's Shut down, toast "MaxPack stopped"); 409 while a game runs.
+  Before exiting, the installer is stopped in order (`installer::stop`); the same when another copy took the port.
+- `/api/inst/<x>`: the installer's own API as `/api/<x>` (`maxpack_logic::inst::installer_path`): GET `state`,
+  `icon?p5z=`; POST `scan`, `probe`, `install`, `pause`, `verify`, `uninstall`, `discard` (JSON bodies, see the
+  engine's `src/web/mp_api.h`); anything else 404. Method, Host, Content-Type and body go as sent, `loopback`
+  from the TCP peer; the engine checks Host (an IP or localhost) and, on POST, `application/json`, and its
+  answer goes back as it is (an application error is 200 `{ok:false, code, detail}`). 503
+  `{ok:false, code:"starting"|"no_installer", detail}` until it is up or when it could not start.
+  Never gated on the mounter state: that is the "installer only" mode.
 
 ## Self copy and start on open (as Dump Forge)
 `ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `KRAKEN_SELF_ELF`) embedding
@@ -442,6 +460,21 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 `GET http://127.0.0.1:9021/data/maxpack/maxpack.elf?args=serve&pipe=0&n=<nonce>`, then it keeps polling.
 - Requests are capped at 16 KiB: head too large 431, head + Content-Length too large (or overflowing) 413,
   non-numeric Content-Length 400.
+
+## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
+The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
+(`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`), with the zstd and
+zlib its submodules pin. `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
+libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
+`mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's
+`src/ps5/main_ps5.c` does: `mp_inst_env_default` (`/data`, `/mnt/usb0..7`, `/mnt/ext0..1`), the ShadowMountPlus
+client with `smp_fakelib_mode` from `/data/maxpack/config.json` (installs register in ShadowMountPlus as in
+phase 2), the runtime = `BUNDLED_AMPR` (the bundled `libSceAmpr.sprx`, embedded once; mtime from build.sh),
+toasts through `sys::notify` when `notify` is on. Its data stays in `/data/maxpack/` (`state/`, `installed/`,
+`tmp/`, `config.json`). It has no server: web.rs forwards `/api/inst/*` (one request at a time, as the engine's
+own server). Quitting pauses a running install (POST `/api/pause`, again for each queued job that starts) and
+waits up to 3 s for the queue (`mp_api_wait_idle`); a paused install is listed as unfinished at the next start,
+where Install resumes it.
 
 ## Build and check
 `cargo check --target x86_64-unknown-freebsd` (fast, host). Full payload: `ps5/build.sh` (Docker).

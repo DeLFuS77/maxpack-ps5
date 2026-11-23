@@ -14,6 +14,7 @@ fi
 # The bundled dlc_emu and pgo_stub (src/cache.rs EMUS) too.
 (cd vendor/dlc_emu && sha256sum -c --strict SHA256SUMS)
 (cd vendor/pgo_stub && sha256sum -c --strict SHA256SUMS)
+echo "MaxPack engine: vendor/maxpack $(cat vendor/maxpack/COMMIT)"
 
 out=target/ps5
 cc="$PS5_PAYLOAD_SDK/bin/prospero-clang"
@@ -26,6 +27,27 @@ done
 # The SQLite amalgamation (Dockerfile) is third-party code: no -Werror.
 "$cc" -O2 -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DEFAULT_MEMSTATUS=0 \
   -c /opt/sqlite/sqlite3.c -o "$out/shim/sqlite3.o"
+
+# The MaxPack engine (vendor/maxpack, the phase-2 installer: tools/sync_maxpack.sh copies it), built
+# by its own CMake with the SDK as the engine's CI ps5 job does, into the static libraries that
+# ps5/linker.sh links (in this order). Its maxpack_elf target (the phase-2 ELF) is not built, so
+# -DMAXPACK_RUNTIME, which only feeds that target, is not passed: the runtime the installer carries
+# is src/main.rs BUNDLED_AMPR, the same vendor/ampr-emu-ng/libSceAmpr.sprx, embedded once.
+eng="$out/engine"
+engine_libs=(maxpack_web maxpack_page maxpack_install maxpack_net maxpack_pack maxpack_analyze maxpack_core mp_zstd mp_zlib)
+"$PS5_PAYLOAD_SDK/bin/prospero-cmake" -S vendor/maxpack -B "$eng" -DMAXPACK_PS5=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build "$eng" -j "$(nproc)" --target "${engine_libs[@]}"
+for lib in "${engine_libs[@]}"; do
+  [[ -f "$eng/lib$lib.a" ]] || { echo "build.sh: no $eng/lib$lib.a" >&2; ls "$eng" >&2; exit 1; }
+done
+printf '%s\n' "${engine_libs[@]}" > "$eng/libs.txt"
+# src/installer.rs's side of it: the console's env and the ShadowMountPlus client (ps5/installer.c).
+"$cc" -O2 -Wall -Wextra -Werror -Ivendor/maxpack/src/core -Ivendor/maxpack/src/net \
+  -Ivendor/maxpack/src/install -Ivendor/maxpack/src/web -c ps5/installer.c -o "$out/shim/installer.o"
+# The mtime the installer gives the runtime it writes (installer::runtime_mtime): the file's, as
+# the engine's CMake takes it for -DMAXPACK_RUNTIME.
+MAXPACK_RUNTIME_MTIME=$(stat -c %Y vendor/ampr-emu-ng/libSceAmpr.sprx)
+export MAXPACK_RUNTIME_MTIME
 
 export RUSTC_BOOTSTRAP=1
 # The PS5 kernel fills FreeBSD 11 structs (stat 120 bytes, dirent 264, old statfs); libc and the
@@ -49,4 +71,15 @@ cp "$out/x86_64-ps5-freebsd/release/maxpack-ps5" "$out/maxpack-stage1.elf"
 MAXPACK_SELF_ELF="/work/$out/maxpack-stage1.elf" build --features self-copy
 cp "$out/x86_64-ps5-freebsd/release/maxpack-ps5" "$out/maxpack.elf"
 llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
+# The engine is inside: maxpack.elf is stripped (Cargo profile strip), so llvm-readelf has no
+# symbol table to show; lld's map of the same link (ps5/linker.sh -Map) lists every symbol placed.
+{
+  echo
+  echo "MaxPack engine vendor/maxpack $(cat vendor/maxpack/COMMIT), symbols in maxpack.elf (lld map):"
+  for sym in mp_api_call mp_inst_install; do
+    line=$(grep -E "[[:space:]]$sym\$" "$out/maxpack.map" | head -n 1 || true)
+    [[ -n "$line" ]] || { echo "build.sh: $sym is not in maxpack.elf ($out/maxpack.map)" >&2; exit 1; }
+    echo "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+/ /g'
+  done
+} >> "$out/maxpack.elf.txt"
 ls -l "$out/maxpack.elf"

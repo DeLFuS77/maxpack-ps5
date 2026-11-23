@@ -4,6 +4,7 @@ use crate::config::{self, Settings};
 use crate::scan::{Image, Kind, Packing, Source};
 use crate::{cache, register, storage, sys};
 use maxpack_logic::mounter::MounterState;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
@@ -172,11 +173,10 @@ pub fn take_port() -> Option<TcpListener> {
     None
 }
 
-/// Listens on 0.0.0.0:PORT forever, one short-lived thread per connection. Once bound, registers
-/// the home-screen tile that opens the UI (once, in its own thread).
+/// Listens on 0.0.0.0:PORT forever, one short-lived thread per connection. (The home-screen tile
+/// that opens the UI is main::register_tile_when_mounting's.)
 pub fn serve(state: Arc<State>, mut listener: TcpListener) {
     log!("web UI on port {PORT}");
-    std::thread::spawn(|| crate::register::register_tile(PORT));
     loop {
         match listener.accept() {
             Ok((conn, _)) => {
@@ -208,6 +208,7 @@ fn rebind(state: &State) -> TcpListener {
             Ok(l) => return l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && !state.paused() => {
                 log!("web: port {PORT} taken by another copy; quitting");
+                crate::installer::stop();
                 std::process::exit(0)
             }
             Err(e) if !logged => {
@@ -221,14 +222,15 @@ fn rebind(state: &State) -> TcpListener {
 
 struct Reply {
     code: u16,
-    ctype: &'static str,
+    /// Owned only for what the installer answers (installer::Answer).
+    ctype: Cow<'static, str>,
     body: Vec<u8>,
     /// "no-cache" for what the browser's AppCache keeps (page, manifest, images), else "no-store".
     cache: &'static str,
 }
 
-fn reply(code: u16, ctype: &'static str, body: impl Into<Vec<u8>>) -> Reply {
-    Reply { code, ctype, body: body.into(), cache: "no-store" }
+fn reply(code: u16, ctype: impl Into<Cow<'static, str>>, body: impl Into<Vec<u8>>) -> Reply {
+    Reply { code, ctype: ctype.into(), body: body.into(), cache: "no-store" }
 }
 
 /// For the AppCache: revalidated on every load, so a new payload's page replaces the kept one.
@@ -263,10 +265,14 @@ fn handle(state: &State, mut conn: TcpStream) -> std::io::Result<()> {
         200 => "OK",
         204 => "No Content",
         400 => "Bad Request",
+        403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
         413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
         _ => "Error",
     };
     let mut head = format!("HTTP/1.1 {} {reason}\r\nConnection: close\r\n", r.code);
@@ -330,6 +336,8 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
     let target = parts.next().unwrap_or("");
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     match (method, path) {
+        // The installer's routes (also in installer-only mode: never gated on the mounter state).
+        (_, p) if p.starts_with("/api/inst/") => installer(head, method, target, body, loopback),
         ("GET", "/") => cached("text/html; charset=utf-8", UI.replace("__VERSION__", env!("CARGO_PKG_VERSION"))),
         ("GET", "/maxpack.appcache") => cached("text/cache-manifest", appcache()),
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
@@ -361,6 +369,8 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
                 if toast {
                     sys::notify(crate::i18n::stopped(crate::i18n::lang()));
                 }
+                // An install in progress pauses first, so it resumes at the next start.
+                crate::installer::stop();
                 std::thread::sleep(Duration::from_millis(200));
                 std::process::exit(0)
             });
@@ -395,6 +405,17 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         }
         _ => not_found(),
     }
+}
+
+/// `/api/inst/<x>`: the installer's `/api/<x>` (maxpack_logic::inst::installer_path), with the
+/// method, Host, Content-Type and body as sent and `loopback` from the TCP peer; its answer as it
+/// is. Its POST bodies are small JSON (paths): MAX_REQUEST is plenty.
+fn installer(head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
+    use maxpack_logic::inst::{header, installer_path};
+    let Some(path) = installer_path(method, target) else { return not_found() };
+    let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
+    let a = crate::installer::call(method, &path, host, ctype, body, loopback);
+    reply(a.status, a.ctype, a.body)
 }
 
 fn post_settings(state: &State, body: &[u8]) -> Reply {

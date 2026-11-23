@@ -13,8 +13,17 @@ for arg in "$@"; do
 done
 obj=/work/target/ps5/shim
 mapfile -t wraps < /work/ps5/shim/syscalls.link
-# rustc passes -nodefaultlibs, so the SDK's native imports are named here.
+# The MaxPack engine's static libraries (ps5/build.sh), dependents first and before the SDK's
+# libraries, so its own zlib and zstd are the ones linked.
+eng=/work/target/ps5/engine
+mapfile -t engine_libs < "$eng/libs.txt"
+engine=()
+for lib in "${engine_libs[@]}"; do engine+=("$eng/lib$lib.a"); done
+# rustc passes -nodefaultlibs, so the SDK's native imports are named here. The link map lets
+# build.sh check that the engine is in maxpack.elf, which is stripped.
 exec "$PS5_PAYLOAD_SDK/bin/prospero-clang" "${args[@]}" \
-  "$obj/freebsd11.o" "$obj/syscalls.o" "$obj/entry.o" "$obj/compat.o" "$obj/usb.o" "$obj/appdb.o" "$obj/sqlite3.o" "${wraps[@]}" \
+  "$obj/freebsd11.o" "$obj/syscalls.o" "$obj/entry.o" "$obj/compat.o" "$obj/usb.o" "$obj/appdb.o" "$obj/sqlite3.o" \
+  "$obj/installer.o" "${engine[@]}" "${wraps[@]}" \
   -Wl,--wrap=main -Wl,--wrap=fcntl -Wl,--wrap=cpuset_getaffinity -Wl,--error-limit=0 \
+  -Wl,-Map=/work/target/ps5/maxpack.map \
   -ldl -lunwind -lc -lkernel_web -lSceLibcInternal -lSceNet -lSceSsl -lSceHttp -lSceSystemService -lSceUserService -lSceNotification -lSceAppInstUtil -lSceIpmi

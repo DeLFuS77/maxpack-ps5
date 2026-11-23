@@ -11,6 +11,7 @@ mod i18n;
 mod ampr_index;
 mod cache;
 mod config;
+mod installer;
 mod launch;
 mod net;
 mod register;
@@ -705,6 +706,23 @@ fn watch_mounter(state: &State) {
     }
 }
 
+/// The home-screen tile that opens the UI, once (after wait_ready: the first looks at the other
+/// mounters are in). Never while another mounter runs ("installer only", Ruling Q7): on FW 12+ the
+/// tile goes in with sceAppInstUtilAppInstallAll, which installs whatever is staged in /user/app,
+/// the other mounter's titles too. Registered once that mounter has stopped; meanwhile the page
+/// opens in a browser at http://<console IP>:8095 (the UI banner says so).
+fn register_tile_when_mounting(state: &State) {
+    let mut logged = false;
+    while state.installer_only() {
+        if !logged {
+            log!("tile: not registered while another mounter runs (installer only); the page is at http://<console IP>:{}", web::PORT);
+            logged = true;
+        }
+        std::thread::sleep(MOUNTER_POLL);
+    }
+    register::register_tile(web::PORT);
+}
+
 /// SMP auto_remove_missing_games timers (sm_game_cache.c), in memory only: a restart starts over.
 #[derive(Default)]
 struct MissingTimers {
@@ -838,6 +856,8 @@ fn main() {
         std::thread::spawn(klog_capture);
     }
     let state = Arc::new(State::new(s));
+    // The phase-2 installer (/api/inst/*): up whatever the mounter state, as the web UI.
+    installer::start(state.clone(), BUNDLED_AMPR, BUNDLED_AMPR_VERSION);
     let st = state.settings.lock().unwrap().clone();
     // Not gated on inject_ampr: pkg games get the ampr dir regardless.
     if st.ampr_auto_update {
@@ -848,6 +868,10 @@ fn main() {
     std::thread::spawn(move || web::serve(web_state, listener));
     // The web UI is up; nothing mounts until kstuff answers, nor while another mounter runs.
     wait_ready(&state);
+    {
+        let state = state.clone();
+        std::thread::spawn(move || register_tile_when_mounting(&state));
+    }
     let (titles, running, mounter) = (state.titles.clone(), state.running.clone(), state.mounter.clone());
     // Built caches are launchable before the first scan ends: watch them from the start.
     for e in std::fs::read_dir(cache::CACHES).into_iter().flatten().flatten() {

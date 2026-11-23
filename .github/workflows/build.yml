@@ -97,6 +97,13 @@ jobs:
           restore-keys: payload-cargo-
       - name: ps5/build.sh (Docker)
         run: ./ps5/build.sh
+      # build.sh already fails without them; this shows them in the log (the ELF is stripped:
+      # the names come from lld's map of the link).
+      - name: MaxPack engine in maxpack.elf (mp_api_call, mp_inst_install)
+        run: |
+          cat target/ps5/maxpack.elf.txt
+          grep -E '(^| )mp_api_call$' target/ps5/maxpack.elf.txt
+          grep -E '(^| )mp_inst_install$' target/ps5/maxpack.elf.txt
       - name: sha256
         run: |
           cp target/ps5/maxpack.elf .

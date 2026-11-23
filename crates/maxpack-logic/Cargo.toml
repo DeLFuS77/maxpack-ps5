@@ -3,6 +3,6 @@ name = "maxpack-logic"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Pure-std logic of the MaxPack payload that is tested on the host: imported scan roots, other-mounter state, ShadowMountPlus image kinds"
+description = "Pure-std logic of the MaxPack payload that is tested on the host: imported scan roots, other-mounter state, ShadowMountPlus image kinds, installer route forwarding"
 
 [dependencies]
