@@ -47,8 +47,7 @@ if [[ -n "$hits" ]]; then
 fi
 # The bundled ampr-emu-ng is our own build (DeLFuS77/ampr-emu-ng): its VERSION ends in -maxpack.N.
 if ! grep -qE -- '-maxpack\.[0-9]+$' vendor/ampr-emu-ng/VERSION; then
-  echo "check_identity: vendor/ampr-emu-ng/VERSION ($(tr -d '
-' < vendor/ampr-emu-ng/VERSION)) must end in -maxpack.N (our own build)" >&2
+  echo "check_identity: vendor/ampr-emu-ng/VERSION ($(tr -d '\r\n' < vendor/ampr-emu-ng/VERSION)) must end in -maxpack.N (our own build)" >&2
   exit 1
 fi
 # MaxPack never downloads quer3q's build: no URL of its releases in code (the PATTERN above covers
