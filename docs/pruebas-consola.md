@@ -406,6 +406,17 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
     refused: a game is running`.
   - Igual con «Instalar y reemplazar» (como en 5.3): «Cierra el juego antes.» y la copia vieja sigue.
   - Cierra el juego: las dos cosas funcionan.
+- [ ] **5.12b. Un reemplazo largo con la copia vieja abierta.**
+  - Empieza «Instalar y reemplazar» de un juego grande y, mientras todavía copia, abre la copia vieja.
+  - Anota qué pasa cuando termina la copia y cuando sales del juego. Esperado hoy: el bloqueo solo se
+    comprueba al recibir la petición y el motor borra la copia vieja al final, así que los ficheros
+    del juego pueden desaparecer bajo él.
+  - Anota si la consola se cuelga: eso sería un arreglo obligatorio.
+- [ ] **5.12c. Desinstalar con el juego abierto bajo ShadowMountPlus (solo instalador).**
+  - Con ShadowMountPlus montando y MaxPack en modo solo instalador, abre un juego instalado desde una
+    carpeta del motor y pulsa «Desinstalar» en él.
+  - Esperado: se rechaza con «Cierra el juego antes.» (en el registro `installer: /api/uninstall
+    refused: a game is running`) y nada se borra. Cierra el juego: ya funciona.
 - [ ] **5.13. Desinstalar con otro montador en marcha.**
   - Con ShadowMountPlus en marcha (solo instalador), desinstala un juego instalado con MaxPack.
   - Esperado: el instalador lo quita de ShadowMountPlus como en la fase 2; MaxPack no toca el menú

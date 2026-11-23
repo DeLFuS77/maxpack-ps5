@@ -137,6 +137,13 @@ fn find_title_pid(tid: &str) -> Option<libc::pid_t> {
     proc_find(|pid, _| title_of(pid).as_deref() == Some(tid)).ok().flatten()
 }
 
+/// Whether a process of title `tid` runs now, whatever started it (also a game another mounter
+/// launched, which `running` never sees). One process walk. None when the walk failed: the caller
+/// decides (maxpack_logic::inst::game_blocks refuses).
+pub fn title_runs(tid: &str) -> Option<bool> {
+    proc_find(|pid, _| title_of(pid).as_deref() == Some(tid)).ok().map(|p| p.is_some())
+}
+
 /// Walks sysctl KERN_PROC_PROC with the PS5 kinfo_proc offsets: the first pid where
 /// `f(pid, tdname)`, Ok(None) when there is none, Err when the list could not be read or a record
 /// is bad (find_pid reads both as "not found", as before).

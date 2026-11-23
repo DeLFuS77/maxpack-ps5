@@ -457,9 +457,20 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
 /// uninstall it accepts is followed to its end (installer::after_uninstall), so MaxPack's home
 /// entry and mount of that game go with it.
 fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8], loopback: bool) -> Reply {
-    use maxpack_logic::inst::{answer_ok, header, installer_path, needs_no_game, uninstall_title};
+    use maxpack_logic::inst::{answer_ok, game_blocks, header, installer_path, needs_no_game, uninstall_title};
     let Some(path) = installer_path(method, target) else { return not_found() };
-    if needs_no_game(method, &path, body) && state.paused() {
+    // `paused()` only knows the titles MaxPack tracks: for an uninstall (it names its title id) the
+    // process list is asked too, so a game another mounter launched blocks it as well, and a failed
+    // walk refuses. A replace carries paths, not a title id: it stays on `paused()` alone.
+    let blocked = needs_no_game(method, &path, body) && {
+        let paused = state.paused();
+        let walk = match (paused, path == "/api/uninstall", uninstall_title(body)) {
+            (false, true, Some(tid)) => crate::launch::title_runs(&tid),
+            _ => Some(false),
+        };
+        game_blocks(paused, walk)
+    };
+    if blocked {
         log!("installer: {path} refused: a game is running");
         let body = serde_json::json!({"ok": false, "code": "game_running", "detail": "a game is running"}).to_string();
         return reply(409, "application/json", body);

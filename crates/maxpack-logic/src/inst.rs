@@ -58,6 +58,13 @@ pub fn needs_no_game(method: &str, route: &str, body: &[u8]) -> bool {
     }
 }
 
+/// Whether a game that must not be deleted under is running: MaxPack's own `paused` (a title it
+/// tracks runs), or `walk`, what the process walk found for the title being uninstalled
+/// (Some(runs), or None when the walk itself failed). Fails safe: a failed walk blocks.
+pub fn game_blocks(paused: bool, walk: Option<bool>) -> bool {
+    paused || walk != Some(false)
+}
+
 /// The title id of an uninstall request's body (`{"title_id": "PPSA01234", "confirm": true}`), when
 /// it is a game title id.
 pub fn uninstall_title(body: &[u8]) -> Option<String> {
@@ -194,6 +201,21 @@ mod tests {
         }
         assert!(!needs_no_game("GET", "/api/uninstall", b""));
         assert!(!needs_no_game("GET", "/api/install", br#"{"replace":["x"]}"#));
+    }
+
+    #[test]
+    fn game_blocks_table() {
+        // (paused, walk, blocks): walk is None when the process walk failed.
+        for (paused, walk, want) in [
+            (true, Some(false), true),
+            (true, Some(true), true),
+            (true, None, true),
+            (false, Some(true), true),
+            (false, None, true),
+            (false, Some(false), false),
+        ] {
+            assert_eq!(game_blocks(paused, walk), want, "paused={paused} walk={walk:?}");
+        }
     }
 
     #[test]
