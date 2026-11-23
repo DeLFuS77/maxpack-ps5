@@ -14,6 +14,11 @@
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
+// /api/inst/* checks Host as the engine does (host_ok: an IPv4, an [IPv6] or localhost), so the
+// banner's address can be checked from another device: opened at this PC's LAN IP
+// (http://192.168.x.y:8095/) the banner shows that address; opened by a name (http://<pc-name>:8095/)
+// it shows http://<PS5-IP>:8095 and Install answers 403, as on the console; on localhost or
+// 127.0.0.1 it shows the placeholder too (a loopback means nothing to a phone).
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -98,6 +103,9 @@ let installed = [
     kind: 'p5z', smp_pending: false, smp_why: '' },
   { title_id: 'PPSA09123', name: 'Waiting Example', version: '', dir: '/mnt/usb0/homebrew/PPSA09123',
     kind: 'folder', smp_pending: true, smp_why: 'escaneo aplazado: game_active' },
+  // An image: MaxPack does not mount it; its pending note shows even without ShadowMountPlus.
+  { title_id: 'PPSA06790', name: 'Image Example', version: '01.000.000', dir: '/data/homebrew/Image Example [PPSA06790].exfat',
+    kind: 'image', smp_pending: true, smp_why: 'ShadowMountPlus no responde' },
 ];
 let pending = [
   { title_id: 'PPSA09234', source: '/mnt/usb1/Half Done.p5z', dest: '/data', bytes: 7 * GB },
@@ -214,6 +222,13 @@ function send(res, status, type, body) {
   res.end(body);
 }
 const json = (res, status, v) => send(res, status, 'application/json', JSON.stringify(v));
+// The engine's host_ok (vendor/maxpack src/web/mp_api.c): an IP, an [IPv6] or localhost, with a port or not.
+function hostOk(h) {
+  if (!h) return false;
+  if (h[0] === '[') return h.indexOf(']') >= 0;
+  const name = h.split(':')[0];
+  return name === 'localhost' || /^[0-9.]*$/.test(name) && name.split('.').length === 4;
+}
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -237,6 +252,8 @@ http.createServer((req, res) => {
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
     if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.0', updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
+    if (p.startsWith('/api/inst/') && !hostOk(req.headers.host))
+      return json(res, 403, { ok: false, code: 'forbidden', detail: 'petición rechazada: solo se acepta la página de MaxPack' });
     if (req.method === 'GET' && p === '/api/inst/state') return json(res, 200, instState());
     if (req.method === 'GET' && p === '/api/inst/icon') {
       const which = url.searchParams.get('p5z') || '';
@@ -257,4 +274,8 @@ http.createServer((req, res) => {
 }).listen(port, () => {
   console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''})`);
   console.log(`switch at run time: http://localhost:${port}/mock?waiting=none&job=paused&last=needs_confirm`);
+  // The addresses to try the banner's URL with (see the top of the file).
+  const lan = Object.values(require('os').networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
+  for (const a of lan) console.log(`banner shows this address: http://${a.address}:${port}/`);
+  console.log(`banner shows the placeholder, Install answers 403: http://${require('os').hostname()}:${port}/`);
 });

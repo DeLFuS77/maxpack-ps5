@@ -81,5 +81,12 @@ llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
     [[ -n "$line" ]] || { echo "build.sh: $sym is not in maxpack.elf ($out/maxpack.map)" >&2; exit 1; }
     echo "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+/ /g'
   done
+  # zstd's dictBuilder (ZDICT_trainFromBuffer, used by the engine's mp_v2exp.c) can bring
+  # libdivsufsort-lite (MIT) along: whether it is in decides its notice in THIRD_PARTY_NOTICES.
+  if grep -qE '[[:space:]]divsufsort$' "$out/maxpack.map"; then
+    echo "zstd dictBuilder divsufsort: linked"
+  else
+    echo "zstd dictBuilder divsufsort: not linked"
+  fi
 } >> "$out/maxpack.elf.txt"
 ls -l "$out/maxpack.elf"

@@ -12,7 +12,8 @@ if [[ $# -ne 2 ]]; then
   echo "usage: $0 <path-to-the-maxpack-repo> <commit>" >&2
   exit 2
 fi
-repo=$1
+# Absolute before the cd below, so a path relative to where it was run from still works.
+repo=$(cd "$1" && pwd)
 cd "$(dirname "$0")/.."
 dest=vendor/maxpack
 commit=$(git -C "$repo" rev-parse --verify "$2^{commit}")

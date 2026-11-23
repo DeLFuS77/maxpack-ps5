@@ -214,6 +214,9 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
     - los dos salen en «Instalados con MaxPack» y en `/data/maxpack/installed/<TITLE_ID>.json`;
     - el `.p5z` queda en `/data/homebrew/<TITLE_ID>` y MaxPack lo monta en su siguiente pasada:
       sale en el menú y arranca;
+    - el `.exfat` queda en `homebrew/` del USB y MaxPack **no** lo monta: en Instalar dice «Imagen:
+      por ahora se juega con ShadowMountPlus; MaxPack no la monta» (y su «Pendiente en
+      ShadowMountPlus» si no responde), y sale en la biblioteca en «Imágenes de ShadowMountPlus»;
     - «Verificar» acaba en «<juego> verificado» con `0 con fallos`.
 - [ ] **5.2. Instalar con ShadowMountPlus en marcha (solo instalador).**
   - Arranca ShadowMountPlus y luego MaxPack.
@@ -254,4 +257,46 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
   - Esperado: la biblioteca, Instalar y los ajustes se ven sin desplazarse de lado; instalar,
     pausar, verificar y desinstalar funcionan igual que en la consola.
   - Ábrela con un nombre en lugar de la IP (por ejemplo, el de tu router para la consola).
-    Esperado: Instalar dice «El instalador rechazó la petición»: solo vale la IP (o `localhost`).
+    Esperado: Instalar dice «El instalador rechazó la petición»: solo vale la IP (o `localhost`). Con
+    otro montador en marcha, el aviso no propone ese nombre: dice `http://<ip-de-la-PS5>:8095`.
+- [ ] **5.7. Otro montador arranca durante una instalación.**
+  - Con MaxPack montando, empieza a instalar un `.p5z` grande y, a mitad de la copia, arranca
+    ShadowMountPlus.
+  - Esperado:
+    - en unos 2 s, el aviso de solo instalador y `waiting` = `"other:shadowmountplus.elf"`;
+    - la copia **sigue** (el porcentaje no se para; nadie la pausa);
+    - al final, «Registrando <juego> en ShadowMountPlus» y el juego queda registrado en
+      ShadowMountPlus, con el aviso del modo `fakelib`; ShadowMountPlus lo monta;
+    - MaxPack no monta nada de ese juego mientras tanto: en el registro, ninguna línea `nullfs`,
+      `registered` ni `overlay MOUNTED` con su TITLE_ID.
+  - Cierra ShadowMountPlus. Esperado: MaxPack lo adopta como en 3.2, sin duplicarlo.
+- [ ] **5.8. Solo instalador con Kraken Mount.**
+  - Arranca Kraken Mount original (como en 2.8) y luego MaxPack.
+  - Esperado:
+    - el aviso dice «Hay otro montador en marcha (kraken-mount.elf): MaxPack solo instala» con
+      `http://<ip-de-la-PS5>:8095`, y el icono de MaxPack no se registra (como en 5.2);
+    - Instalar funciona; sin ShadowMountPlus no sale «ShadowMountPlus … conectado», y un juego en
+      carpeta o un `.p5z` instalado no muestra «Pendiente en ShadowMountPlus» (una imagen sí);
+    - lo instalado en `homebrew/` lo recoge Kraken Mount en su siguiente escaneo si esa raíz es suya
+      (una imagen no: solo ShadowMountPlus las monta); MaxPack no monta nada.
+- [ ] **5.9. Salir con un trabajo en cola y durante una desinstalación.** Apunta lo que pase: así se
+  comporta hoy.
+  - Instala dos juegos seguidos (el segundo sale como «1 más en cola») y pulsa «Detener» mientras se
+    copia el primero.
+    - Esperado hoy: el primero se pausa y sale en «Instalaciones a medias» al arrancar otra vez. El
+      segundo puede empezar en esos 3 s y quedar también a medias (se sigue con «Seguir»); si no llegó
+      a empezar, no queda en ningún sitio y hay que volver a instalarlo.
+  - Desinstala un juego grande y pulsa «Detener» enseguida.
+    - Esperado hoy: pausar no para una desinstalación; en el registro, `installer: still busy after
+      3 s; quitting anyway` y MaxPack sale. Al arrancar otra vez, el juego puede seguir en «Instalados
+      con MaxPack» con la carpeta a medio borrar: «Desinstalar» otra vez la termina (carpeta, registro
+      y su entrada en ShadowMountPlus).
+- [ ] **5.10. Primer arranque sin kstuff, y cuándo sale el icono.**
+  - Con la consola recién encendida y sin kstuff cargado, arranca MaxPack.
+  - Esperado:
+    - aviso de kstuff y, en la página, «Esperando a kstuff»; Instalar responde
+      (`installer: ready` en el registro);
+    - ninguna línea `tile` todavía: el icono espera a kstuff.
+  - Carga kstuff. Esperado: `kstuff: ready; mounting` y después `tile MXPK00001: …` (registrado o
+    `up to date`); si en ese momento corre otro montador, `tile: not registered while another
+    mounter runs` y el icono llega cuando ese se cierre (5.2).

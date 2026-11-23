@@ -744,7 +744,8 @@ var MSG = {
     // Install: the phase-2 installer (its error codes: INST_CODES)
     installTab: 'Install', iTitle: 'Install games',
     iSmpOn: 'ShadowMountPlus {version} connected: what you install is registered in it too',
-    iMounts: 'MaxPack mounts what you install on its next scan.',
+    iMounts: 'MaxPack mounts the game folders and .p5z you install on its next scan; images are played with ShadowMountPlus for now.',
+    iImagePlays: 'Image: for now it is played with ShadowMountPlus, not mounted by MaxPack.',
     iFound: 'Games to install', iRescan: 'Search again',
     iFoundEmpty: 'No .p5z, game folder or image on the drives or in /data/maxpack. Plug in a USB drive with them and press Search again.',
     iManualPh: 'Path to a .p5z, game folder or image, for example /mnt/usb0/game.p5z', iManualAria: 'Path to add',
@@ -1121,7 +1122,8 @@ var MSG = {
     imageWith: 'por ahora, con ShadowMountPlus',
     installTab: 'Instalar', iTitle: 'Instalar juegos',
     iSmpOn: 'ShadowMountPlus {version} conectado: lo que instales se registra también en él',
-    iMounts: 'MaxPack monta lo que instales en su siguiente pasada.',
+    iMounts: 'MaxPack monta las carpetas de juego y los .p5z que instales en su siguiente pasada; las imágenes, por ahora, se juegan con ShadowMountPlus.',
+    iImagePlays: 'Imagen: por ahora se juega con ShadowMountPlus; MaxPack no la monta.',
     iFound: 'Juegos para instalar', iRescan: 'Buscar otra vez',
     iFoundEmpty: 'No hay ningún .p5z, carpeta de juego ni imagen en las unidades ni en /data/maxpack. Conecta un USB con ellos y pulsa Buscar otra vez.',
     iManualPh: 'Ruta de un .p5z, una carpeta de juego o una imagen, por ejemplo /mnt/usb0/juego.p5z', iManualAria: 'Ruta para añadir',
@@ -2295,12 +2297,15 @@ function waitingText() {
   if (w === 'kstuff') return t('waitKstuff');
   return t('installerOnly', { name: w.replace(/^other:/, ''), url: pageUrl() });
 }
-// Where this page opens from another device: this address, unless it is the console's own loopback.
-function pageUrl() {
-  var h = location.hostname;
-  if (h === '127.0.0.1' || h === 'localhost' || h === '[::1]') return 'http://<' + t('consoleIp') + '>:8095';
-  return location.protocol + '//' + location.host;
+// Where this page opens from another device: this address only when it is an IP the installer takes
+// (its host_ok: a dotted IPv4 or an [IPv6]) and not the console's own loopback; else a placeholder,
+// since a name (ps5.local) gets 403 from the installer.
+function pageUrlFor(protocol, hostname, host) {
+  var v4 = /^\d+\.\d+\.\d+\.\d+$/.test(hostname) && !/^127\./.test(hostname);
+  var v6 = /^\[.+\]$/.test(hostname) && hostname !== '[::1]';
+  return v4 || v6 ? protocol + '//' + host : 'http://<' + t('consoleIp') + '>:8095';
 }
+function pageUrl() { return pageUrlFor(location.protocol, location.hostname, location.host); }
 // ShadowMountPlus images (state.images): listed under the grid, never mounted by MaxPack.
 function renderImages(images) {
   var list = Array.isArray(images) ? images : [], box = $('imagelist'), key = lang + JSON.stringify(list);
@@ -2627,6 +2632,7 @@ function instFoundRow(item) {
   info.appendChild(el('span', null, [t('iKind_' + (item.kind || 'p5z')), item.title_id,
     item.version ? t('iVersion', { v: item.version }) : ''].filter(Boolean).join(' · ')));
   info.appendChild(el('span', 'mono', item.path));
+  if (item.kind === 'image') info.appendChild(el('span', 'note', t('iImagePlays')));
   b.appendChild(info);
   b.appendChild(instSize(item));
   b.onclick = function () { instSelect(item.path); };
@@ -2697,8 +2703,12 @@ function instInstalledRow(g) {
   info.appendChild(el('b', null, name));
   info.appendChild(el('span', null, [g.title_id, g.version ? t('iVersion', { v: g.version }) : ''].filter(Boolean).join(' · ')));
   info.appendChild(el('span', 'mono', g.dir));
-  // Pending in ShadowMountPlus only means something while it runs (MaxPack mounts it otherwise).
-  if (g.smp_pending && inst.smp && inst.smp.alive) info.appendChild(el('span', 'note', t('iSmpPending', { why: g.smp_why || '' })));
+  // MaxPack does not mount an image yet: ShadowMountPlus plays it, so its pending note always shows.
+  // A folder or .p5z install is MaxPack's to mount: its note only matters while ShadowMountPlus runs.
+  var image = g.kind === 'image';
+  if (image) info.appendChild(el('span', 'note', t('iImagePlays')));
+  if (g.smp_pending && (image || (inst.smp && inst.smp.alive)))
+    info.appendChild(el('span', 'note', t('iSmpPending', { why: g.smp_why || '' })));
   row.appendChild(info);
   instActions(row, [
     [t('iVerify'), function () { instPost('verify', { title_id: g.title_id }); }],
