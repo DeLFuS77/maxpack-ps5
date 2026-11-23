@@ -5,7 +5,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 
 [workspace]
-members = [".", "crates/kraken-mount-pkg"]
+members = [".", "crates/kraken-mount-pkg", "crates/maxpack-logic"]
 
 [features]
 # Stage 2 of ps5/build.sh: embeds stage 1 (env MAXPACK_SELF_ELF) to save it as the tile's copy.
@@ -13,6 +13,7 @@ self-copy = []
 
 [dependencies]
 kraken-mount-pkg = { path = "crates/kraken-mount-pkg" }
+maxpack-logic = { path = "crates/maxpack-logic" }
 libc = "0.2.187"
 serde_json = "1"
 

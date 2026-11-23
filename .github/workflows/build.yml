@@ -53,6 +53,28 @@ jobs:
           test -s "$RUNNER_TEMP/ui.js"
           node --check "$RUNNER_TEMP/ui.js"
 
+  logic:
+    name: logic
+    runs-on: ubuntu-latest
+    env:
+      # Same toolchain as the check job. Pure std: the tests run on the host.
+      RUSTUP_TOOLCHAIN: 1.99.0
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: logic-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: logic-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
+      - name: cargo test -p maxpack-logic
+        run: cargo test -p maxpack-logic --locked
+
   payload:
     name: build payload
     runs-on: ubuntu-latest
