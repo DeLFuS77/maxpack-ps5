@@ -37,6 +37,11 @@ Default scan roots: SMP `SM_DEFAULT_SCAN_PATHS_INITIALIZER` order, only for driv
 (`/data/homebrew`, `/data/etaHEN/games`, ext `homebrew`/`etaHEN/games`, usb `homebrew`, usb `etaHEN/games`,
 usb roots, ext roots). `scanpath=` lines in config replace them.
 A dir named `backports` in a scan root is never a game.
+Never a root and never a source (`maxpack_logic::roots::never_root` / `never_source`; `.`, `..` and `//` resolved as
+text): `/` (as a root), `/system*`, `/user` (but `/user/data` goes by the `/data` rules), `/mnt/sandbox`,
+`/mnt/extN/user`, `/mnt/extN/ps5/user`, `/data/maxpack`, `/data/krakenmount` and `/data/shadowmount`. Applied to
+the roots imported at the first start, to `POST /api/settings`, to the roots of each pass (`main::usable_roots`,
+for a hand-edited `config.toml`; each one logged once) and to every candidate source (`scan::scan`).
 Depth (`scan::candidates`, SMP scan_depth=2): a root's entries are scanned, and also the entries of each subfolder that is
 not a game folder, not `backports` (any case: exFAT), not a dot entry and not itself a scan root (one level only, dot
 entries and `backports` skipped). A drive root (`/mnt/<x>`) is never descended: its `homebrew` and `etaHEN/games` are
@@ -58,7 +63,7 @@ source and fsid seen at request time; the payload never unmounts the drive itsel
 A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arrays of strings; `#` comments.
 | Key | Default | Meaning |
 |---|---|---|
-| `scanpath` | (defaults above) | array of paths; replaces the default scan roots. First start only (no `config.toml`): the roots added by hand in the other mounters are imported, read only: `scanpath` of `/data/krakenmount/config.toml` (the last line wins), `[scan] path` of `/data/shadowmount/config.ini`, and the parent folder of each `/data/shadowmount/manual.lst` entry (`maxpack_logic::roots`). With any, `scanpath` lists every default root first, for every drive whether present or not, then theirs; with none there is no `scanpath` line. A root inside `/data/krakenmount` or `/data/shadowmount` is never scanned |
+| `scanpath` | (defaults above) | array of paths; replaces the default scan roots. First start only (no `config.toml`): the roots added by hand in the other mounters are imported, read only: `scanpath` of `/data/krakenmount/config.toml` (the last line wins), `[scan] path` of `/data/shadowmount/config.ini`, and the parent folder of each `/data/shadowmount/manual.lst` entry (`maxpack_logic::roots`). With any, `scanpath` lists every default root first, for every drive whether present or not, then theirs; with none there is no `scanpath` line. A root that may never be one (Drives and scan roots: the system, Sony's user data, MaxPack's and the other mounters' data folders) is never imported nor scanned, and the web UI cannot save it |
 | `inject_ampr` | true | copy `/data/maxpack/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
 | `add_emulators` | true | add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes `fakelib/`) |
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
@@ -221,8 +226,12 @@ as `/api/delete` (each title rechecks that no game runs; unmount without force, 
 uninstall, then `register::forget` so a returning source registers in full: `is_registered` reads app.db as bytes); the cache stays for a
 return; a failed uninstall is logged once and not retried until the source returns or a restart.
 A title with an installed copy (`/user/app/<TID>/app.pkg` or `/mnt/ext{0,1}/user/app/<TID>`; a stat error other than
-ENOENT/ENOTDIR counts as one) or no staged `/user/app/<TID>/sce_sys/param.json` is never removed (`register::is_ours`,
-rechecked every pass, logged once per run).
+ENOENT/ENOTDIR counts as one; `register::installed_copy`, the rule in `maxpack_logic::sony`) or no staged
+`/user/app/<TID>/sce_sys/param.json` is never removed (`register::is_ours`, rechecked every pass, logged once per run).
+Installed games: a source whose title id has such an installed copy is never registered or mounted, and its launch
+gets no overlay (`main::process`, checked every pass before anything else; status `error` with `installed_copy`, logged
+once until the install goes; also left out of `titles`). A dumped folder of a retail game that is also installed stays as
+it is, and so does the installed game.
 Auto-update (ampr-emu-ng): at start, when `ampr_auto_update` is on (whatever `inject_ampr` says: pkg games always use the ampr dir), a background thread asks
 `https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest` (stable releases only; betas are
 pre-releases and skipped). When its `tag_name` is newer than the installed version, it downloads the
@@ -373,6 +382,7 @@ pub fn remount(title_id: &str, app0: &std::path::Path, backport: Option<&std::pa
 pub fn unmount_title(tid: &str) -> std::io::Result<()>;   // every layer at /system_ex/app/<TID>, never MNT_FORCE
 pub fn uninstall(tid: &str) -> std::io::Result<()>;       // sceAppInstUtilAppUnInstall
 pub fn forget(tid: &str);                                 // after an auto-remove: drop the staged sce_sys/param.json so is_registered is false
+pub fn installed_copy(title_id: &str) -> Option<std::path::PathBuf>; // the path that shows the title id installed on the console
 pub fn is_ours(title_id: &str) -> Result<(), std::path::PathBuf>; // Err(path) = an installed copy, or no staged param.json: never auto-remove
 
 // main.rs (shared version compare, used by cache.rs for ampr-emu-ng identities)
@@ -394,16 +404,32 @@ pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
 ## Web API (`src/web.rs`, port 8095, served to `src/ui.html`)
 Rest mode can close the listening socket: on an accept error the server binds port 8095 again every second.
 If a newer copy took the port meanwhile, this copy quits (not while a game runs).
+
+Every request passes `maxpack_logic::http::check` before its route, or gets 403 (`/api/inst/*`: the engine's
+JSON `{ok:false, code:"forbidden", detail}`; the rest: plain text in Spanish and English; logged at most once a
+minute):
+- Host must be an IPv4 literal, a bracketed IPv6 literal or `localhost`, with an optional port (the engine's
+  `host_ok`, a little stricter). A DNS name never passes, so a page that rebinds its name to the console (DNS
+  rebinding) reads and changes nothing, and the page opened by a name gets 403 on everything.
+- Every method other than GET and HEAD (the page's state changes are POSTs) must come from the page itself:
+  `Sec-Fetch-Site: cross-site` is refused, and an `Origin`, when sent, must be `http://` (or `https://`) plus
+  this very Host (`null` is refused). No Origin passes: browsers send one on every cross-origin POST, so only
+  something that is not another site's page (curl, `web::take_port`'s loopback quit) sends none. Chosen over
+  requiring `application/json` on every POST: the page's text bodies (`delete`, `eject`, `playgo`, `quit`), the
+  loopback quit of a newer copy and older copies' quit requests keep working unchanged.
 - `GET /` ui.html (`__VERSION__` filled in); `GET /app-icon.png` the app icon (`ps5/icon0.png`);
-  `GET /kraken.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
+  `GET /maxpack.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
   the rest `no-store`.
 - `GET /api/state`:
   `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder", packing:"plain"|"zstd"|"lz4"|null,
-  drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, cache_size, cache_built, backport,
+  drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
+  shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off)}],
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
-  without `playgo_off` keeps the current list (the settings form does not send it).
+  without `playgo_off` keeps the current list (the settings form does not send it). A `scanpath` entry that
+  may never be a root (`maxpack_logic::roots::never_root`) is 400 JSON `{code:"forbidden_root", path, detail}`
+  and nothing is saved; the page says it in its language.
 - `POST /api/playgo/<TID>`, body exactly `on` or `off` -> removes the title from / adds it to `playgo_off`,
   saves, applies, rescans, logs `<TID>: PlayGo stub on|off`, 204; 404 for an invalid or absent library
   title, 400 for any other body.
@@ -450,10 +476,19 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
   from the TCP peer; the engine checks Host (an IP or localhost) and, on POST, `application/json`, and its
   answer goes back as it is (an application error is 200 `{ok:false, code, detail}`). 503
   `{ok:false, code:"starting"|"no_installer", detail}` until it is up or when it could not start.
+  As the mounter, around it (`maxpack_logic::inst`): while a game runs (`State::paused`), an `uninstall`, and an
+  `install` whose `replace` is not empty, are 409 `{ok:false, code:"game_running"}` (the engine deletes folders
+  with no such check). An `uninstall` the installer accepts is followed through its `/api/state` every 500 ms
+  (`UninstallWatch`, up to 1 h); once the game is uninstalled the scan loop is woken and `web::uninstalled` ends it
+  as `/api/delete` does: unmount without force, `register::uninstall` and `forget`, out of `titles` and the
+  library, cache deleted. Only while MaxPack mounts (in "installer only" mode the other mounter owns the home
+  entries), only for a title in `titles` whose library copy (when the uninstall was asked for) is gone, never a
+  title id installed on the console, and after a running game exits; anything else is logged and left to
+  auto-remove.
   Never gated on the mounter state: that is the "installer only" mode.
 
 ## Self copy and start on open (as Dump Forge)
-`ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `KRAKEN_SELF_ELF`) embedding
+`ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `MAXPACK_SELF_ELF`) embedding
 stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at start when the bytes differ
 (temp + fsync + rename; the last pushed wins). The tile opens the AppCache'd page; on the console's own browser
 (127.0.0.1:8095) a failed `/api/state` makes it ask elfldr once per page load:
@@ -463,7 +498,8 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
-(`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`), with the zstd and
+(`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
+there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-1`), with the zstd and
 zlib its submodules pin. `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
 `mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's
@@ -483,7 +519,8 @@ their free space, Install (a replace asks first, listing the copies it deletes),
 the UI's words, its Spanish `detail` under them. Its texts are English and Spanish (the other languages fall
 back to English). While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
-ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data.
+ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
+Host and Origin checks as the payload.
 
 ## Build and check
 `cargo check --target x86_64-unknown-freebsd` (fast, host). Full payload: `ps5/build.sh` (Docker).
