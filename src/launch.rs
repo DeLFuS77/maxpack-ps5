@@ -116,46 +116,60 @@ fn same_fsid(a: &libc::fsid_t, b: &libc::fsid_t) -> bool {
 
 /// SMP find_pid_by_name.
 pub fn find_pid(name: &str) -> Option<libc::pid_t> {
-    proc_find(|_, td| td == name.as_bytes())
+    proc_find(|_, td| td == name.as_bytes()).ok().flatten()
+}
+
+/// Which of `names` run, from one walk of the process list. Err when the list could not be read
+/// (sysctl failed, a bad record), which is not the same as none running (main::refresh_mounter).
+pub fn running_names(names: &[&'static str]) -> io::Result<Vec<&'static str>> {
+    let mut seen = Vec::new();
+    proc_find(|_, td| {
+        seen.extend(names.iter().filter(|n| td == n.as_bytes()));
+        false
+    })?;
+    Ok(seen)
 }
 
 /// The first process whose app info title id is `tid` (a game started before this watcher).
 fn find_title_pid(tid: &str) -> Option<libc::pid_t> {
-    proc_find(|pid, _| title_of(pid).as_deref() == Some(tid))
+    proc_find(|pid, _| title_of(pid).as_deref() == Some(tid)).ok().flatten()
 }
 
-/// Walks sysctl KERN_PROC_PROC with the PS5 kinfo_proc offsets: first pid where `f(pid, tdname)`.
-fn proc_find(mut f: impl FnMut(libc::pid_t, &[u8]) -> bool) -> Option<libc::pid_t> {
+/// Walks sysctl KERN_PROC_PROC with the PS5 kinfo_proc offsets: the first pid where
+/// `f(pid, tdname)`, Ok(None) when there is none, Err when the list could not be read or a record
+/// is bad (find_pid reads both as "not found", as before).
+fn proc_find(mut f: impl FnMut(libc::pid_t, &[u8]) -> bool) -> io::Result<Option<libc::pid_t>> {
     let mib = [libc::CTL_KERN, libc::KERN_PROC, libc::KERN_PROC_PROC, 0];
     let mut len = 0usize;
     let null = std::ptr::null_mut();
     if unsafe { libc::sysctl(mib.as_ptr(), 4, null, &mut len, std::ptr::null(), 0) } != 0 {
-        return None;
+        return Err(io::Error::last_os_error());
     }
     let mut buf = vec![0u8; len + len / 4];
     len = buf.len();
     let out = buf.as_mut_ptr() as *mut libc::c_void;
     if unsafe { libc::sysctl(mib.as_ptr(), 4, out, &mut len, std::ptr::null(), 0) } != 0 {
-        return None;
+        return Err(io::Error::last_os_error());
     }
     let buf = &buf[..len];
     let mut off = 0;
     while buf.len() - off >= 4 {
         let size = i32::from_ne_bytes(buf[off..off + 4].try_into().unwrap()) as usize;
         if size <= KINFO_TDNAME_OFFSET || size > buf.len() - off {
-            return None;
+            let what = format!("bad kinfo_proc record: {size} bytes at {off} of {}", buf.len());
+            return Err(io::Error::new(io::ErrorKind::InvalidData, what));
         }
         let ki = &buf[off..off + size];
         let pid = i32::from_ne_bytes(ki[KINFO_PID_OFFSET..KINFO_PID_OFFSET + 4].try_into().unwrap());
         let td = &ki[KINFO_TDNAME_OFFSET..];
         if let Some(n) = td.iter().position(|&b| b == 0) {
             if f(pid, &td[..n]) {
-                return Some(pid);
+                return Ok(Some(pid));
             }
         }
         off += size;
     }
-    None
+    Ok(None)
 }
 
 /// SMP resolve_game_title_id: sceKernelGetAppInfo(pid).title_id, None while it is empty.

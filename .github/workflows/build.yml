@@ -45,6 +45,14 @@ jobs:
           echo Kraken-Mount | tr - ' ' >> "$t/docs/planted.md"
           if bash "$t/tools/check_identity.sh"; then echo "self-test: planted name not detected"; exit 1; fi
           echo "self-test: planted name detected"
+      - name: Identity self-test (the console checklist allows only its three tokens)
+        run: |
+          t=$(mktemp -d)
+          cp -r tools src ps5 .github docs "$t"/
+          # The old port, written without the literal so this file stays clean.
+          echo "puerto $((8000 + 97))" >> "$t/docs/pruebas-consola.md"
+          if bash "$t/tools/check_identity.sh"; then echo "self-test: old port in the checklist not detected"; exit 1; fi
+          echo "self-test: old port in the checklist detected"
       - name: cargo check --workspace
         run: cargo check --workspace --locked --target x86_64-unknown-freebsd
       - name: node --check (src/ui.html script)

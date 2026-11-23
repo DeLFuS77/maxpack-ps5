@@ -296,20 +296,40 @@ fn render(s: &Settings) -> String {
     out
 }
 
+/// Another mounter's settings file is never this large; a larger one is skipped.
+const FOREIGN_MAX: u64 = 256 << 10;
+
+/// The text of another mounter's settings file, read only: None when missing, not a regular file
+/// (a FIFO would block), over FOREIGN_MAX, or unreadable (all but missing are logged). Bytes
+/// that are not UTF-8 are replaced, so garbage just yields no root.
+fn read_foreign(path: &str) -> Option<String> {
+    use std::io::Read;
+    let skip = |why: String| {
+        log!("config: first start: {path}: {why}; skipped");
+        None
+    };
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => return skip(e.to_string()),
+        Ok(m) if !m.is_file() => return skip("not a regular file".into()),
+        Ok(m) if m.len() > FOREIGN_MAX => return skip(format!("{} bytes, over {FOREIGN_MAX}", m.len())),
+        Ok(_) => {}
+    }
+    let mut b = Vec::new();
+    match std::fs::File::open(path).and_then(|f| f.take(FOREIGN_MAX + 1).read_to_end(&mut b)) {
+        Err(e) => skip(e.to_string()),
+        // Grew since the stat.
+        Ok(n) if n as u64 > FOREIGN_MAX => skip(format!("over {FOREIGN_MAX} bytes")),
+        Ok(_) => Some(String::from_utf8_lossy(&b).into_owned()),
+    }
+}
+
 /// The settings of a first start: the defaults, plus the scan roots added by hand in the other
 /// mounters (maxpack_logic::roots), whose files are only read. Without such roots there is no
 /// scanpath line, as before; with them, scanpath lists every usual root first.
 fn first_settings() -> Settings {
     use maxpack_logic::roots::{first_scan_paths, KM_CONFIG_TOML, SMP_CONFIG_INI, SMP_MANUAL_LST};
-    let read = |path: &str| match std::fs::read(path) {
-        Ok(b) => Some(String::from_utf8_lossy(&b).into_owned()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => {
-            log!("config: first start: cannot read {path}: {e}; skipped");
-            None
-        }
-    };
-    let (km, ini, lst) = (read(KM_CONFIG_TOML), read(SMP_CONFIG_INI), read(SMP_MANUAL_LST));
+    let (km, ini, lst) = (read_foreign(KM_CONFIG_TOML), read_foreign(SMP_CONFIG_INI), read_foreign(SMP_MANUAL_LST));
     let usual = crate::storage::all_default_scan_roots();
     let mut s = Settings::default();
     match first_scan_paths(&usual, km.as_deref(), ini.as_deref(), lst.as_deref()) {

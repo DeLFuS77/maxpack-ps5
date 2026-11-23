@@ -555,6 +555,18 @@ fn log_tail() -> Vec<u8> {
     b
 }
 
+/// Err(409) while MaxPack does not mount: what is at /system_ex/app/<TID> may be another
+/// mounter's, so nothing here unmounts it. (Rebuild, rebuild-all and purge only queue requests for
+/// the scan loop, which waits for Ready; they need no check.)
+fn mounts_or_409(state: &State) -> Result<(), Reply> {
+    let why = match *state.mounter.lock().unwrap() {
+        MounterState::Ready => return Ok(()),
+        MounterState::OtherMounter(p) => format!("another mounter is running ({p}): MaxPack touches no game mount until it stops"),
+        MounterState::WaitKstuff => "waiting for kstuff: MaxPack touches no game mount until it answers".to_string(),
+    };
+    Err(reply(409, "text/plain", why))
+}
+
 fn rebuild(state: &State, tid: &str) -> Reply {
     if !crate::scan::valid_tid(tid) || state.source(tid).is_none() {
         return not_found();
@@ -666,6 +678,10 @@ fn delete(state: &State, tid: &str, body: &[u8]) -> Reply {
     }
     if state.paused() || state.running.lock().unwrap().contains(tid) {
         return reply(409, "text/plain", "a game is running");
+    }
+    if let Err(r) = mounts_or_409(state) {
+        log!("{tid}: delete refused: MaxPack does not mount now");
+        return r;
     }
     if state.games.lock().unwrap().iter().any(|g| g.src.title_id == tid && matches!(g.status, "building" | "checking")) {
         return reply(409, "text/plain", "the game is being built");
@@ -796,6 +812,11 @@ fn eject(state: &State, body: &[u8]) -> Reply {
     };
     if state.paused() {
         return reply(409, "text/plain", "a game is running");
+    }
+    // Eject unmounts every /system_ex/app/<TID> from the drive, whoever mounted it.
+    if let Err(r) = mounts_or_409(state) {
+        log!("eject {path}: refused: MaxPack does not mount now");
+        return r;
     }
     // ponytail: the drive's identity is taken now, not when the page was drawn; a drive swapped in
     // between is ejected. Harmless: it is only an unmount.

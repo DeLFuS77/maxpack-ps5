@@ -12,10 +12,13 @@ PATTERN='Kraken Mount|krakenmount|kraken-mount|KRKN00001|(^|[^0-9])8097([^0-9]|$
 EXCEPTIONS=(
   # The "about" credit link in ui.html names the project MaxPack is based on: exactly this line.
   '^src/ui\.html:[0-9]+: *<a class="gh-link button" data-credit="kraken-mount" href="https://github\.com/quer3q/kraken-mount" aria-label="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)" title="Based on Kraken Mount by quer3q \(GPL-3\.0-or-later\)">$'
-  # The console checklist tests the original mounter itself (before anything, coming from it and
-  # going back to it), so it names it and its data folder on purpose: that one file only.
-  '^docs/pruebas-consola\.md:[0-9]+:.*$'
 )
+# The console checklist tests the original mounter itself (before anything, coming from it and
+# going back to it), so there, and only there, it may name it, its data folder and its process:
+# those three tokens are taken out of each of its lines, which is then checked again. Anything
+# else of the old identity (its port, its log...) still fails there too.
+CHECKLIST='docs/pruebas-consola.md'
+CHECKLIST_ALLOWED='Kraken Mount|/data/krakenmount|kraken-mount\.elf'
 # The ampr-emu-ng contract (kraken.image, /app0/kraken/, kraken.pkg, kraken_zero.dat, "ampr-emu-ng ")
 # needs no entry: none of those names match PATTERN. The internal crate kraken-mount-pkg lives in
 # Cargo.toml and crates/, outside the scanned paths (src/ uses kraken_mount_pkg).
@@ -24,7 +27,17 @@ hits=$(grep -rnIE "$PATTERN" src ps5 .github docs --include="*" --exclude="*.png
 for ex in "${EXCEPTIONS[@]}"; do
   hits=$(printf '%s\n' "$hits" | grep -vE "$ex" || true)
 done
-hits=$(printf '%s\n' "$hits" | sed '/^$/d')
+kept=""
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if [[ "$line" == "$CHECKLIST":* ]]; then
+    text=${line#"$CHECKLIST":*:}
+    stripped=$(printf '%s\n' "$text" | sed -E "s#${CHECKLIST_ALLOWED}##g")
+    [[ "$stripped" =~ $PATTERN ]] || continue
+  fi
+  kept+="$line"$'\n'
+done <<< "$hits"
+hits=$(printf '%s' "$kept" | sed '/^$/d')
 
 if [[ -n "$hits" ]]; then
   echo "check_identity: names from the old identity are still present:" >&2

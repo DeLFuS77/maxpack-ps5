@@ -20,7 +20,7 @@ mod web;
 
 use cache::Fresh;
 use config::Settings;
-use maxpack_logic::mounter::{display_name, mounter_state, MounterState};
+use maxpack_logic::mounter::{display_name, look, Debounced, MounterState, OTHER_MOUNTERS};
 use scan::{Kind, Source};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -627,15 +627,33 @@ const MOUNTER_POLL: Duration = Duration::from_secs(2);
 /// mounter may have remounted, registered or removed our titles, so every title is checked again.
 static OTHER_SEEN: AtomicBool = AtomicBool::new(false);
 
-/// maxpack_logic::mounter_state now (kstuff, then ShadowMountPlus and the original of MaxPack by
-/// process name, which register and mount the same titles), stored in `state.mounter` for
-/// /api/state and the launch watcher. On a change: logged, one toast (waiting for kstuff, another
-/// mounter, or mounting again after one) and, with `wake`, the scan loop woken to act on it.
-/// Callers are serialized, so a later look is never stored before an earlier one.
+/// The mounter state now: kstuff, then one look at the process list for ShadowMountPlus and the
+/// original of MaxPack (they register and mount the same titles), through
+/// maxpack_logic::mounter::Debounced, so an unreadable list or one missed look never reads as
+/// "the other mounter is gone". Stored in `state.mounter` for /api/state and the launch watcher.
+/// On a change: logged, one toast (waiting for kstuff, another mounter, or mounting again after
+/// one) and, with `wake`, the scan loop woken to act on it. Callers are serialized (the debounce
+/// lock), so a later look is never stored before an earlier one.
 fn refresh_mounter(state: &State, wake: bool) -> MounterState {
-    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-    let m = mounter_state(sys::kstuff_loaded(), &|n| launch::find_pid(n).is_some());
+    /// The debounce, and whether the last look could not read the process list (logged once).
+    static DEBOUNCED: std::sync::Mutex<(Debounced, bool)> = std::sync::Mutex::new((Debounced::new(), false));
+    let mut guard = DEBOUNCED.lock().unwrap_or_else(|e| e.into_inner());
+    let (debounced, list_failed) = &mut *guard;
+    let this_look = match launch::running_names(&OTHER_MOUNTERS) {
+        Ok(seen) => {
+            if std::mem::take(list_failed) {
+                log!("process list readable again");
+            }
+            look(Some(&|n: &str| seen.iter().any(|s| *s == n)))
+        }
+        Err(e) => {
+            if !std::mem::replace(list_failed, true) {
+                log!("process list unreadable ({e}); the mounter state stays as it was");
+            }
+            look(None)
+        }
+    };
+    let m = debounced.update(sys::kstuff_loaded(), this_look, sys::uptime_ms());
     let last = std::mem::replace(&mut *state.mounter.lock().unwrap(), m);
     if matches!(m, MounterState::OtherMounter(_)) {
         OTHER_SEEN.store(true, Ordering::SeqCst);
@@ -726,8 +744,9 @@ fn gone(path: &std::path::Path) -> bool {
 }
 
 /// Built caches (a `.done` stamp) whose stamp source is gone, as title id -> source. Not a title
-/// this scan lists (moved, or still being copied), a running one, or one with DLC in
-/// /user/addcont/<TID> (SMP keeps those; a stat error there protects too).
+/// this scan lists (moved, or still being copied), a running one, one an image of this scan names
+/// (`[TID]`: ShadowMountPlus may serve it from there now), or one with DLC in /user/addcont/<TID>
+/// (SMP keeps those; a stat error there protects too).
 fn missing_sources(r: &scan::ScanResult, running: &HashSet<String>) -> HashMap<String, String> {
     let mut out = HashMap::new();
     for e in std::fs::read_dir(cache::CACHES).into_iter().flatten().flatten() {
@@ -738,6 +757,9 @@ fn missing_sources(r: &scan::ScanResult, running: &HashSet<String>) -> HashMap<S
         if running.contains(&tid)
             || r.games.iter().any(|g| g.title_id == tid)
             || r.unstable.iter().any(|(p, t)| t.as_ref() == Some(&tid) || p.as_os_str() == source)
+            || r.images.iter().any(|i| {
+                i.path.file_name().is_some_and(|n| maxpack_logic::images::image_has_title(&n.to_string_lossy(), &tid))
+            })
             || !gone(source.as_ref())
             || !gone(format!("/user/addcont/{tid}").as_ref())
         {
@@ -759,8 +781,9 @@ fn auto_remove(state: &State, s: &Settings, r: &scan::ScanResult, timers: &mut M
     let missing = missing_sources(r, &running);
     let keys: HashSet<String> = missing.keys().cloned().collect();
     for tid in timers.due(&keys, now, s.auto_remove_delay_secs) {
-        // A game may have started since `running` was read: stop, the next full pass retries.
-        if state.paused() {
+        // A game may have started since `running` was read, or another mounter (which may have
+        // mounted this title id): stop, the next full pass retries.
+        if state.paused() || !state.mounts() {
             return;
         }
         let source = &missing[&tid];
@@ -885,11 +908,17 @@ fn main() {
             if !PURGE_WAIT_LOGGED.swap(true, Ordering::SeqCst) {
                 log!("purge waits: {} source(s) still being copied", r.unstable.len());
             }
-        } else if state.purge.swap(false, Ordering::SeqCst) {
+        } else if state.mounts() && state.purge.swap(false, Ordering::SeqCst) {
             PURGE_WAIT_LOGGED.store(false, Ordering::SeqCst);
             let keep: Vec<String> = r.games.iter().map(|g| g.title_id.clone()).collect();
-            match cache::purge(&keep) {
-                Ok(()) => log!("caches purged; {} kept for rebuild", keep.len()),
+            // Looked at again before each title: purge unmounts /system_ex/app/<TID>, where another
+            // mounter started meanwhile may have mounted that title id.
+            match cache::purge(&keep, &|| state.mounts()) {
+                Ok(true) => log!("caches purged; {} kept for rebuild", keep.len()),
+                Ok(false) => {
+                    log!("purge stopped: another mounter started; it goes on once MaxPack mounts again");
+                    state.purge.store(true, Ordering::SeqCst);
+                }
                 Err(e) => log!("purge {}: {e}", cache::CACHES),
             }
             state.forced.lock().unwrap().extend(keep);

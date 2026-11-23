@@ -165,7 +165,9 @@ is ignored as a whole). The web UI edits the same file.
   +0444). chmod failures (exFAT USB, read-only) are counted: one log line per title with the title
   id, modes fixed, failures and the first failed path and error (none when nothing changed).
 - Purge (settings): delete caches of titles not in the library (`register::unmount_title` first;
-  a dir whose unmount fails is skipped and logged), empty and rebuild the rest.
+  a dir whose unmount fails is skipped and logged), empty and rebuild the rest. It stops before the
+  next title once MaxPack must stop mounting (another mounter started) and goes on at the next pass
+  that mounts.
 
 ## Flow (`src/main.rs`)
 Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as SMP, which mkdirs
@@ -174,9 +176,11 @@ Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as 
 copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web thread, klog thread when `debug`, then wait
 (2 s poll, one toast, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
 SMP `sm_kstuff_is_loaded`), then the mounter thread and the launch watcher thread.
-Another mounter: `maxpack_logic::mounter_state` (kstuff, then a `shadowmountplus.elf` or `kraken-mount.elf` process) is looked at every
-2 s (`watch_mounter`, which wakes the loop on a change) and at each loop turn, into `State::mounter`. While it is not Ready: no scan,
-build, register, purge or auto-remove, a pass in progress stops before its next title (a title built meanwhile is neither registered
+Another mounter: kstuff, then one walk of the process list for a `shadowmountplus.elf` or `kraken-mount.elf` process, is looked at every
+2 s (`watch_mounter`, which wakes the loop on a change) and at each loop turn, through `maxpack_logic::mounter::Debounced` into
+`State::mounter`: a mounter found counts at once; it counts as gone only after two clean looks at least 2 s apart, and an unreadable
+process list (`launch::running_names` Err: sysctl failed, a bad record) changes nothing. While it is not Ready: no scan,
+build, register, purge or auto-remove (both also stop before their next title), `/api/delete` and `/api/eject` answer 409, a pass in progress stops before its next title (a title built meanwhile is neither registered
 nor mounted), the launch watcher mounts no new overlay (a launch first seen then never gets one; overlays already up still go on
 exit as always), one toast per change, `waiting` = `"other:<process>"`; the web UI stays up (`State::installer_only`). Back to Ready:
 every title is checked again (`registered` and `failed` cleared), so titles the other mounter remounted are adopted again. Loop every `scan_interval_seconds` or on
@@ -204,7 +208,8 @@ folder: its `param.json`, else that cache), so a copy in flight that would win k
 Auto-remove (`auto_remove_missing`, SMP auto_remove_missing_games): after each full scan pass (timers
 start only after the first one, so a drive mounted late is not missing; not while paused), a built cache
 (`.done`) whose stamp source is gone (ENOENT/ENOTDIR only) starts a timer in memory (a restart starts over).
-Excluded, timer reset: a title this scan lists (moved, or still being copied), a running one, one with DLC in
+Excluded, timer reset: a title this scan lists (moved, or still being copied), a running one, one a
+ShadowMountPlus image of this scan names as `[TID]` (`maxpack_logic::images::image_has_title`), one with DLC in
 `/user/addcont/<TID>` (a stat error there protects too). Missing for `auto_remove_delay_seconds`: unregister
 as `/api/delete` (each title rechecks that no game runs; unmount without force, a busy mount retried next pass;
 uninstall, then `register::forget` so a returning source registers in full: `is_registered` reads app.db as bytes); the cache stays for a
@@ -404,7 +409,8 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
 - `POST /api/delete/<TID>`, body: the source path the UI showed (the game's `path`) -> 204 on success,
   404 for an invalid or absent library title, 409 while the scan loop is in a pass (it holds
   `State::work` for scan, purge, build and register; delete only try-locks it), when the body is not
-  the current library source, while a game runs, this title builds, the source path is unsafe, or
+  the current library source, while a game runs, while MaxPack does not mount (another mounter runs,
+  or no kstuff: what is at `/system_ex/app/<TID>` may be that mounter's), this title builds, the source path is unsafe, or
   its title mount cannot be unmounted; 500 on source or cache deletion failure. It validates the
   source is inside a scan root with no symlink from the root down (links above the root are not checked), and is a .pkg file or game
   directory, then unmounts `/system_ex/app/<TID>` without force and deletes the source. If that
@@ -414,7 +420,7 @@ If a newer copy took the port meanwhile, this copy quits (not while a game runs)
 - `POST /api/eject`, body: the drive's mount path (`/mnt/usb0`) -> 204 once the path is no longer a
   mount point; 400 when not ejectable, 404 when not mounted, 409 while the scan loop is in a pass
   (try-lock of `State::work`, held to the end so no pass builds, registers or remounts meanwhile),
-  while a game runs, when another partition of the same disk (`/dev/daN` followed by the end, `p` or
+  while a game runs, while MaxPack does not mount (as delete), when another partition of the same disk (`/dev/daN` followed by the end, `p` or
   `s`) is mounted, when a title mount from the drive cannot be unmounted (error text), or when the
   drive changed (`km_usb_eject` ENOENT/ESTALE); 502 with errno and native status in hex when the
   request fails, or when the mount is still there after 5 s (polled every 100 ms). Before the request it

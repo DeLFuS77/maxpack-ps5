@@ -280,10 +280,15 @@ pub fn total_size() -> u64 {
     du(Path::new(CACHES))
 }
 
-/// Deletes caches/<TID> not in `keep`; empties the kept ones so they rebuild.
-pub fn purge(keep: &[String]) -> Result<()> {
-    let Ok(rd) = fs::read_dir(CACHES) else { return Ok(()) };
+/// Deletes caches/<TID> not in `keep`; empties the kept ones so they rebuild. Stops before the next
+/// title once `go_on()` is false (another mounter started: its mount may be at /system_ex/app/<TID>);
+/// Ok(false) then, Ok(true) when done.
+pub fn purge(keep: &[String], go_on: &dyn Fn() -> bool) -> Result<bool> {
+    let Ok(rd) = fs::read_dir(CACHES) else { return Ok(true) };
     for e in rd.flatten() {
+        if !go_on() {
+            return Ok(false);
+        }
         let path = e.path();
         let name = e.file_name().to_string_lossy().into_owned();
         let r = if !keep.contains(&name) {
@@ -301,7 +306,7 @@ pub fn purge(keep: &[String]) -> Result<()> {
             return Err(err);
         }
     }
-    Ok(())
+    Ok(true)
 }
 
 /// `mode` with the `want` bits added, or None when none is missing (fix_access only adds bits).

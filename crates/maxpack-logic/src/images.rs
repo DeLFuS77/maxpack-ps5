@@ -19,6 +19,12 @@ pub fn bracket_title_id(file_name: &str) -> Option<&str> {
     file_name.split('[').skip(1).filter_map(|r| r.split_once(']').map(|(id, _)| id)).find(|id| is_title_id(id))
 }
 
+/// The image file `file_name` names game title `tid` in any of its `[...]`: ShadowMountPlus may
+/// serve that title from it, so auto-remove leaves the title alone.
+pub fn image_has_title(file_name: &str, tid: &str) -> bool {
+    is_title_id(tid) && file_name.split('[').skip(1).filter_map(|r| r.split_once(']')).any(|(id, _)| id == tid)
+}
+
 /// A game title id: 4 capitals and 5 digits, not a system app (NPXS); the payload's scan::valid_tid.
 fn is_title_id(t: &str) -> bool {
     let b = t.as_bytes();
@@ -29,6 +35,17 @@ fn is_title_id(t: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_carries_its_bracketed_title() {
+        assert!(image_has_title("Juego [PPSA01234].exfat", "PPSA01234"));
+        // Any bracket counts, not only the first title id.
+        assert!(image_has_title("[PPSA00001] Juego [PPSA01234].ffpkg", "PPSA01234"));
+        assert!(!image_has_title("Juego [PPSA01234].exfat", "PPSA01235"));
+        assert!(!image_has_title("Juego.exfat", "PPSA01234"));
+        assert!(!image_has_title("Juego [ppsa01234].exfat", "PPSA01234"));
+        assert!(!image_has_title("Juego [].exfat", ""));
+    }
 
     #[test]
     fn bracket_title_id_from_name() {
