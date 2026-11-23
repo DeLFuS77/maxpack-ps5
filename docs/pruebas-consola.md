@@ -15,6 +15,14 @@ Dónde mirar:
 
 ## 0. Antes de nada
 
+- [ ] **0.0. Sin el `maxpack.elf` de la fase 2.**
+  - Quita el `maxpack.elf` de la fase 2 de toda lista de carga automática (la del cargador, la de
+    etaHEN o la de kstuff) y reinicia la consola. Se llama igual y usa el mismo puerto 8095, pero no
+    sabe dejarle el sitio a una copia nueva.
+  - Esperado: al enviar este MaxPack no sale el aviso «MaxPack: puerto 8095 ocupado, no se ha
+    iniciado…», y la página abre en `http://<ip-de-la-consola>:8095`.
+  - Si sale ese aviso, el de la fase 2 (u otra copia) sigue en marcha: reinicia sin él y vuelve a
+    empezar. No sigas con él en marcha: lo que veas en el puerto 8095 sería suyo.
 - [ ] **0.1. Kraken Mount original funciona en tu firmware con un juego de MaxPack.**
   - Copia a `/data/homebrew/<TITLE_ID>` (o a `homebrew/` de un USB) un juego empaquetado con
     `maxpack pack` (carpeta con `ampr_zstd.index`).
@@ -23,6 +31,86 @@ Dónde mirar:
     guarda partida.
   - Si esto falla, lo demás no sirve: para, y apunta el firmware y el registro de Kraken Mount.
 - [ ] **0.2. Cierra Kraken Mount** desde su página (Detener) antes de seguir.
+
+## B. Base (modo normal)
+
+Lo que hace Kraken Mount, con MaxPack solo (sin ShadowMountPlus ni Kraken Mount en marcha). Prepara
+un juego de cada clase de fuente: una carpeta sin comprimir, una empaquetada con zstd, una con LZ4 y
+un FPKG (`.pkg`).
+
+- [ ] **B.1. Lanzar y salir diez veces de cada clase de fuente.**
+  - Con cada uno de los cuatro juegos: lánzalo, espera a que cargue, sal al menú, y así diez veces.
+  - Esperado, cada vez: en el registro, `<TID> overlay MOUNTED` al lanzar y `<TID> cleanup done` al
+    salir; la consola no se cuelga ni se apaga, y el juego vuelve a arrancar.
+  - Apunta qué juego y qué vez si algo falla.
+- [ ] **B.2. Al salir, nada forzado.** En el registro de B.1, busca `(MNT_FORCE)` o `cleanup done
+  after MNT_FORCE`.
+  - Esperado: no sale ninguno.
+  - Si sale: una capa siguió ocupada y MaxPack la quitó a la fuerza. Apunta el juego, la clase de
+    fuente, el firmware y las líneas del registro de ese `<TID>` desde `overlay MOUNTED` hasta
+    `cleanup done`; repite ese juego cinco veces más. Si la consola se cuelga al salir, para aquí y
+    guarda `maxpack.log`.
+- [ ] **B.3. Aviso de ampr-emu-ng.**
+  - Lanza el juego en zstd.
+  - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (zstd) running», **sin** `-beta`; con el de LZ4,
+    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.1`.
+  - Si sale `-beta` u otra versión, no es la nuestra: mira `/data/maxpack/ampr/libSceAmpr.sprx` y
+    `/data/maxpack/ampr.bundled`, y apúntalo.
+- [ ] **B.4. Emuladores de DLC y PlayGo.**
+  - Con «Añadir los emuladores incluidos de DLC (dlc_emu) y PlayGo (pgo_stub)…» activado, lanza un
+    juego con DLC en `/user/addcont/<TID>` y sin emulador propio. Esperado: el DLC sale en el juego.
+  - Un juego que usa PlayGo: en su ficha sale «Stub de PlayGo», y el juego no pide terminar la
+    descarga. Apágalo y lanza otra vez. Esperado: en el registro, `<TID>: PlayGo stub off`, y la
+    caché se recrea sin él (`fakelib: PlayGo stub off`).
+- [ ] **B.5. Backports.** Pon un backport en `<raíz>/backports/<TID>` de un juego en carpeta.
+  Esperado: el juego arranca con el backport aplicado (la versión del backport), y en `/api/state`
+  su `backport` es esa carpeta.
+- [ ] **B.6. Un juego movido.** Mueve un juego en carpeta de `/data/homebrew` a `homebrew/` de un
+  USB. Esperado: aviso «<juego> movido a <ruta>» (sin reconstruir la caché) y el juego arranca desde
+  el USB.
+- [ ] **B.7. Quitar los que desaparecen, a los 300 s.**
+  - Con «Quitar un juego de la pantalla de inicio si falta su origen» activado, saca la carpeta de un
+    juego de las raíces que se exploran (por ejemplo, a `/data/aparte`; dentro de una raíz contaría
+    como movido) o desenchufa el USB que lo tiene.
+  - Esperado: a los 300 s (`auto_remove_delay_seconds`), `<TID>: source <ruta> missing for N s,
+    removed from the home screen`, y el juego deja el menú. Antes de eso sigue en el menú.
+  - Devuelve la carpeta: el juego vuelve a registrarse en la siguiente pasada.
+- [ ] **B.8. Expulsar un USB.** En la biblioteca, «Desmontar» en la píldora del USB. Esperado:
+  «USB 1 se desmontó. Ya puedes desconectar la unidad.», sus juegos salen de la biblioteca, y al
+  enchufarlo otra vez vuelven.
+- [ ] **B.9. Idioma de los avisos.** Cambia el idioma de la consola a inglés y luego a español, y
+  provoca un aviso cada vez (por ejemplo, «Recrear caché» de un juego). Esperado: el aviso sale en el
+  idioma de la consola.
+- [ ] **B.10. Ajustes.**
+  - Cambia el intervalo de escaneo y «Guardar». Esperado: «Guardado.», y al volver a abrir Ajustes
+    sigue cambiado; `/data/maxpack/config.toml` lo tiene.
+  - Pon `/system_ex/app` (o `/`) en «Rutas de escaneo» y «Guardar». Esperado: «Error al guardar:
+    MaxPack nunca explora /system_ex/app: …», y `config.toml` no cambia.
+  - En Ajustes, «Acerca de» nombra MaxPack, Kraken Mount (quer3q), ampr-emu-ng, ShadowMountPlus,
+    dlc_emu, pgo_stub, ps5-payload-sdk, zstd, zlib, GPL-3.0-or-later y «sin garantía».
+- [ ] **B.11. Arrancar desde el icono de MaxPack.** Detén MaxPack desde su página («Detener») y abre
+  el icono de MaxPack (`MXPK00001`) en la pantalla de inicio.
+  - Esperado: la página sale enseguida (guardada), dice «Iniciando MaxPack...» y en unos segundos
+    funciona: el cargador arrancó `/data/maxpack/maxpack.elf`.
+  - Si dice «maxpack.elf aún no está guardado», envía el ELF una vez al puerto 9021 y repite.
+- [ ] **B.12. Un juego volcado cuyo TITLE_ID está instalado en la consola.**
+  - Pon en `/data/homebrew/<TITLE_ID>` la carpeta volcada de un juego que también tengas instalado
+    (de la tienda o de disco, o un FPKG instalado desde los ajustes de depuración).
+  - Esperado:
+    - en la biblioteca sale con «Error», y su ficha dice «Este título está instalado en la consola
+      (/user/app/<TITLE_ID>/app.pkg): MaxPack no registra ni monta esta copia…»;
+    - en el registro, una vez, `<TITLE_ID> (<ruta>): an installed copy of this title exists (…):
+      MaxPack does not register or mount this copy`;
+    - el juego instalado sigue igual: su icono, y al lanzarlo arranca el instalado, sin
+      `overlay MOUNTED` de ese `<TITLE_ID>` en el registro.
+  - Quita la carpeta al acabar.
+- [ ] **B.13. Otra web no puede tocar MaxPack.** Desde un PC de la misma red:
+  - `curl -i -X POST -H "Origin: http://ejemplo.com" http://<ip-de-la-consola>:8095/api/rescan`.
+    Esperado: `403` y «petición rechazada: no viene de la página de MaxPack».
+  - `curl -i -H "Host: ps5.ejemplo" http://<ip-de-la-consola>:8095/api/state`. Esperado: `403` y
+    «abre esta página con la dirección IP de la consola».
+  - `curl -i -X POST http://<ip-de-la-consola>:8095/api/rescan` (sin `Origin`). Esperado: `204`.
+  - En el registro, `web: refused …` (una línea por minuto como mucho).
 
 ## 1. Raíces importadas (la primera vez)
 
@@ -257,8 +345,9 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
   - Esperado: la biblioteca, Instalar y los ajustes se ven sin desplazarse de lado; instalar,
     pausar, verificar y desinstalar funcionan igual que en la consola.
   - Ábrela con un nombre en lugar de la IP (por ejemplo, el de tu router para la consola).
-    Esperado: Instalar dice «El instalador rechazó la petición»: solo vale la IP (o `localhost`). Con
-    otro montador en marcha, el aviso no propone ese nombre: dice `http://<ip-de-la-PS5>:8095`.
+    Esperado: la página entera se rechaza con «MaxPack: abre esta página con la dirección IP de la
+    consola…»: solo vale la IP (o `localhost`). Con la IP, y otro montador en marcha, el aviso dice
+    `http://<ip-de-la-PS5>:8095`.
 - [ ] **5.7. Otro montador arranca durante una instalación.**
   - Con MaxPack montando, empieza a instalar un `.p5z` grande y, a mitad de la copia, arranca
     ShadowMountPlus.
@@ -300,3 +389,25 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
   - Carga kstuff. Esperado: `kstuff: ready; mounting` y después `tile MXPK00001: …` (registrado o
     `up to date`); si en ese momento corre otro montador, `tile: not registered while another
     mounter runs` y el icono llega cuando ese se cierre (5.2).
+
+- [ ] **5.11. Desinstalar en modo normal.**
+  - Con MaxPack montando (sin otro montador), desinstala un juego instalado con MaxPack que ya esté
+    en el menú (de 5.1).
+  - Esperado:
+    - al acabar, en el registro, `<TITLE_ID>: uninstalled by the installer (<carpeta>): unmounted
+      and removed from the home screen`;
+    - el juego deja el menú enseguida, no a los 300 s; sale de la biblioteca;
+      `/data/maxpack/caches/<TITLE_ID>` ya no está;
+    - lo mismo con «Quitar un juego de la pantalla de inicio si falta su origen» desactivado.
+- [ ] **5.12. Desinstalar o reemplazar con el juego abierto.**
+  - Abre un juego de MaxPack. Con el juego abierto, en Instalar pulsa «Desinstalar» en un juego
+    instalado.
+  - Esperado: «Cierra el juego antes.», nada se borra, y en el registro `installer: /api/uninstall
+    refused: a game is running`.
+  - Igual con «Instalar y reemplazar» (como en 5.3): «Cierra el juego antes.» y la copia vieja sigue.
+  - Cierra el juego: las dos cosas funcionan.
+- [ ] **5.13. Desinstalar con otro montador en marcha.**
+  - Con ShadowMountPlus en marcha (solo instalador), desinstala un juego instalado con MaxPack.
+  - Esperado: el instalador lo quita de ShadowMountPlus como en la fase 2; MaxPack no toca el menú
+    (en el registro, `uninstalled by the installer while MaxPack does not mount: its home entry is
+    left to the mounter in charge`).
