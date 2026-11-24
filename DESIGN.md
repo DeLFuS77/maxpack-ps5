@@ -3,9 +3,9 @@
 A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/extended drives,
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
-The ampr-emu-ng runtime is NOT built here: its released `libSceAmpr.sprx` is bundled from
-`vendor/ampr-emu-ng/` (`VERSION`, `SHA256SUMS` from the GitHub release, checked by `ps5/build.sh`)
-and installed into `/data/maxpack/ampr/` at start.
+The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng, with the pkg and p5z modes; its CI
+run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
+`-maxpack.N`; `SHA256SUMS` copied from that CI run, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from
 their GitHub releases, checked by `ps5/build.sh`; GPL-3.0, `THIRD_PARTY_NOTICES`): drakmor's dlc_emu
 (`vendor/dlc_emu/`: `libSceAppContent.sprx`, `libSceNpEntitlementAccess.sprx`, `libSceGameUpdate.sprx`)
@@ -18,6 +18,13 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   Sparse layout extents (holes: a kind-0x40 boundary up to the next boundary) are read as zeros.
 - **Folder**: a directory directly in a scan root with `eboot.bin` and `sce_sys/param.json`.
   Packing: `ampr_zstd.index` present = zstd, else `ampr_assets.index` = lz4, else plain.
+- **.p5z**: a MaxPack game file (`maxpack pack --p5z`) directly in a scan root, or one level below like the other
+  sources (`scan::candidates`): `Kind::P5z`, played without installing it. The engine (`mp_play_*`, `src/p5z.rs`)
+  validates it and describes it (title id, name, version, loose files, volumes); the scan takes the title from that
+  description. The game itself stays inside the `.p5z`: only its loose files go to the cache (see Cache). A `.p5z`
+  the engine refuses (cut short, damaged, more than 256 volumes) is not a game: it is listed apart
+  (`ScanResult::unplayable`, `/api/state.unplayable`, one toast per path and run). A `.p5z` still being copied is
+  skipped like a pkg (`stability_wait_seconds`).
 - Any drive. The cache is always on the internal SSD.
 
 ## Paths
@@ -85,6 +92,23 @@ is ignored as a whole). The web UI edits the same file.
 ## Cache (`src/cache.rs`)
 `/data/maxpack/caches/<TID>/`, stamp file `.done` written last.
 - Folder: `fakelib/` only. `/app0` is the game folder itself.
+- .p5z (`build_p5z`): like a pkg, the cache IS `/app0`, but only the loose files of the `.p5z` are extracted (format
+  roles 0, 2 and 3; never the volumes (1), the runtime (4) or the originals (5)), 0777. `maxpack_logic::p5z::loose_dest`
+  skips an unsafe path, a nested lib dir and a name MaxPack keeps for itself (counted in one log line); a file straight
+  inside `fakelib/` or `fakelib2/` goes to the game's lib dir of the fakelib composition. The volumes stay in the
+  `.p5z`: ampr-emu-ng reads them through `maxpack.image`, and the `.p5z` ships its own `ampr_zstd.index` and
+  `ampr_emu.index` among the loose files, so MaxPack writes no index. The cache also has `fakelib/`, `p5z/` (an empty
+  mount point, see Launch) and `maxpack.image`: ASCII, `\n` lines, no `\r`: `maxpack-image 1`, then `p5z/<file name>`
+  (the `.p5z` relative to `/app0`), then `<id> <offset> <length>` per volume (ids 0..n-1 in order, n from 1 to 256;
+  `maxpack_logic::p5z::image_text`). The file name must be printable ASCII (the contract): any other name, or a volume
+  list outside the contract, fails the build with that reason. Space (`maxpack_logic::p5z::space_short`): before
+  extracting anything, the loose files plus `SPACE_MARGIN` (256 MiB, the installer's `space_margin`) must fit in the
+  free space of `/data`, else the build stops with `cache::NoSpace { missing }` (`cache::missing_bytes`). `main.rs` does
+  not memoize it (no `failed` entry) and tries again every pass, so the game builds by itself once the space is there:
+  the game shows status `error` with `error_code` `no_space` and `missing_bytes`, and one toast (`i18n::no_space`) and
+  one log line per run say how much is missing. The extracted `sce_sys/param.json` must carry the title id the
+  `.p5z`'s description gave, else the build fails. The stamp's `kind` is `p5z` and `.done` carries `p5z_id` (FNV-1a 64
+  of the size, the 64-byte header and the 32-byte footer, `p5z::id`; the identity `is_move` compares).
 - FPKG: it IS `/app0`: `sce_sys/**` (with the files only the pkg container holds: `save_data.png`,
   `pic0`/`pic1`, `snd0.at9`, `trophy00.ucp`, `nptitle.dat`, `npbind.dat`, which save data and
   trophies read from `/app0/sce_sys`), `eboot.bin`, every `*.prx`/`*.sprx`, every `*.elf` outside `decrypted/`
@@ -105,7 +129,9 @@ is ignored as a whole). The web UI edits the same file.
   The dir itself is never deleted: `/system_ex/app/<TID>` is a nullfs of it.
 - `/app0` is writable, so a game may write into its cache (pkg) or its dump folder (folder, also on
   USB). `.built` (written before `.done`) lists what the build created; a rebuild removes only those
-  paths (a dir only once empty), so files the game wrote stay. A failed build removes what it wrote.
+  paths (a dir only once empty), so files the game wrote stay. A failed build removes what it wrote and leaves a `.built`
+  that lists only what it could not remove (normally empty) and no `.done`, so the next build (for a `.p5z` short of
+  space, the next pass) never deletes files the game wrote into its cache.
   A cache without `.built` (older build) is emptied. Only Purge deletes the game's files.
 - `fakelib/` composition: base = backport `fakelib/` (all files) if present, else the game's
   `fakelib/` (all files but `libSceSaveData.native.sprx`, which breaks saves; the old `game_fakelib`
@@ -126,7 +152,8 @@ is ignored as a whole). The web UI edits the same file.
   A title in `playgo_off` skips pgo_stub entirely (no add, no upgrade, the eboot is not searched), logged
   `<TID>: fakelib: PlayGo stub off (playgo_off)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
-  `.pkg` named in `kraken.image`), every file of `/data/maxpack/ampr/` (not `libkernel.sprx`) is copied on top,
+  `.pkg` named in `kraken.image`) or a .p5z game (a game's own ng has no p5z mode, so `keep_game_ng` does not apply:
+  ours is always on top), every file of `/data/maxpack/ampr/` (not `libkernel.sprx`) is copied on top,
   so ours wins over the game's own `libSceAmpr.sprx`, except a game's or backport's ampr-emu-ng strictly newer than
   ours (the `ampr-emu-ng X.Y.Z` identity in both files; ours without one counts as older), which is kept and logged
   `<TID>: fakelib: kept the game's ampr-emu-ng <v> (newer than <v>)` (no ng downgrade, also over a hand-placed copy). `.ampr` records what fakelib was composed from: `{"ampr": {name: [size, mtime]} or null,
@@ -144,7 +171,8 @@ is ignored as a whole). The web UI edits the same file.
   (`{"v":2,"kind","source","size","backport","fakelib"}`; extra keys of an older stamp are ignored), and every input's
   mtime is older than `.done`'s mtime. Inputs: FPKG = the .pkg, backport dir (recursive);
   folder = `eboot.bin`, `sce_sys/param.json`, its lib dir and files (not the folder itself: the game
-  writes there). Otherwise rebuilt. A pkg's `.done` also carries `pkg_id` (FNV-1a 64 of the size,
+  writes there); .p5z = the file, and `maxpack.image` must exist. Otherwise rebuilt: a different `.p5z` of the same
+  title (another version: another size, header or footer) rebuilds the cache. A pkg's `.done` also carries `pkg_id` (FNV-1a 64 of the size,
   the first 64 KiB, the 4 KiB CNT header and the last 64 KiB), a folder's `folder_id` (FNV-1a 64 of
   each input file's path relative to the folder and size, plus the bytes of every input but
   `eboot.bin`: `param.json` and the lib dir's files); neither is
@@ -156,17 +184,18 @@ is ignored as a whole). The web UI edits the same file.
   when it is the folder's own lib dir under the moved path), the old source path is gone, and the
   files are the same: pkg = `pkg_id` equal (the moved .pkg may be newer than `.done`), its other
   inputs older than `.done`; folder = `folder_id` equal (mtimes not compared: a copy-then-delete
-  move relinks too). A copy while the old one
+  move relinks too); .p5z = `p5z_id` equal. A copy while the old one
   still exists is a duplicate, never a move. Relink: pkg = new stamp, `kraken.image` rewritten when
   the file name changed, `.done` mtime now, extracted files and indexes kept (ng checks the pkg's
-  size only); folder = new stamp, `.done` mtime now. Anything else is Stale (a cache stamped before `pkg_id`/`folder_id`
+  size only); folder = new stamp, `.done` mtime now; .p5z = new stamp and `maxpack.image` rewritten (the `.p5z` is opened for its
+  volumes), the extracted files kept: nothing is extracted again, and the log says `moved ... relinking`. Anything else is Stale (a cache stamped before `pkg_id`/`folder_id`
   existed rebuilds once when its game moves).
 - Access (`fix_access`, once per run per title from `main.rs`; never fails): games and system
   services (save data, trophies) read the game's files with another uid than the payload. It only
   adds bits, chmods only when some are missing, lstats and never follows symlinks, skips entries
   that are neither file nor dir: the cache dir recursively (dirs 0777, `/app0` is writable; files
   +0444); pkg = the .pkg +0444 and its folder +0555 (the `/app0/kraken` nullfs: ng falls back to
-  LZ4 mode when it cannot open the .pkg); folder = the game folder recursively (dirs +0555, files
+  LZ4 mode when it cannot open the .pkg), a .p5z the same with its folder (the `/app0/p5z` nullfs); folder = the game folder recursively (dirs +0555, files
   +0444). chmod failures (exFAT USB, read-only) are counted: one log line per title with the title
   id, modes fixed, failures and the first failed path and error (none when nothing changed).
 - Purge (settings): delete caches of titles not in the library (`register::unmount_title` first;
@@ -253,8 +282,11 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change or a rebuild is forced. Duplicate title ids: a folder beats a pkg, then the first scan root wins;
-the others show `duplicate`. Low `/data` space (checked before the games, before and after each
+only when its inputs change or a rebuild is forced. Duplicate title ids: a folder beats a pkg, which beats a .p5z
+(`maxpack_logic::dups::claim`; ranks `RANK_FOLDER` < `RANK_PKG` < `RANK_P5Z`), then the first scan root wins; the others
+show `duplicate`. A `.p5z` installed with the Install tab is thus superseded by its folder and shows as a duplicate; the
+cache, whose stamp now differs in its kind, is rebuilt as the folder's, which removes the loose files the `.p5z` had
+extracted (they are in its `.built`) and frees their space. When that folder is uninstalled, the `.p5z` is the game again. Low `/data` space (checked before the games, before and after each
 build, after the scan): toast once per run and a UI banner.
 
 ## Register (`src/register.rs`)
@@ -301,13 +333,16 @@ mount of the ampr dir. Also nullfs of `/data` at `<sandbox>/data`, plus a nullfs
 registered stack, backport unionfs included) over it; for a pkg game, a nullfs of the pkg's folder
 (from the `.done` stamp's "source") at `<sandbox>/app0/kraken`; ng opens the .pkg named in `/app0/kraken.image`.
 A single-file nullfs of the .pkg is refused by the kernel (ENOTDIR), hence the folder mount.
+A .p5z game gets the same at `<sandbox>/app0/p5z`: `cache::mount_source` takes the folder below `/app0` from the stamp's
+`kind` (`kraken` or `p5z`) and the file from its "source"; the `.p5z`'s folder is mounted read-only, so the game cannot
+write beside it, and ampr-emu-ng finds the file through `/app0/maxpack.image` as `p5z/<file name>`.
 All removed on exit, newest first: the nullfs mounts at once (left in the sandbox they hang ShellCore's
 teardown and the console powers off), the overlay once ShellCore takes it down with common/lib (checked
 every 250 ms), at most 3 s later (`EXIT_GRACE_MS`), or when the sandbox dir goes. An exec of the same title
 in the same sandbox meanwhile (an exit-spawned ELF; a new overlay would fail with EBUSY)
 cancels that and mounts the nullfs mounts again (~10 ms after the exec: the forked child gets its title id
 only at the exec, so they cannot go back earlier). When the exec fallback cannot mount the overlay, they are
-still mounted. A later copy of the payload adopts the overlay, `/data`, USB and `/app0/kraken` mounts.
+still mounted. A later copy of the payload adopts the overlay, `/data`, USB and `/app0/kraken` or `/app0/p5z` mounts.
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
 No overlay when neither layer applies.
 
@@ -337,13 +372,15 @@ pub fn ejectable(mount: &str) -> bool;                      // /mnt/usb0..7, /mn
 
 // scan.rs
 #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Packing { Plain, Zstd, Lz4 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Kind { Pkg, Folder(Packing) }
+#[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Kind { Pkg, Folder(Packing), P5z }
 #[derive(Clone, Debug)]
 pub struct Source { pub path: std::path::PathBuf, pub kind: Kind, pub title_id: String, pub title_name: String,
   pub version: String, /* param.json contentVersion, or empty */
-  pub drive: String, pub size: u64 /* pkg file size; folder: 0 */, pub backport: Option<std::path::PathBuf> }
+  pub drive: String, pub size: u64 /* pkg or .p5z file size; folder: 0 */, pub backport: Option<std::path::PathBuf> }
 pub struct ScanResult { pub games: Vec<Source>, pub duplicates: Vec<Source>, pub errors: Vec<(std::path::PathBuf, String)>,
-  pub unstable: Vec<(std::path::PathBuf, Option<String> /* title id when known */)> } // still being copied: skipped, not gone
+  pub unstable: Vec<(std::path::PathBuf, Option<String> /* title id when known */)>, // still being copied: skipped, not gone
+  pub images: Vec<Image>,                                                  // ShadowMountPlus images: listed, never mounted
+  pub unplayable: Vec<(std::path::PathBuf, maxpack_logic::p5z::Unplayable)> } // .p5z files the engine refuses: not games
 pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads by (path, size, mtime)
 pub fn still_written(paths: &[std::path::PathBuf], wait: u64) -> Option<u64>; // age in s of the youngest max(mtime, ctime) under wait; None = stable
 pub fn parse_param(json: &[u8]) -> std::io::Result<(String, String, String)>; // (title_id, title_name, version); name: see below
@@ -360,8 +397,11 @@ pub fn relink(src: &Source, s: &Settings, from: &std::path::Path) -> std::io::Re
 pub fn pkg_id(pkg: &std::path::Path) -> std::io::Result<String>;   // sampled identity, see Cache
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fakelib: fakelib/ only
 pub fn check(src: &Source, s: &Settings) -> Fresh;
+pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
+pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
+pub fn mount_source(tid: &str) -> Option<(&'static str, String)>;  // pkg or .p5z: (folder below /app0: "kraken" | "p5z", the file)
 pub fn build(src: &Source, s: &Settings) -> std::io::Result<()>;   // always rebuilds
-pub fn app0(src: &Source) -> std::path::PathBuf;                    // pkg: dir(tid); folder: src.path
+pub fn app0(src: &Source) -> std::path::PathBuf;                    // pkg, .p5z: dir(tid); folder: src.path
 pub fn sce_sys(src: &Source) -> std::path::PathBuf;                 // where sce_sys lives for this source
 pub fn built_at(tid: &str) -> Option<u64>;                          // .done mtime, unix secs
 pub fn size(tid: &str) -> u64;                                      // bytes, recursive
@@ -421,10 +461,11 @@ minute):
   `GET /maxpack.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
   the rest `no-store`.
 - `GET /api/state`:
-  `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder", packing:"plain"|"zstd"|"lz4"|null,
+  `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
-  shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), cache_size, cache_built, backport,
+  shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off)}],
+  unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
   without `playgo_off` keeps the current list (the settings form does not send it). A `scanpath` entry that
@@ -449,7 +490,7 @@ minute):
   the current library source, while a game runs, while MaxPack does not mount (another mounter runs,
   or no kstuff: what is at `/system_ex/app/<TID>` may be that mounter's), this title builds, the source path is unsafe, or
   its title mount cannot be unmounted; 500 on source or cache deletion failure. It validates the
-  source is inside a scan root with no symlink from the root down (links above the root are not checked), and is a .pkg file or game
+  source is inside a scan root with no symlink from the root down (links above the root are not checked), and is a .pkg or .p5z file or game
   directory, then unmounts `/system_ex/app/<TID>` without force and deletes the source. If that
   fails, the cache and tile stay and the next pass remounts the title (a folder partly removed stays so).
   Then it uninstalls the home-screen entry (failure logged), removes the title from the launch set
@@ -499,7 +540,7 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-1`), with the zstd and
+there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-2`), with the zstd and
 zlib its submodules pin. `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
 `mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's

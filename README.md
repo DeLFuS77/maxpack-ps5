@@ -7,8 +7,9 @@ MaxPack es la herramienta de juegos de PS5 de DeLFuS77, en su versión para la c
 la pantalla de inicio y los monta al lanzarlos, y que además los instala. Está basado en
 [Kraken Mount](https://github.com/quer3q/kraken-mount), de quer3q, y conserva su historial y su licencia.
 
-**Formatos admitidos**: FPKG de depuración (`.pkg`) y carpetas de juego (sin comprimir, o empaquetadas
-con zstd o LZ4); el instalador también instala `.p5z` de MaxPack e imágenes de ShadowMountPlus.
+**Formatos admitidos**: FPKG de depuración (`.pkg`), carpetas de juego (sin comprimir, o empaquetadas
+con zstd o LZ4) y `.p5z` de MaxPack, que se juegan tal cual, sin instalarlos; el instalador también instala
+`.p5z` e imágenes de ShadowMountPlus.
 
 ## Estado
 
@@ -32,7 +33,16 @@ Lo que añade MaxPack:
 - **La adopción**: los juegos que registraron ShadowMountPlus o Kraken Mount se adoptan sin
   duplicarlos, y la primera vez se importan las rutas que se añadieron a mano en ellos. MaxPack no
   escribe nada en `/data/krakenmount` ni en `/data/shadowmount`, así que se puede volver a ellos.
-- **Nuestra ampr-emu-ng**: la incluida es una compilación propia, de
+- **Jugar desde el `.p5z`**: un `.p5z` en una raíz de escaneo (o una carpeta más abajo) sale como un
+  juego más, sin instalarlo. En el SSD interno solo se extraen sus archivos sueltos
+  (`/data/maxpack/caches/<TID>`); los volúmenes se leen del propio `.p5z`, que se monta en solo lectura
+  en `/app0/p5z` al lanzar, así que el archivo tiene que seguir donde está. Hace falta espacio para los
+  sueltos más 256 MiB: si no cabe, el aviso dice cuánto falta y el juego se monta solo al liberarlo. Un
+  `.p5z` dañado o con más de 256 volúmenes no es un juego: sale en «Archivos .p5z que no se pueden
+  jugar». Si el mismo juego está también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como
+  duplicado. El nombre del archivo debe ser ASCII imprimible. Siempre va con nuestra ampr-emu-ng, la
+  única que conoce este modo.
+- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.2`, con el modo `.p5z`), de
   [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
   actualización automática está apagada hasta que se publique.
 - **Protecciones**: nunca registra ni monta un título que esté instalado en la consola, nunca explora

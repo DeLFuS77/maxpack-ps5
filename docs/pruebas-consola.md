@@ -5,7 +5,9 @@ hacer y qué debe pasar. Marca cada casilla al comprobarla y apunta el firmware.
 
 Dónde mirar:
 - el registro, `/data/maxpack/maxpack.log` (también en la página, al final);
-- el estado, `http://<ip-de-la-consola>:8095/api/state`: los campos `waiting`, `games` e `images`;
+- el estado, `http://<ip-de-la-consola>:8095/api/state`: los campos `waiting`, `games` (con
+  `kind == "p5z"` para un `.p5z`, y `error_code` y `missing_bytes` si no cabe), `images` y `unplayable`
+  (los `.p5z` que no se pueden jugar);
 - el del instalador, `http://<ip-de-la-consola>:8095/api/inst/state`: `job`, `pending`, `installed`
   y `last`;
 - los avisos de la consola.
@@ -53,8 +55,9 @@ un FPKG (`.pkg`).
 - [ ] **B.3. Aviso de ampr-emu-ng.**
   - Lanza el juego en zstd.
   - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (zstd) running», **sin** `-beta`; con el de LZ4,
-    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.1`.
-  - Si sale `-beta` u otra versión, no es la nuestra: mira `/data/maxpack/ampr/libSceAmpr.sprx` y
+    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.2`.
+  - Esta compilación sale sin `-beta` (la de `main`, la de la etapa 1, sí lo llevaba: `v0.5.0-beta.a52648f`).
+    Si sale `-beta` u otra versión, no es la de esta rama: mira `/data/maxpack/ampr/libSceAmpr.sprx` y
     `/data/maxpack/ampr.bundled`, y apúntalo.
 - [ ] **B.4. Emuladores de DLC y PlayGo.**
   - Con «Añadir los emuladores incluidos de DLC (dlc_emu) y PlayGo (pgo_stub)…» activado, lanza un
@@ -291,7 +294,7 @@ un FPKG (`.pkg`).
 
 Prepara en un USB un `.p5z` hecho con `maxpack pack --p5z` y una imagen `.exfat` de otro juego,
 los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in N ms (MaxPack engine
-1b88861, ...)`.
+5780807, runtime ampr-emu-ng v0.5.0-maxpack.2 712560 bytes)`.
 
 - [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**
   - En Instalar salen los dos en «Juegos para instalar»: el `.p5z` con su icono, lo que ahorra y lo
@@ -422,3 +425,78 @@ los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in 
   - Esperado: el instalador lo quita de ShadowMountPlus como en la fase 2; MaxPack no toca el menú
     (en el registro, `uninstalled by the installer while MaxPack does not mount: its home entry is
     left to the mounter in charge`).
+
+## 6. Jugar desde el .p5z
+
+Un `.p5z` de MaxPack (hecho con `maxpack pack --p5z`) en una raíz de escaneo se juega sin instalarlo:
+MaxPack extrae solo sus archivos sueltos a `/data/maxpack/caches/<TITLE_ID>` y lee los volúmenes del
+propio `.p5z`, montado en solo lectura en `/app0/p5z` al lanzar. Usa un juego de un tamaño razonable
+(unos GB) y, para el espacio, uno cuyos sueltos conozcas.
+
+Antes de empezar, en la consola de pruebas (firmware 13.60, ShadowMountPlus 1.7beta12) se vio que
+MaxPack no monta mientras otro montador corre: prueba **primero con ShadowMountPlus cerrado** (6.11 es
+la prueba con él en marcha).
+
+- [ ] **6.1. El aviso de ampr-emu-ng.**
+  - Copia el `.p5z` a `/data/homebrew` y espera a que salga en el menú; en `/api/state` su `kind` es
+    `"p5z"`. Lánzalo.
+  - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (p5z) running» (sin `-beta`); en el registro,
+    `<TID>: building cache` al principio y `<TID> overlay MOUNTED` al lanzar; en
+    `/data/maxpack/caches/<TID>` hay `maxpack.image`, `p5z/` y `fakelib/`, y los sueltos, no los
+    volúmenes. `maxpack.image` es texto: `maxpack-image 1`, `p5z/<nombre>.p5z` y una línea por volumen.
+  - Si sale `(zstd)`, `(lz4)` u otro modo, o ninguno, para y guarda el registro.
+- [ ] **6.2. Un `.p5z` en un USB.**
+  - Pon el `.p5z` en `homebrew/` de un USB (o una carpeta más abajo) y quítalo de `/data/homebrew`.
+  - Esperado: arranca, los vídeos se ven sin tirones, cargar y guardar partida funcionan, y 10 minutos
+    de juego sin errores. Sales al menú sin cuelgue; en el registro, `cleanup done`.
+- [ ] **6.3. Un `.p5z` en la unidad M.2.** Lo mismo desde `homebrew/` de `/mnt/ext1`. Esperado: igual
+  que 6.2.
+- [ ] **6.4. Un `.p5z` en el SSD interno.**
+  - Cópialo a `/data/homebrew/` (no vale otra carpeta de `/data`: es una raíz de escaneo).
+  - Esperado: igual que 6.2.
+- [ ] **6.5. Moverlo de unidad.**
+  - Con la caché ya hecha, mueve el `.p5z` de una unidad a otra (por ejemplo, del USB a
+    `/data/homebrew`), con el mismo archivo.
+  - Esperado: aviso «<juego> movido a <ruta>», y en el registro `<TID>: moved <ruta vieja> -> <ruta
+    nueva>; relinking <caché>`, **sin** `building cache` ni extraer de nuevo; el juego arranca desde
+    la unidad nueva y sus partidas y archivos siguen ahí.
+- [ ] **6.6. Cambiarlo por otra versión.**
+  - Sustituye el `.p5z` por otro del mismo juego (otra versión, o el mismo hecho otra vez).
+  - Esperado: en el registro, `building cache` otra vez (la caché se rehace con los sueltos de la
+    nueva), y el juego arranca con la versión nueva.
+- [ ] **6.7. Instalarlo con la pestaña Instalar.**
+  - En Instalar, instala ese `.p5z` en el almacenamiento interno.
+  - Esperado: la copia en carpeta gana, el `.p5z` sale como `duplicate` y el juego arranca desde la
+    carpeta; la caché pasa a ser la de un juego en carpeta (solo `fakelib/`) y el espacio de los sueltos
+    del `.p5z` se libera: compara el espacio libre de `/data` o `/api/state` (`cache.size`) antes y
+    después.
+  - Desinstálalo (Instalar > Desinstalar). Esperado: el `.p5z` vuelve a ser el juego y arranca.
+- [ ] **6.8. Un `.p5z` cortado.**
+  - Copia un `.p5z` y quítale el final (por ejemplo, `head -c <la mitad> juego.p5z > cortado.p5z`),
+    en una raíz de escaneo.
+  - Esperado:
+    - no sale en la biblioteca como juego;
+    - sale en «Archivos .p5z que no se pueden jugar», con «Dañado o incompleto»; en `/api/state`,
+      `unplayable` lo lista con `code` `damaged` y su `detail`;
+    - un aviso «No se puede jugar <archivo>: está dañado o incompleto», una sola vez;
+    - los demás juegos siguen igual. Borra el archivo al acabar: desaparece de la lista.
+- [ ] **6.9. Sin espacio.**
+  - Llena `/data` hasta que le quede menos que los sueltos del `.p5z` más 256 MiB, y pon el `.p5z`
+    (con la caché borrada: «Purgar caché»).
+  - Esperado:
+    - el juego sale con «Error» y su ficha dice cuánto falta; `/api/state`: `error_code` `no_space` y
+      `missing_bytes`;
+    - un aviso «No cabe <juego> en el SSD interno: faltan N GB», una sola vez;
+    - en el registro, una línea `... bytes missing; tried again every pass`, una vez por sesión.
+  - Libera espacio. Esperado: sin tocar nada, en la siguiente pasada se construye y el juego se monta
+    y arranca.
+- [ ] **6.10. Salir del juego diez veces.**
+  - Lanza el `.p5z` y sal al menú, diez veces.
+  - Esperado, cada vez: `overlay MOUNTED` y `cleanup done`, sin `(MNT_FORCE)`, y la consola no se
+    cuelga ni se apaga.
+- [ ] **6.11. Otro montador en marcha.**
+  - Con ShadowMountPlus en marcha, arranca MaxPack con el `.p5z` en una raíz.
+  - Esperado: el aviso de «otro montador» y `waiting` = `"other:shadowmountplus.elf"`; el `.p5z` no se
+    monta ni se construye (ninguna línea `building cache`, `registered` ni `overlay MOUNTED` suya), y el
+    instalador sigue funcionando (Instalar responde).
+  - Cierra ShadowMountPlus. Esperado: a los 2-4 s MaxPack vuelve a montar y el `.p5z` sale en el menú.
