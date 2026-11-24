@@ -19,7 +19,10 @@ and its credit are published together once it is ready.
 - MaxPack is a payload for a jailbroken PS5: it runs with the console's privileges. Only run
   `maxpack.elf` from this repository's [Releases](https://github.com/DeLFuS77/maxpack-ps5/releases)
   and check it against `SHA256SUMS`. The self-update downloads from this repository's releases only
-  and checks the file against the release's `SHA256SUMS` before sending it.
+  and checks the file against the release's `SHA256SUMS` before sending it. The ampr-emu-ng updater
+  (off by default), whose `libSceAmpr.sprx` every game loads, downloads from DeLFuS77/ampr-emu-ng's
+  releases only and installs the file only when it matches that release's `SHA256SUMS`. Both wait
+  until the console has passed Settings > "Check secure connections".
 
 ## Out of scope
 

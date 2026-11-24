@@ -3,6 +3,31 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
+## 1.0.1 - 2026-11-24
+
+### Security
+
+- **The ampr-emu-ng update is checked like MaxPack's own self-update.** Every game loads the
+  `libSceAmpr.sprx` it installs, but it only checked the file's size and that it is a module. Now the
+  update (at start with "Auto-update ampr-emu-ng", and Settings > "Update ampr-emu-ng now") also downloads
+  the release's `SHA256SUMS` and installs `libSceAmpr.sprx` only when its SHA-256 is the one listed for
+  it. A missing, malformed or different `SHA256SUMS` installs nothing: the log says why and a notice
+  says it was not installed.
+- **It waits for "Check secure connections".** As the self-update, the ampr-emu-ng update downloads
+  nothing until that check has passed once on the console; Settings says so under ampr-emu-ng, and
+  "Update ampr-emu-ng now" answers with the self-update's message.
+
+### Changed
+
+- The [compatibility list](docs/compatibility.md) row in "Copy report" carries no game name, title id
+  or game version, since the list names no game: it follows the list's new columns (Original → `.p5z`,
+  Format, Volumes, Drive, Firmware, Loader/mounter, Fakelib mode, Result, Date, Notes), in English.
+
+### Fixed
+
+- The bug report form: its "Other mounters running at the same time" list offered "None", an option
+  name GitHub's issue forms reserve; it is now "Nothing else".
+
 ## 1.0.0 - 2026-11-24
 
 The first public release of MaxPack for the console. It is based on

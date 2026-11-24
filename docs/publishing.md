@@ -27,7 +27,9 @@ one's README and Corresponding Source links point at the others.
 - **ampr-emu-ng auto-update** (`ampr_auto_update`) is off by default "until MaxPack is published"
   (`src/config.rs` default and help text, the page's `amprAutoUpdateHint` texts, README). Turning it on
   by default is a decision of its own, and it needs a published (not draft, not pre-release)
-  ampr-emu-ng release with a `libSceAmpr.sprx` asset, since it reads `releases/latest`.
+  ampr-emu-ng release with a `libSceAmpr.sprx` and a `SHA256SUMS` asset, since it reads
+  `releases/latest` and, since 1.0.1, installs nothing that `SHA256SUMS` does not list (and nothing
+  before the console passed "Check secure connections").
 
 ## The release
 

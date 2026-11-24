@@ -321,9 +321,9 @@ The whole flow, from packing on the PC:
 - The bundled **DLC (dlc_emu)** and **PlayGo (pgo_stub)** emulators, added to a game that needs them and
   has none; **backports**; cleaning up games whose source is gone.
 - The bundled **ampr-emu-ng** (`v0.5.1-maxpack.1`), with its own updater (off until MaxPack is
-  published).
+  published), checked like the self-update.
 - **Check secure connections:** proves that the console refuses forged certificates. MaxPack's
-  self-update stays off until this check has passed once.
+  self-update and the ampr-emu-ng updater stay off until this check has passed once.
 - **Rescan**, **Rebuild all**, **Purge cache**, **Show log** and **Stop MaxPack**.
 - **11 languages** (English, Russian, Chinese, German, Spanish, French, Japanese, Portuguese, Italian,
   Korean and Arabic): the page follows your browser or your choice, and the console notifications follow
@@ -361,8 +361,9 @@ the game, excluded paths and the `payloads.json` catalog for ps5-payload-manager
 - It never registers or mounts a title that is **installed on the console**.
 - It never scans system or data folders, and never opens excluded paths.
 - Port 8095 answers only the page opened at the console's IP (or `localhost`), not other websites.
-- Updates come only from this repository's releases, are checked against their `SHA256SUMS`, and only
-  after the console has proved it refuses forged certificates.
+- Updates come only from this repository's releases (ampr-emu-ng's from DeLFuS77/ampr-emu-ng's), are
+  checked against their `SHA256SUMS`, and only after the console has proved it refuses forged
+  certificates.
 
 ### On the PC
 
@@ -401,6 +402,9 @@ touched. The choice is kept in `config.toml` (`fakelib_emulators`, `fakelib_off`
 - **The self-update** only takes this repository's releases, checks the `maxpack.elf` it downloads
   against that release's `SHA256SUMS`, and stays off until the console has passed **Check secure
   connections** (it must refuse forged certificates).
+- **The ampr-emu-ng updater** (off by default) only takes DeLFuS77/ampr-emu-ng's releases, installs
+  their `libSceAmpr.sprx` only when it matches that release's `SHA256SUMS`, and waits for the same
+  **Check secure connections** (since 1.0.1).
 
 ### Updates
 

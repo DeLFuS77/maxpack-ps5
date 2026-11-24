@@ -706,3 +706,42 @@ The secure-connection check and the update notice, with MaxPack alone and the co
     8095 and the page reloads with the new version.
   - Start an install in the Install tab and press "Update" while it copies. Expected: "the installer is
     copying a game; try again when it ends.", also when the install starts during the download.
+
+## 9. 1.0.1: the ampr-emu-ng update is checked
+
+With a 1.0.1 build, MaxPack alone and the console online. Since 1.0.1 the ampr-emu-ng update waits for
+the secure-connection check and installs `libSceAmpr.sprx` only when it matches the release's
+`SHA256SUMS`, as the self-update does. Note what `/data/maxpack/ampr/` holds first: a hand-placed
+`libSceAmpr.sprx` is kept by the automatic update and moved to `/data/maxpack/libSceAmpr.sprx.hand`
+by "Update ampr-emu-ng now" (it asks first).
+
+- [ ] **9.1. Refused before the secure-connection check.**
+  - Delete `/data/maxpack/tls_check.json` and restart MaxPack. Expected: in Settings, under
+    ampr-emu-ng, "ampr-emu-ng updates (at start or with this button) stay off until the
+    secure-connection check below passes on this console."
+  - Press "Update ampr-emu-ng now". Expected: "Update failed: the secure-connection check has not
+    passed on this console (Settings > Secure connections).", at once (nothing is downloaded); in the
+    log, `ampr: update: nothing installed (tls_unchecked): ...`;
+    `/data/maxpack/ampr/libSceAmpr.sprx` and `/data/maxpack/ampr.bundled` unchanged. With curl,
+    `curl -X POST http://<console-ip>:8095/api/ampr/update` answers 409 with
+    `"code":"tls_unchecked"`.
+  - Turn on "Auto-update ampr-emu-ng", save and restart MaxPack. Expected: the same
+    `nothing installed (tls_unchecked)` line once at start, and no notice.
+- [ ] **9.2. Accepted after it.**
+  - Run "Check secure connections" until it says "Passed" (8.1). Expected: the note under ampr-emu-ng
+    goes away.
+  - Press "Update ampr-emu-ng now". Expected: on the ampr-emu-ng row and in the log,
+    `installed ampr-emu-ng v0.5.1-maxpack.1 (716176 bytes, matches SHA256SUMS)` (or the newer release
+    with its size), and the notice "ampr-emu-ng v0.5.1-maxpack.1 installed". `v0.5.1-maxpack.1` is
+    byte-identical to the bundled copy, so Settings still shows it as bundled.
+  - With "Auto-update ampr-emu-ng" on, restart MaxPack. Expected: `ampr: update: latest
+    v0.5.1-maxpack.1 skipped (...: installed v0.5.1-maxpack.1 is not older)`.
+- [ ] **9.3. A forged `SHA256SUMS` is refused (by the unit tests).**
+  - MaxPack takes ampr-emu-ng only from DeLFuS77/ampr-emu-ng's releases on GitHub, with no local file
+    or other address it can be pointed at, so a forged, missing or malformed `SHA256SUMS` cannot be
+    served to it on the console. Those cases are tested on the PC, and by CI on every push:
+    `cargo test -p maxpack-logic ampr` (a good sum, a wrong sum, the debug build's sum on the sprx's
+    line, a missing line, a malformed file, a release without `SHA256SUMS`, and the gate closed).
+  - The page's side, without a console: `node tools/mock_ui.js --tls passed --ampr-fail checksum`, then
+    Settings > "Update ampr-emu-ng now". Expected: "Update failed: the download does not match the
+    release's SHA256SUMS: nothing was installed."
