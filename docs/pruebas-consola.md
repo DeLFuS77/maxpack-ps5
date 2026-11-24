@@ -433,7 +433,6 @@ MaxPack extrae solo sus archivos sueltos a `/data/maxpack/caches/<TITLE_ID>` y l
 propio `.p5z`, montado en solo lectura en `/app0/p5z` al lanzar. Usa un juego de un tamaño razonable
 (unos GB) y, para el espacio, uno cuyos sueltos conozcas.
 
-Antes de empezar, en la consola de pruebas (firmware 13.60, ShadowMountPlus 1.7beta12) se vio que
 MaxPack no monta mientras otro montador corre: prueba **primero con ShadowMountPlus cerrado** (6.11 es
 la prueba con él en marcha).
 
