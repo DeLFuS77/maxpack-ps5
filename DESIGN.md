@@ -392,7 +392,14 @@ every 250 ms), at most 3 s later (`EXIT_GRACE_MS`), or when the sandbox dir goes
 in the same sandbox meanwhile (an exit-spawned ELF; a new overlay would fail with EBUSY)
 cancels that and mounts the nullfs mounts again (~10 ms after the exec: the forked child gets its title id
 only at the exec, so they cannot go back earlier). When the exec fallback cannot mount the overlay, they are
-still mounted. A later copy of the payload adopts the overlay, `/data`, USB, font and `/app0/kraken` or `/app0/p5z` mounts.
+still mounted. A later copy of the payload (the previous one quit or crashed mid-game) adopts, in each sandbox where
+our overlay is on `common/lib`, that overlay and our nullfs mounts there, in the order they were made so they go newest
+first at the exit (`maxpack_logic::sandbox::ours`): `/data` and the drives (each from that very path), the fonts, the
+writable `/app0` (a nullfs from `/system_ex/app/<TID>` that is not read-only, on top of a read-only mount of that
+`/app0`: the system's, which is the only one `mount_app0` covers), then `/app0/kraken` or `/app0/p5z` (from the folder
+of the stamp's source). Not adopted: a sandbox with our nullfs mounts and no overlay of ours (the exec fallback after a
+failed overlay mounts them anyway), since ShadowMountPlus and the upstream project make the same mounts from the same
+sources and nothing in the mount table tells them apart; its teardown can still hang if the payload died in that game.
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
 No overlay when neither layer applies, and with an empty `fakelib/` (an `overlay_off` title) no sandbox mount at all.
 

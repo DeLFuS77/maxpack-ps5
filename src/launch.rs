@@ -399,7 +399,8 @@ impl Session {
     /// A read-write nullfs of /system_ex/app/<TID> (the registered app0 stack, backport unionfs
     /// included) over the sandbox's /app0, only when the system's one is read-only. Not yet mounted
     /// at the sandbox's first sight: the exec pass (mount_data again) gets it.
-    /// ponytail: not adopted by a later copy of the payload (adopt knows /data, USB, the fonts and /app0/kraken or /app0/p5z).
+    /// A later copy of the payload adopts it with the overlay (maxpack_logic::sandbox::ours: a writable
+    /// nullfs from that stack on top of a read-only mount of the sandbox's /app0).
     /// False while the system's /app0 is not mounted (then /app0/kraken or /app0/p5z must wait too).
     fn mount_app0(&mut self, app0: &str) -> bool {
         let from = format!("/system_ex/app/{}", self.tid);
@@ -665,7 +666,11 @@ impl Watcher {
     }
 
     /// At start: take over the sandboxes a previous copy left our layers in (it quit or crashed
-    /// mid-game), so their NOTE_EXIT still unmounts them. Any TID: `titles` is empty this early.
+    /// mid-game), so their NOTE_EXIT still unmounts them, with our nullfs mounts there. Any TID: `titles`
+    /// is empty this early.
+    /// ponytail: a sandbox with our nullfs mounts but no overlay of ours (the exec fallback after a failed
+    /// overlay) is not adopted: another mounter makes the same mounts from the same sources, and nothing
+    /// in the mount table tells them apart.
     fn adopt(&mut self) {
         let names: Vec<String> = self.known.iter().cloned().collect();
         let mut all = None;
@@ -685,27 +690,21 @@ impl Watcher {
             if s.layers.is_empty() {
                 continue;
             }
-            // Ours only: from == the alias itself (ShellCore's own /data is from /user/data).
+            // Our nullfs mounts, in the order mount_data made them, so they go newest first: /data and
+            // the drives (from the path itself: ShellCore's own /data is from /user/data), the fonts, the
+            // writable /app0 (only on top of the system's read-only one) and /app0/kraken or /app0/p5z.
+            // Left behind on exit, any of them hangs the sandbox teardown (maxpack_logic::sandbox::ours).
             let root = format!("{SANDBOX_ROOT}/{name}");
-            for from in std::iter::once("/data".to_string()).chain(crate::storage::mounted_aliases()) {
-                let path = format!("{root}{from}");
-                for m in all.iter().filter(|m| m.on == path && m.fstype == "nullfs" && m.from == from) {
-                    s.data.push((path.clone(), m.fsid));
-                }
-            }
-            // The fonts and /app0/kraken or /app0/p5z too: left behind on exit they hang the sandbox teardown like /data.
-            let path = format!("{root}{FONTS}");
-            for m in all.iter().filter(|m| m.on == path && m.fstype == "nullfs" && m.from == FONTS) {
-                s.data.push((path.clone(), m.fsid));
-            }
             let pkg_dir = crate::cache::mount_source(&tid).and_then(|(at, p)| {
                 std::path::Path::new(&p).parent().and_then(|d| d.to_str()).map(|d| (at, d.to_string()))
             });
-            if let Some((at, from)) = pkg_dir {
-                let path = format!("{root}/app0/{at}");
-                for m in all.iter().filter(|m| m.on == path && m.fstype == "nullfs" && m.from == from) {
-                    s.data.push((path.clone(), m.fsid));
-                }
+            let table: Vec<maxpack_logic::sandbox::Mount> = all.iter()
+                .map(|m| maxpack_logic::sandbox::Mount { on: &m.on, fstype: &m.fstype, from: &m.from, rdonly: m.rdonly })
+                .collect();
+            let aliases = crate::storage::mounted_aliases();
+            let source = pkg_dir.as_ref().map(|(at, from)| (*at, from.as_str()));
+            for i in maxpack_logic::sandbox::ours(&table, &root, &tid, &aliases, FONTS, source) {
+                s.data.push((all[i].on.clone(), all[i].fsid));
             }
             s.lib = Some(lib.clone());
             match find_title_pid(&tid) {
