@@ -15,6 +15,10 @@ use crate::ampr_index::{self, Chunk, IndexFile, Kraken};
 use crate::config::Settings;
 use crate::scan::{Kind, Source};
 use kraken_mount_pkg::{Entry, Pkg, PRead};
+// The names of a cache dir (`.done`, `.built`, `.ampr`, the images, the mount dirs, the lib dirs):
+// maxpack_logic::cache, which reserves every one of them from a .p5z's loose files (loose_dest).
+use maxpack_logic::cache::{below, AMPR_STATE, BUILT, FAKELIB, FAKELIB2, LIB_DIRS, P5Z_IMAGE, PKG_IMAGE};
+pub use maxpack_logic::cache::{DONE, P5Z_MOUNT_DIR, PKG_MOUNT_DIR};
 use maxpack_logic::fresh::{self, Input};
 use maxpack_logic::p5z::{image_text, loose_dest, space_short, LooseDest};
 use std::collections::{BTreeMap, HashSet};
@@ -26,13 +30,6 @@ use std::time::SystemTime;
 
 pub const CACHES: &str = "/data/maxpack/caches";
 pub const AMPR_DIR: &str = "/data/maxpack/ampr";
-pub const DONE: &str = ".done";
-/// The game lib dirs, SMP priority first. fakelib2/ is never a game file.
-const LIB_DIRS: [&str; 2] = ["fakelib2/", "fakelib/"];
-/// What the last build created, one path per line relative to the cache dir (written before `.done`).
-const BUILT: &str = ".built";
-/// What fakelib/ was composed from (JSON): {"ampr": ampr_state, "emus": emu_state}.
-const AMPR_STATE: &str = ".ampr";
 /// Bundled third-party emulators (GPL-3.0, THIRD_PARTY_NOTICES), released files (ps5/build.sh checks
 /// SHA256SUMS): drakmor/dlc_emu (DLC; its 3 files go together) and drakmor/pgo_stub (PlayGo).
 const DLC_EMU_VERSION: &str = include_str!("../vendor/dlc_emu/VERSION");
@@ -48,14 +45,6 @@ const EMUS: [(&str, &[u8], &str, bool); 4] = [
 const DLC_INI: &str = "dlc_emu.ini";
 /// An import of libScePlayGo in a decrypted eboot.bin: its module name as a plain string.
 const PLAYGO_NEEDLE: &[u8] = b"libScePlayGo";
-/// pkg caches: the mount point for the pkg's folder at /app0/kraken (launch.rs).
-pub const PKG_MOUNT_DIR: &str = "kraken";
-/// pkg caches: one line, no newline, the .pkg relative to /app0 (`kraken/<file name>`); ng opens /app0/ + it.
-const IMAGE_FILE: &str = "kraken.image";
-/// .p5z caches: the mount point for the .p5z's folder at /app0/p5z (launch.rs).
-pub const P5Z_MOUNT_DIR: &str = maxpack_logic::p5z::MOUNT_DIR;
-/// .p5z caches: the .p5z relative to /app0 and where each volume is in it (maxpack_logic::p5z::image_text).
-const P5Z_IMAGE_FILE: &str = maxpack_logic::p5z::IMAGE_FILE;
 const CHUNK: usize = 4 << 20;
 
 /// The .pkg file as a kraken_mount_pkg reader (newtype: the orphan rule forbids `impl PRead for File`).
@@ -201,7 +190,7 @@ fn empty_dir(dir: &Path) -> Result<()> {
 fn clear_build(dir: &Path) -> Result<()> {
     let Ok(list) = fs::read_to_string(dir.join(BUILT)) else { return empty_dir(dir) };
     // Recomposed after the build too (refresh_fakelib), so .built may not list all of it: always ours.
-    match fs::remove_dir_all(dir.join("fakelib")) {
+    match fs::remove_dir_all(dir.join(FAKELIB)) {
         Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
         _ => {}
     }
@@ -399,7 +388,7 @@ pub fn fix_access(src: &Source) {
 /// fakelib2 (exclusive), then fakelib.
 fn bp_lib(src: &Source) -> Option<PathBuf> {
     let b = src.backport.as_ref()?;
-    ["fakelib2", "fakelib"].iter().map(|d| b.join(d)).find(|p| p.is_dir())
+    LIB_DIRS.iter().map(|d| b.join(d)).find(|p| p.is_dir())
 }
 
 /// The fakelib dir on disk the cache's fakelib/ is built from: backport fakelib2/fakelib, then
@@ -407,7 +396,7 @@ fn bp_lib(src: &Source) -> Option<PathBuf> {
 fn lib_dir(src: &Source) -> Option<PathBuf> {
     bp_lib(src).or_else(|| match src.kind {
         Kind::Pkg | Kind::P5z => None,
-        Kind::Folder(_) => ["fakelib2", "fakelib"].iter().map(|d| src.path.join(d)).find(|p| p.is_dir()),
+        Kind::Folder(_) => LIB_DIRS.iter().map(|d| src.path.join(d)).find(|p| p.is_dir()),
     })
 }
 
@@ -842,8 +831,8 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
     // A cache built before kraken.image existed (or with it deleted): ng could not find the pkg.
     // The same for a .p5z's maxpack.image.
     let image = match src.kind {
-        Kind::Pkg => Some(IMAGE_FILE),
-        Kind::P5z => Some(P5Z_IMAGE_FILE),
+        Kind::Pkg => Some(PKG_IMAGE),
+        Kind::P5z => Some(P5Z_IMAGE),
         Kind::Folder(_) => None,
     };
     if let Some(image) = image.filter(|i| !dir(&src.title_id).join(i).is_file()) {
@@ -973,7 +962,7 @@ enum Inside<'a> {
 /// are inputs (pkg, .p5z: stamp), AMPR_DIR is ampr_state, the bundled versions are emu_state.
 fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result<()> {
     let dir = dir(&src.title_id);
-    let fakelib = dir.join("fakelib");
+    let fakelib = dir.join(FAKELIB);
     match fs::remove_dir_all(&fakelib) {
         Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
         _ => {}
@@ -983,17 +972,17 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         copy_flat(&bp, &fakelib, keep_fakelib)?;
     } else if let Some(Inside::Pkg(io, p)) = inside {
         // SMP order inside the game: fakelib2/ (used as-is) wins over fakelib/.
-        let game_lib = if p.files().any(|e| e.path.to_ascii_lowercase().starts_with(LIB_DIRS[0])) {
-            LIB_DIRS[0]
+        let game_lib = if p.files().any(|e| below(&e.path.to_ascii_lowercase(), FAKELIB2).is_some()) {
+            FAKELIB2
         } else {
-            LIB_DIRS[1]
+            FAKELIB
         };
         let mut buf = vec![0u8; CHUNK];
         for e in p.files().filter(|e| !e.is_dir) {
             let lower = e.path.to_ascii_lowercase();
-            let Some(name) = lower.strip_prefix(game_lib) else { continue };
+            let Some(name) = below(&lower, game_lib) else { continue };
             let name = &e.path[e.path.len() - name.len()..];
-            if !name.contains('/') && (if game_lib == LIB_DIRS[0] { keep_fakelib(name) } else { keep_game_lib(name) }) {
+            if !name.contains('/') && (if game_lib == FAKELIB2 { keep_fakelib(name) } else { keep_game_lib(name) }) {
                 extract(p, io, &e, &fakelib.join(name), &mut buf)?;
             }
         }
@@ -1004,10 +993,10 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
             .filter(|l| loose_dest(&l.path) == LooseDest::GameLib)
             .filter_map(|l| l.path.split_once('/').map(|(d, name)| (l.path.as_str(), d, name)))
             .collect();
-        let (game_lib, keep): (_, fn(&str) -> bool) = if libs.iter().any(|(_, d, _)| d.eq_ignore_ascii_case("fakelib2")) {
-            ("fakelib2", keep_fakelib)
+        let (game_lib, keep): (_, fn(&str) -> bool) = if libs.iter().any(|(_, d, _)| d.eq_ignore_ascii_case(FAKELIB2)) {
+            (FAKELIB2, keep_fakelib)
         } else {
-            ("fakelib", keep_game_lib)
+            (FAKELIB, keep_game_lib)
         };
         for (rel, d, name) in libs {
             if d.eq_ignore_ascii_case(game_lib) && keep(name) {
@@ -1017,7 +1006,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
             }
         }
     } else if let Some(lib) = lib_dir(src) {
-        let keep = if lib.ends_with("fakelib2") { keep_fakelib } else { keep_game_lib };
+        let keep = if lib.ends_with(FAKELIB2) { keep_fakelib } else { keep_game_lib };
         copy_flat(&lib, &fakelib, keep)?;
     }
     // Our ampr-emu-ng on top of whatever the game or backport ships (its own libSceAmpr.sprx included).
@@ -1052,7 +1041,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
 /// index, no re-registration. ponytail: a launch reads fakelib/ while this runs only if a game
 /// starts mid-refresh (the scan loop is paused while one runs).
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
-    log!("{}: refreshing {}", src.title_id, dir(&src.title_id).join("fakelib").display());
+    log!("{}: refreshing {}", src.title_id, dir(&src.title_id).join(FAKELIB).display());
     let pkg = if src.kind == Kind::Pkg { Some(open(&src.path)?) } else { None };
     let play = if src.kind == Kind::P5z { Some(crate::p5z::open(&src.path)?) } else { None };
     let inside = pkg.as_ref().map(|(io, p)| Inside::Pkg(io, p)).or(play.as_ref().map(Inside::P5z));
@@ -1193,11 +1182,11 @@ pub fn relink(src: &Source, s: &Settings, from: &Path) -> Result<()> {
     log!("{}: moved {} -> {}; relinking {}", src.title_id, from.display(), src.path.display(), d.display());
     let r = (|| {
         let image = match src.kind {
-            Kind::Pkg => Some((IMAGE_FILE, format!("{PKG_MOUNT_DIR}/{}", utf8_name(&src.path)?))),
+            Kind::Pkg => Some((PKG_IMAGE, format!("{PKG_MOUNT_DIR}/{}", utf8_name(&src.path)?))),
             Kind::P5z => {
                 let play = crate::p5z::open(&src.path)?;
-                let text = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE_FILE}: {e}")))?;
-                Some((P5Z_IMAGE_FILE, text))
+                let text = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE}: {e}")))?;
+                Some((P5Z_IMAGE, text))
             }
             Kind::Folder(_) => None,
         };
@@ -1252,7 +1241,7 @@ fn copy_backport(src: &Source, dir: &Path, keep: impl Fn(&str) -> bool) -> Resul
 fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: &[Input], before: &HashSet<PathBuf>) -> Result<()> {
     let play = crate::p5z::open(&src.path)?;
     // First: a file name the contract cannot carry (not UTF-8, or a control byte) is a build failure.
-    let image = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE_FILE}: {e}")))?;
+    let image = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE}: {e}")))?;
     let loose: Vec<_> = play.info.loose.iter().map(|l| (l, loose_dest(&l.path))).collect();
     let need = loose.iter().filter(|(_, d)| *d != LooseDest::Skip).fold(0u64, |a, (l, _)| a.saturating_add(l.size));
     // After clear_build (build): what this cache held before is free again.
@@ -1286,7 +1275,7 @@ fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: 
     copy_backport(src, dir, |rel| loose_dest(rel) == LooseDest::App0)?;
     // launch.rs mounts the .p5z's folder on /app0/p5z; maxpack.image names the .p5z in it for ng.
     fs::create_dir_all(dir.join(P5Z_MOUNT_DIR))?;
-    fs::write(dir.join(P5Z_IMAGE_FILE), image)?;
+    fs::write(dir.join(P5Z_IMAGE), image)?;
     finish(dir, src, s, start, inputs, before)
 }
 
@@ -1318,7 +1307,7 @@ fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<
                 )));
             }
             // The lib dirs are compose_fakelib's; never game files.
-            if LIB_DIRS.iter().any(|d| lower.starts_with(d)) {
+            if LIB_DIRS.iter().any(|d| below(&lower, d).is_some()) {
                 continue;
             }
             // A file stays in the pkg when the index can describe its blocks (a sparse hole is a
@@ -1363,7 +1352,7 @@ fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<
         return finish(&dir, src, s, start, &inputs, before);
     }
     // Backport files (except its fakelib/fakelib2) go loose over the pkg's.
-    let not_lib = |rel: &str| !LIB_DIRS.iter().any(|d| rel.to_ascii_lowercase().starts_with(d));
+    let not_lib = |rel: &str| !LIB_DIRS.iter().any(|d| below(&rel.to_ascii_lowercase(), d).is_some());
     for (rel, size) in copy_backport(src, &dir, not_lib)? {
         files.insert(rel.to_ascii_lowercase(), loose(rel, size));
     }
@@ -1371,7 +1360,7 @@ fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<
     // /app0 an index miss goes to the real file (ng), so a refresh needs no index rewrite.
     // launch.rs mounts the pkg's folder on /app0/kraken; kraken.image names the pkg in it for ng.
     fs::create_dir_all(dir.join(PKG_MOUNT_DIR))?;
-    fs::write(dir.join(IMAGE_FILE), format!("{PKG_MOUNT_DIR}/{}", utf8_name(&src.path)?))?;
+    fs::write(dir.join(PKG_IMAGE), format!("{PKG_MOUNT_DIR}/{}", utf8_name(&src.path)?))?;
     let files: Vec<IndexFile> = files.into_values().collect();
     ampr_index::write(&dir, &src.path, &files)?;
     finish(&dir, src, s, start, &inputs, before)

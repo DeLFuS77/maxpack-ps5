@@ -2,16 +2,13 @@
 //! `info --play` JSON is read here, each loose file is given its destination, and the `maxpack.image`
 //! text that ampr-emu-ng reads is written here (the text is a contract: see `image_text`).
 
+use crate::cache::{reserved, LIB_DIRS, P5Z_MOUNT_DIR};
 use serde::Deserialize;
 
 /// Most volumes one game file may have (the limit of the `maxpack.image` contract).
 pub const MAX_VOLUMES: usize = 256;
 /// Free space kept over the loose files, the same margin the installer keeps.
 pub const SPACE_MARGIN: u64 = 256 << 20;
-/// The file of the mount that tells ampr-emu-ng where the volumes are.
-pub const IMAGE_FILE: &str = "maxpack.image";
-/// Folder of the mount (below /app0) that holds the .p5z.
-pub const MOUNT_DIR: &str = "p5z";
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Loose {
@@ -118,9 +115,9 @@ pub enum LooseDest {
     Skip,
 }
 
-/// Names in the root that MaxPack owns (compared without case).
-const ROOT_RESERVED: [&str; 6] = [".done", ".built", ".ampr", IMAGE_FILE, "kraken.image", "kraken_zero.dat"];
-
+/// Unsafe paths are skipped, and so is any path whose first component is one of MaxPack's names in
+/// a cache (crate::cache::RESERVED, any case, at any depth: `.done/x` too), but a file straight
+/// inside a lib dir, which goes to the fakelib composition.
 pub fn loose_dest(path: &str) -> LooseDest {
     if path.is_empty() || path.starts_with('/') || path.contains(['\\', '\0']) {
         return LooseDest::Skip;
@@ -129,15 +126,13 @@ pub fn loose_dest(path: &str) -> LooseDest {
     if parts.iter().any(|p| p.is_empty() || *p == "." || *p == "..") {
         return LooseDest::Skip;
     }
-    let first = parts[0].to_ascii_lowercase();
-    let is_fakelib = first == "fakelib" || first == "fakelib2";
-    match parts.len() {
-        1 if is_fakelib || first == MOUNT_DIR || first == "kraken" => LooseDest::Skip,
-        1 if ROOT_RESERVED.contains(&first.as_str()) => LooseDest::Skip,
-        _ if first == MOUNT_DIR || first == "kraken" => LooseDest::Skip,
-        2 if is_fakelib => LooseDest::GameLib,
-        _ if is_fakelib => LooseDest::Skip,
-        _ => LooseDest::App0,
+    let first = parts[0];
+    if parts.len() == 2 && LIB_DIRS.iter().any(|d| d.eq_ignore_ascii_case(first)) {
+        LooseDest::GameLib
+    } else if reserved(first) {
+        LooseDest::Skip
+    } else {
+        LooseDest::App0
     }
 }
 
@@ -158,7 +153,7 @@ pub fn image_text(file_name: &str, volumes: &[Volume]) -> Result<String, String>
     if volumes.iter().enumerate().any(|(i, v)| v.id as usize != i) {
         return Err("volume ids are not 0..n-1 in order".to_string());
     }
-    let mut text = format!("maxpack-image 1\n{MOUNT_DIR}/{file_name}\n");
+    let mut text = format!("maxpack-image 1\n{P5Z_MOUNT_DIR}/{file_name}\n");
     for v in volumes {
         text.push_str(&format!("{} {} {}\n", v.id, v.offset, v.length));
     }
@@ -260,7 +255,9 @@ mod tests {
 
     #[test]
     fn loose_dest_table() {
-        for p in ["eboot.bin", "sce_sys/param.json", "empty.txt", "ampr_emu.index", "a/b/c"] {
+        // A reserved name below the root is the game's own.
+        for p in ["eboot.bin", "sce_sys/param.json", "empty.txt", "ampr_emu.index", "a/b/c", "a/.done", "x/maxpack.image",
+                  "data/kraken/x", "a/fakelib/libc.prx", ".doner", "fakelibs/x", "kraken.images/x"] {
             assert_eq!(loose_dest(p), LooseDest::App0, "{p}");
         }
         for p in ["fakelib/libc.prx", "FAKELIB2/x.sprx"] {
@@ -270,6 +267,32 @@ mod tests {
                   "fakelib", "", ".", "a/./b", "a/..", "a/", "a\\b", "a\0b", ".built", ".AMPR", "kraken_zero.dat",
                   "fakelib2", "p5z", "kraken", "P5Z/x/y", "fakelib2/a/b"] {
             assert_eq!(loose_dest(p), LooseDest::Skip, "{p:?}");
+        }
+        // A control name as the first folder, at any depth: the extraction would make a folder of it.
+        for p in [".done/x", ".built/x", ".ampr/x", "maxpack.image/x", "kraken.image/x", "kraken_zero.dat/x",
+                  ".DONE/a/b", "Maxpack.Image/x/y", "KRAKEN_ZERO.DAT/x"] {
+            assert_eq!(loose_dest(p), LooseDest::Skip, "{p:?}");
+        }
+    }
+
+    /// Every name MaxPack keeps in a cache (crate::cache, where src/cache.rs takes them from) is
+    /// refused as a loose file, alone and as the first folder of a path, in any case: never App0.
+    #[test]
+    fn loose_dest_refuses_every_cache_name() {
+        use crate::cache::*;
+        for name in [DONE, BUILT, AMPR_STATE, PKG_IMAGE, PKG_MOUNT_DIR, ZERO_VOLUME, P5Z_IMAGE, P5Z_MOUNT_DIR, FAKELIB, FAKELIB2] {
+            assert!(RESERVED.contains(&name), "{name}");
+        }
+        assert_eq!(LIB_DIRS, [FAKELIB2, FAKELIB]);
+        for name in RESERVED {
+            for n in [name.to_string(), name.to_ascii_uppercase()] {
+                for p in [n.clone(), format!("{n}/x/y")] {
+                    assert_eq!(loose_dest(&p), LooseDest::Skip, "{p:?}");
+                }
+                // Straight inside a lib dir: the fakelib composition's, never /app0's.
+                let want = if LIB_DIRS.contains(name) { LooseDest::GameLib } else { LooseDest::Skip };
+                assert_eq!(loose_dest(&format!("{n}/x")), want, "{n}/x");
+            }
         }
     }
 
@@ -337,6 +360,16 @@ mod tests {
         f2[31] ^= 1;
         assert_ne!(id, p5z_id(&h, &f2, 100));
         assert_ne!(id, p5z_id(&h, &f, 101));
+    }
+
+    /// Every cache built from a .p5z has this id in `.done`: another byte order, order of the parts
+    /// or FNV constant would make every one of them look like another file (no relink when moved).
+    /// Worked out apart from this code (FNV-1a 64 of the size as 8 bytes LE, the header, the footer).
+    #[test]
+    fn p5z_id_golden() {
+        let head: [u8; 64] = std::array::from_fn(|i| i as u8);
+        let foot: [u8; 32] = std::array::from_fn(|i| 0xff - i as u8);
+        assert_eq!(p5z_id(&head, &foot, 2_094_371), "5d19aa60a1471b2a");
     }
 
     #[test]

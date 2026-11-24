@@ -99,8 +99,12 @@ is ignored as a whole). The web UI edits the same file.
 - Folder: `fakelib/` only. `/app0` is the game folder itself.
 - .p5z (`build_p5z`): like a pkg, the cache IS `/app0`, but only the loose files of the `.p5z` are extracted (format
   roles 0, 2 and 3; never the volumes (1), the runtime (4) or the originals (5)), 0777. `maxpack_logic::p5z::loose_dest`
-  skips an unsafe path, a nested lib dir and a name MaxPack keeps for itself (counted in one log line); a file straight
-  inside `fakelib/` or `fakelib2/` goes to the game's lib dir of the fakelib composition. The volumes stay in the
+  skips an unsafe path, a nested lib dir and any path whose first component, in any case and at any depth (`.done/x`
+  too), is a name MaxPack keeps in a cache (counted in one log line); a file straight inside `fakelib/` or `fakelib2/`
+  goes to the game's lib dir of the fakelib composition. Those names (`.done`, `.built`, `.ampr`, `kraken.image`,
+  `kraken`, `kraken_zero.dat`, `maxpack.image`, `p5z`, `fakelib`, `fakelib2`) have one source, `maxpack_logic::cache`
+  (`RESERVED`, which every name there is in by construction), where `cache.rs`, `ampr_index.rs` and `launch.rs` take
+  them from; a test checks each of them is refused. The same rule keeps a backport's files off them. The volumes stay in the
   `.p5z`: ampr-emu-ng reads them through `maxpack.image`, and the `.p5z` ships its own `ampr_zstd.index` and
   `ampr_emu.index` among the loose files, so MaxPack writes no index. The cache also has `fakelib/`, `p5z/` (an empty
   mount point, see Launch) and `maxpack.image`: UTF-8, `\n` lines, no `\r`: `maxpack-image 1`, then `p5z/<file name>`
@@ -117,7 +121,8 @@ is ignored as a whole). The web UI edits the same file.
   the game shows status `error` with `error_code` `no_space` and `missing_bytes`, and one toast (`i18n::no_space`) and
   one log line per run say how much is missing. The extracted `sce_sys/param.json` must carry the title id the
   `.p5z`'s description gave, else the build fails. The stamp's `kind` is `p5z` and `.done` carries `p5z_id` (FNV-1a 64
-  of the size, the 64-byte header and the 32-byte footer, `p5z::id`; the identity `is_move` compares).
+  of the size as 8 bytes little-endian, the 64-byte header and the 32-byte footer, `p5z::id`; the identity `is_move`
+  compares; a golden value is tested, so a change of it, which would make no cache relink when its `.p5z` moves, fails).
 - FPKG: it IS `/app0`: `sce_sys/**` (with the files only the pkg container holds: `save_data.png`,
   `pic0`/`pic1`, `snd0.at9`, `trophy00.ucp`, `nptitle.dat`, `npbind.dat`, which save data and
   trophies read from `/app0/sce_sys`), `eboot.bin`, every `*.prx`/`*.sprx`, every `*.elf` outside `decrypted/`
@@ -415,6 +420,7 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fa
 pub fn check(src: &Source, s: &Settings) -> Fresh;
 pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
+pub use maxpack_logic::cache::{DONE, PKG_MOUNT_DIR, P5Z_MOUNT_DIR}; // the cache dir's names are maxpack_logic::cache's
 pub fn mount_source(tid: &str) -> Option<(&'static str, String)>;  // pkg or .p5z: (folder below /app0: "kraken" | "p5z", the file)
 pub fn build(src: &Source, s: &Settings) -> std::io::Result<()>;   // always rebuilds
 pub fn app0(src: &Source) -> std::path::PathBuf;                    // pkg, .p5z: dir(tid); folder: src.path

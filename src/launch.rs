@@ -257,7 +257,7 @@ fn resolve_sandbox(tid: &str) -> io::Result<String> {
 
 /// Our layer on common/lib: the cache's fakelib (the game's libs with ampr copied on top, cache.rs).
 fn our_srcs(tid: &str) -> [String; 1] {
-    [crate::cache::dir(tid).join("fakelib").to_string_lossy().into_owned()]
+    [crate::cache::dir(tid).join(maxpack_logic::cache::FAKELIB).to_string_lossy().into_owned()]
 }
 
 /// One launch of one of our titles: its sandbox, our unionfs layers on its common/lib, the game pid.

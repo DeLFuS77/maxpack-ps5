@@ -72,7 +72,7 @@ const PACK_IO_PAGE_LAYOUT: u32 = 2;
 /// one header page and BLOCK zeros. Every hole chunk is a RAW chunk of it at offset PAGE; pkg
 /// mode serves packs 1 and up as ordinary AMPRDAT3 volumes (ng `ampr-sys` rt/pack/pkg.rs
 /// `build_pack_path_pkg`, `validate_data_header_pkg`).
-const ZERO_NAME: &str = "kraken_zero.dat";
+const ZERO_NAME: &str = maxpack_logic::cache::ZERO_VOLUME;
 const ZERO_PACK: u64 = 1;
 const ZERO_SIZE: u64 = PAGE + BLOCK;
 const DAT_MAGIC: &[u8; 8] = b"AMPRDAT3";
