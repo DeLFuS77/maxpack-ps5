@@ -606,3 +606,11 @@ en [`compatibilidad.md`](compatibilidad.md) (el informe de 7.3 trae la fila hech
   - Esperado: en la caché (`/data/maxpack/caches/<TID>/`) está ese `*.elf` suelto (nunca los de
     `decrypted/` de un `.pkg`); al lanzarlo, `exec pid=… overlay already there` y se vuelven a montar
     `/data` y `/app0/kraken` (o `/app0/p5z`); el ELF arranca y la consola no se cuelga al salir.
+- [ ] **7.10. Las fuentes de la consola dentro del juego.**
+  - Lanza un juego cualquiera de MaxPack. Esperado: en el registro, `<TID> sandbox /preinst/common/font
+    MOUNTED: /preinst/common/font -> /mnt/sandbox/<TID>_<n>/preinst/common/font` tras las líneas de
+    `/data` y los USB; al salir, `cleanup done` y la consola no se cuelga.
+  - Con un homebrew que escriba en chino, japonés, árabe o tailandés con las fuentes del sistema (como
+    ProsperoEden): esperado, el texto se ve, sin cuadros vacíos.
+  - Si MaxPack se cierra con un juego abierto (un fallo) y lo vuelves a cargar: la línea `<TID> adopted
+    <sandbox>: 1 layer(s), N data mount(s)` cuenta también las fuentes, y al salir del juego no se cuelga.

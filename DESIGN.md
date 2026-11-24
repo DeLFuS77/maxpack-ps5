@@ -364,7 +364,10 @@ threads). Run 200 ms after a successful install call, once per run for a title a
 As before (SMP sm_fakelib port): unionfs of `caches/<TID>/fakelib` (when non-empty) over the sandbox's
 `<x>/common/lib` (the game's libs with ampr already copied on top, see Cache); one layer, no
 mount of the ampr dir. Also nullfs of `/data` at `<sandbox>/data`, plus a nullfs of every mounted
-`/mnt/usbN` / `/mnt/extN` at `<sandbox>/mnt/usbN` (pkg and packs on USB). Then, once the system's
+`/mnt/usbN` / `/mnt/extN` at `<sandbox>/mnt/usbN` (pkg and packs on USB), and a read-only nullfs of
+`/preinst/common/font` at `<sandbox>/preinst/common/font` when it exists (the console's fonts, which homebrew such as
+ProsperoEden draws CJK, Arabic and Thai text with; SMP `mount_sandbox_fonts`, ported from the upstream project's 0.3.2).
+Then, once the system's
 `<sandbox>/app0` is mounted: when it is read-only, a read-write nullfs of `/system_ex/app/<TID>` (the
 registered stack, backport unionfs included) over it; for a pkg game, a nullfs of the pkg's folder
 (from the `.done` stamp's "source") at `<sandbox>/app0/kraken`; ng opens the .pkg named in `/app0/kraken.image`.
@@ -378,7 +381,7 @@ every 250 ms), at most 3 s later (`EXIT_GRACE_MS`), or when the sandbox dir goes
 in the same sandbox meanwhile (an exit-spawned ELF; a new overlay would fail with EBUSY)
 cancels that and mounts the nullfs mounts again (~10 ms after the exec: the forked child gets its title id
 only at the exec, so they cannot go back earlier). When the exec fallback cannot mount the overlay, they are
-still mounted. A later copy of the payload adopts the overlay, `/data`, USB and `/app0/kraken` or `/app0/p5z` mounts.
+still mounted. A later copy of the payload adopts the overlay, `/data`, USB, font and `/app0/kraken` or `/app0/p5z` mounts.
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
 No overlay when neither layer applies.
 

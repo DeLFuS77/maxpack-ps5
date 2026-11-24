@@ -13,6 +13,8 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// The console's system fonts, mounted read-only into each sandbox we overlay (SMP mount_sandbox_fonts).
+const FONTS: &str = "/preinst/common/font";
 const SANDBOX_ROOT: &str = "/mnt/sandbox";
 /// Fast path: how long to wait for ShellCore's common/lib mount after the sandbox dir appears.
 const READY_WAIT_MS: u64 = 3000;
@@ -268,7 +270,7 @@ struct Session {
     srcs: Vec<String>,
     /// fsids of the unionfs mounts we made, oldest first.
     layers: Vec<libc::fsid_t>,
-    /// Our nullfs mounts of /data and the USB/ext drives inside the sandbox (path, fsid).
+    /// Our nullfs mounts inside the sandbox (path, fsid): /data, the USB/ext drives, the fonts, /app0 and its source folder.
     data: Vec<(String, libc::fsid_t)>,
     pid: Option<libc::pid_t>,
     /// (deadline, next try) of a busy cleanup, in now_ms.
@@ -373,6 +375,11 @@ impl Session {
         for from in std::iter::once("/data".to_string()).chain(crate::storage::mounted_aliases()) {
             self.mount_dir(&format!("{}{from}", root.display()), &from, 0);
         }
+        // The console's fonts, read-only (SMP mount_sandbox_fonts): homebrew draws CJK, Arabic or Thai
+        // text with them, and the sandbox has no /preinst. None on a firmware without the folder.
+        if std::path::Path::new(FONTS).is_dir() {
+            self.mount_dir(&format!("{}{FONTS}", root.display()), FONTS, libc::MNT_RDONLY as i32);
+        }
         // Writable /app0 (the game's files: the dump folder, or the pkg cache), then the pkg's folder
         // at /app0/kraken (ng finds the .pkg there) or, for a .p5z game, the .p5z's folder at /app0/p5z (ng finds
         // the .p5z there, by maxpack.image). Both on top of the system's /app0.
@@ -392,7 +399,7 @@ impl Session {
     /// A read-write nullfs of /system_ex/app/<TID> (the registered app0 stack, backport unionfs
     /// included) over the sandbox's /app0, only when the system's one is read-only. Not yet mounted
     /// at the sandbox's first sight: the exec pass (mount_data again) gets it.
-    /// ponytail: not adopted by a later copy of the payload (adopt knows /data, USB and /app0/kraken or /app0/p5z).
+    /// ponytail: not adopted by a later copy of the payload (adopt knows /data, USB, the fonts and /app0/kraken or /app0/p5z).
     /// False while the system's /app0 is not mounted (then /app0/kraken or /app0/p5z must wait too).
     fn mount_app0(&mut self, app0: &str) -> bool {
         let from = format!("/system_ex/app/{}", self.tid);
@@ -686,7 +693,11 @@ impl Watcher {
                     s.data.push((path.clone(), m.fsid));
                 }
             }
-            // /app0/kraken or /app0/p5z too: left behind on exit it hangs the sandbox teardown like /data.
+            // The fonts and /app0/kraken or /app0/p5z too: left behind on exit they hang the sandbox teardown like /data.
+            let path = format!("{root}{FONTS}");
+            for m in all.iter().filter(|m| m.on == path && m.fstype == "nullfs" && m.from == FONTS) {
+                s.data.push((path.clone(), m.fsid));
+            }
             let pkg_dir = crate::cache::mount_source(&tid).and_then(|(at, p)| {
                 std::path::Path::new(&p).parent().and_then(|d| d.to_str()).map(|d| (at, d.to_string()))
             });
