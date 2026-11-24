@@ -11,6 +11,9 @@ pub struct Settings {
     pub add_emulators: bool,
     /// Title ids that get no bundled PlayGo stub (pgo_stub): not added, not upgraded.
     pub playgo_off: Vec<String>,
+    /// Title ids the page's library does not show unless "show hidden" is on. Page only: a hidden
+    /// game stays built, registered and mounted.
+    pub hidden: Vec<String>,
     pub ampr_auto_update: bool,
     pub backports: bool,
     pub scan_interval_secs: u64,
@@ -33,6 +36,7 @@ impl Default for Settings {
             inject_ampr: true,
             add_emulators: true,
             playgo_off: Vec::new(),
+            hidden: Vec::new(),
             ampr_auto_update: false,
             backports: true,
             scan_interval_secs: 10,
@@ -53,6 +57,7 @@ const HELP: &[(&str, &str)] = &[
     ("inject_ampr", "true = copy /data/maxpack/ampr/* on top of a folder game's fakelib (pkg games always get it; a change only refreshes fakelib/)"),
     ("add_emulators", "true = add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes fakelib/)"),
     ("playgo_off", "title ids that get no bundled PlayGo stub (pgo_stub): not added, not upgraded; a libScePlayGo.sprx the game ships stays (a change only refreshes fakelib/)"),
+    ("hidden", "title ids the web UI's library does not show unless its \"show hidden\" switch is on (set from the game's sheet; the game stays registered and mounted)"),
     ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from MaxPack's own repository (DeLFuS77/ampr-emu-ng); off by default until MaxPack is published, and it only ever downloads MaxPack's own build (a hand-placed libSceAmpr.sprx is kept)"),
     ("backports", "true = apply backports/<TID>* from the game's scan root, then the other roots, then /data/homebrew"),
     ("scan_interval_seconds", "scan loop period, 1..3600"),
@@ -97,6 +102,10 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
             }
         }
         "playgo_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "hidden" if crate::scan::valid_tid(v) => {
+            maxpack_logic::titles::set_listed(&mut s.hidden, v, true);
+        }
+        "hidden" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
         "ampr_auto_update" => s.ampr_auto_update = flag(v)?,
         // Removed setting (the game's fakelib is always used in full): ignored, dropped on the next save.
         "game_fakelib" => {}
@@ -243,6 +252,8 @@ fn parse(text: &str) -> Settings {
                 s.scan_paths.clear(); // the array replaces the defaults (and an earlier scanpath line)
             } else if k == "playgo_off" {
                 s.playgo_off.clear(); // a later playgo_off line replaces an earlier one
+            } else if k == "hidden" {
+                s.hidden.clear(); // the same for hidden
             } else if vals.len() != 1 {
                 return Err("expected one value, not an array".into());
             } else {
@@ -280,6 +291,10 @@ fn render(s: &Settings) -> String {
             "playgo_off" => {
                 let items: Vec<String> = s.playgo_off.iter().map(|t| toml_quote(t)).collect();
                 out += &format!("playgo_off = [{}]\n", items.join(", "));
+            }
+            "hidden" => {
+                let items: Vec<String> = s.hidden.iter().map(|t| toml_quote(t)).collect();
+                out += &format!("hidden = [{}]\n", items.join(", "));
             }
             "ampr_auto_update" => out += &format!("{k} = {}\n", s.ampr_auto_update),
             "backports" => out += &format!("{k} = {}\n", s.backports),
@@ -379,6 +394,7 @@ pub fn to_json(s: &Settings) -> Value {
         "inject_ampr": s.inject_ampr,
         "add_emulators": s.add_emulators,
         "playgo_off": s.playgo_off,
+        "hidden": s.hidden,
         "ampr_auto_update": s.ampr_auto_update,
         "backports": s.backports,
         "scan_interval_seconds": s.scan_interval_secs,
@@ -398,8 +414,8 @@ pub fn from_json(v: &Value) -> Result<Settings, String> {
     let mut s = Settings::default();
     for (k, val) in obj {
         let vals: Vec<&Value> = match (k.as_str(), val) {
-            ("scanpath" | "playgo_off", Value::Array(a)) => a.iter().collect(),
-            ("scanpath" | "playgo_off", _) => return Err(format!("{k}: expected an array of strings")),
+            ("scanpath" | "playgo_off" | "hidden", Value::Array(a)) => a.iter().collect(),
+            ("scanpath" | "playgo_off" | "hidden", _) => return Err(format!("{k}: expected an array of strings")),
             _ => vec![val],
         };
         for x in vals {

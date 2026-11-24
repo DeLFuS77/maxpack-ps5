@@ -136,16 +136,35 @@ impl State {
     }
 }
 
-/// `playgo_off`: the setting's title ids; None while add_emulators is off (no stub at all, so the
-/// UI shows no switch).
-fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
-    let (kind, packing) = match g.src.kind {
+/// /api/state's `kind` and `packing` of a source.
+fn kind_names(kind: Kind) -> (&'static str, Option<&'static str>) {
+    match kind {
         Kind::Pkg => ("pkg", None),
         Kind::Folder(Packing::Plain) => ("folder", Some("plain")),
         Kind::Folder(Packing::Zstd) => ("folder", Some("zstd")),
         Kind::Folder(Packing::Lz4) => ("folder", Some("lz4")),
         Kind::P5z => ("p5z", None),
-    };
+    }
+}
+
+/// What /api/state says of each game beyond its Game entry.
+struct GameExtra<'a> {
+    /// The setting's title ids; None while add_emulators is off (no stub at all, so the UI shows
+    /// no switch).
+    playgo_off: Option<&'a [String]>,
+    /// The `hidden` setting.
+    hidden: &'a [String],
+    /// The last crash of each title (crashes.json).
+    crashes: &'a std::collections::HashMap<String, maxpack_logic::crash::Crash>,
+    /// Title ids whose rebuild was asked for and has not started yet (`forced`).
+    queued: &'a HashSet<String>,
+}
+
+fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
+    let (kind, packing) = kind_names(g.src.kind);
+    let tid = &g.src.title_id;
+    let crash = x.crashes.get(tid).map(|c| serde_json::json!({"at": c.at, "process": c.process, "status": c.status}));
+    let playgo_off = x.playgo_off;
     serde_json::json!({
         "title_id": g.src.title_id,
         "title_name": g.src.title_name,
@@ -167,6 +186,11 @@ fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
         // ponytail: reads the game's .ampr on every state poll (a few hundred bytes per game).
         "playgo": playgo_off.and_then(|_| crate::cache::playgo_import(&g.src.title_id)),
         "playgo_off": playgo_off.is_some_and(|l| l.iter().any(|t| *t == g.src.title_id)),
+        // The page shows it only with "show hidden" on; nothing else changes for the game.
+        "hidden": x.hidden.iter().any(|t| t == tid),
+        "crash": crash,
+        // The page keeps Rebuild disabled through it (and while pending, checking or building).
+        "rebuild_queued": x.queued.contains(tid),
     })
 }
 
@@ -396,6 +420,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
         ("GET", "/api/state") => reply(200, "application/json", api_state(state)),
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
+        ("GET", p) if p.starts_with("/api/report/") => report(state, &p["/api/report/".len()..]),
         ("GET", "/api/settings") => {
             let v = config::to_json(&state.settings.lock().unwrap());
             reply(200, "application/json", v.to_string())
@@ -440,9 +465,11 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             state.wake();
             no_content()
         }
-        ("POST", p) if p.starts_with("/api/playgo/") => post_playgo(state, &p["/api/playgo/".len()..], body),
+        ("POST", p) if p.starts_with("/api/playgo/") => post_title_list(state, TitleList::PlaygoOff, &p["/api/playgo/".len()..], body),
+        ("POST", p) if p.starts_with("/api/hidden/") => post_title_list(state, TitleList::Hidden, &p["/api/hidden/".len()..], body),
         ("POST", p) if p.starts_with("/api/rebuild/") => rebuild(state, &p["/api/rebuild/".len()..]),
         ("POST", p) if p.starts_with("/api/delete/") => delete(state, &p["/api/delete/".len()..], body),
+        ("POST", p) if p.starts_with("/api/launch/") => launch(state, &p["/api/launch/".len()..]),
         ("POST", "/api/eject") => eject(state, body),
         ("POST", "/api/purge") => {
             log!("cache purge requested");
@@ -581,20 +608,26 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
             return reply(400, "application/json", body.to_string());
         }
     }
-    let parsed = value.and_then(|v| Ok((config::from_json(&v)?, v.get("playgo_off").is_some())));
-    let (mut s, has_playgo_off) = match parsed {
+    let parsed = value.and_then(|v| Ok((config::from_json(&v)?, v.get("playgo_off").is_some(), v.get("hidden").is_some())));
+    let (mut s, has_playgo_off, has_hidden) = match parsed {
         Ok(s) => s,
         Err(e) => {
             log!("settings rejected: {e}");
             return reply(400, "text/plain", e);
         }
     };
-    // Held across the save: a concurrent /api/playgo change is not lost.
+    // Held across the save: a concurrent /api/playgo or /api/hidden change is not lost.
     let mut cur = state.settings.lock().unwrap();
-    // The settings form does not send the per-game list: keep it.
-    if !has_playgo_off {
-        // From the file: a scan pass may have put an older copy into state.settings.
-        s.playgo_off = config::load().playgo_off;
+    // The settings form does not send the per-game lists: keep them, from the file (a scan pass
+    // may have put an older copy into state.settings).
+    if !has_playgo_off || !has_hidden {
+        let file = config::load();
+        if !has_playgo_off {
+            s.playgo_off = file.playgo_off;
+        }
+        if !has_hidden {
+            s.hidden = file.hidden;
+        }
     }
     if let Err(e) = config::save(&s) {
         log!("settings: save {}: {e}", config::CONFIG_PATH);
@@ -607,31 +640,44 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
     no_content()
 }
 
-/// POST /api/playgo/<TID>, body `on` or `off`: the bundled PlayGo stub for one game (playgo_off).
-fn post_playgo(state: &State, tid: &str, body: &[u8]) -> Reply {
-    if !crate::scan::valid_tid(tid) || state.source(tid).is_none() {
+/// The per-title lists of config.toml the game sheet switches.
+#[derive(Clone, Copy)]
+enum TitleList {
+    /// POST /api/playgo/<TID>: `on` = the bundled PlayGo stub (out of playgo_off), `off` = none.
+    PlaygoOff,
+    /// POST /api/hidden/<TID>: `on` = hidden in the page's library, `off` = shown.
+    Hidden,
+}
+
+/// POST /api/playgo/<TID> or /api/hidden/<TID>, body `on` or `off`. 404 for an invalid title id or
+/// one not in the library (taking a title out of `hidden` also works for one that is not there
+/// now, so a hand-edited or stale entry can go); 400 for any other body.
+fn post_title_list(state: &State, which: TitleList, tid: &str, body: &[u8]) -> Reply {
+    let on = maxpack_logic::titles::switch_body(body);
+    let unhide = matches!(which, TitleList::Hidden) && on == Some(false);
+    if !crate::scan::valid_tid(tid) || (state.source(tid).is_none() && !unhide) {
         return not_found();
     }
-    let off = match body {
-        b"on" => false,
-        b"off" => true,
-        _ => return reply(400, "text/plain", "expected on or off"),
-    };
+    let Some(on) = on else { return reply(400, "text/plain", "expected on or off") };
     let mut cur = state.settings.lock().unwrap();
     // From the file, not state.settings: a scan pass may have put an older copy there.
     let mut s = config::load();
-    s.playgo_off.retain(|t| t != tid);
-    if off {
-        s.playgo_off.push(tid.to_string());
-    }
+    let (list, listed, what) = match which {
+        TitleList::PlaygoOff => (&mut s.playgo_off, !on, if on { "PlayGo stub on" } else { "PlayGo stub off" }),
+        TitleList::Hidden => (&mut s.hidden, on, if on { "hidden in the library" } else { "shown in the library" }),
+    };
+    maxpack_logic::titles::set_listed(list, tid, listed);
     if let Err(e) = config::save(&s) {
-        log!("{tid}: PlayGo stub: save {}: {e}", config::CONFIG_PATH);
+        log!("{tid}: {what}: save {}: {e}", config::CONFIG_PATH);
         return reply(500, "text/plain", e.to_string());
     }
-    log!("{tid}: PlayGo stub {}", if off { "off" } else { "on" });
+    log!("{tid}: {what}");
     *cur = s;
     drop(cur);
-    state.wake();
+    // A PlayGo change refreshes fakelib/ on the next pass; hidden changes nothing there.
+    if matches!(which, TitleList::PlaygoOff) {
+        state.wake();
+    }
     no_content()
 }
 
@@ -670,11 +716,16 @@ fn dbg_file(path: &str, query: &str) -> Reply {
 }
 
 fn api_state(state: &State) -> Vec<u8> {
-    let playgo_off = {
+    let (playgo_off, hidden) = {
         let s = state.settings.lock().unwrap();
-        s.add_emulators.then(|| s.playgo_off.clone())
+        (s.add_emulators.then(|| s.playgo_off.clone()), s.hidden.clone())
     };
-    let games: Vec<_> = state.games.lock().unwrap().iter().map(|g| game_json(g, playgo_off.as_deref())).collect();
+    // ponytail: crashes.json is read on every state poll (a few hundred bytes per crashed title).
+    let crashes = crate::crash::load();
+    // A rebuild asked for but not started yet (the pass picks it up, or a game is running).
+    let queued = state.forced.lock().unwrap().clone();
+    let x = GameExtra { playgo_off: playgo_off.as_deref(), hidden: &hidden, crashes: &crashes, queued: &queued };
+    let games: Vec<_> = state.games.lock().unwrap().iter().map(|g| game_json(g, &x)).collect();
     let all = storage::drives();
     let drives: Vec<_> = all
         .iter()
@@ -765,6 +816,68 @@ fn rebuild(state: &State, tid: &str) -> Reply {
     state.forced.lock().unwrap().insert(tid.to_string());
     state.wake();
     no_content()
+}
+
+/// POST /api/launch/<TID>: starts a ready library title for the foreground user, as its home-screen
+/// tile does (sys::launch_app). Refused (maxpack_logic::play::gate) for an absent title, while a game
+/// runs, while MaxPack does not mount, or when the title is not ready; 502 + text when the console
+/// refuses the launch.
+fn launch(state: &State, tid: &str) -> Reply {
+    let status = if crate::scan::valid_tid(tid) {
+        state.games.lock().unwrap().iter().find(|g| g.src.title_id == tid && g.status != "duplicate").map(|g| g.status)
+    } else {
+        None
+    };
+    if let Err(r) = maxpack_logic::play::gate(status, state.mounts(), state.paused()) {
+        if status.is_some() {
+            log!("{tid}: launch from the web UI refused: {}", r.text());
+        }
+        return reply(r.status(), "text/plain", r.text());
+    }
+    log!("{tid}: launch from the web UI");
+    match sys::launch_app(tid) {
+        Ok(()) => no_content(),
+        Err(e) => {
+            log!("{tid}: launch: {e}");
+            reply(502, "text/plain", e)
+        }
+    }
+}
+
+/// GET /api/report/<TID>: plain text for an issue (maxpack_logic::report); 404 for an invalid or
+/// absent library title.
+fn report(state: &State, tid: &str) -> Reply {
+    if !crate::scan::valid_tid(tid) {
+        return not_found();
+    }
+    let Some(g) = state.games.lock().unwrap().iter().find(|g| g.src.title_id == tid && g.status != "duplicate").cloned()
+    else {
+        return not_found();
+    };
+    let s = state.settings.lock().unwrap().clone();
+    let waiting = state.mounter.lock().unwrap().api_waiting();
+    let ampr = crate::ampr_status();
+    let ampr = format!("{} {}", ampr["kind"].as_str().unwrap_or("?"), ampr["version"].as_str().unwrap_or("")).trim_end().to_string();
+    let playgo = if !s.add_emulators {
+        "not added (add_emulators off)"
+    } else if s.playgo_off.iter().any(|t| t == tid) {
+        "off"
+    } else {
+        "on"
+    };
+    let crash = crate::crash::load().remove(tid);
+    let firmware = sys::firmware();
+    let log = log_tail();
+    let log = String::from_utf8_lossy(&log);
+    let (kind, packing) = kind_names(g.src.kind);
+    let (path, backport) = (g.src.path.to_string_lossy(), g.src.backport.as_ref().map(|b| b.to_string_lossy()));
+    let text = maxpack_logic::report::text(&maxpack_logic::report::Report {
+        version: env!("CARGO_PKG_VERSION"), firmware: firmware.as_deref(), waiting: waiting.as_deref(),
+        title_id: tid, title_name: &g.src.title_name, game_version: &g.src.version, path: &path, kind, packing,
+        drive: &g.src.drive, status: g.status, error: g.error.as_deref(), hidden: s.hidden.iter().any(|t| t == tid),
+        backport: backport.as_deref(), ampr: &ampr, playgo, crash: crash.as_ref(), log: &log,
+    });
+    reply(200, "text/plain; charset=utf-8", text)
 }
 
 fn sizes(state: &State, tid: &str) -> Reply {
