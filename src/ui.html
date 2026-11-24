@@ -68,7 +68,7 @@ img { display: block; }
 }
 .ambient:after {
   content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0;
-  background: linear-gradient(180deg, rgba(7, 16, 31, 0.12), rgba(7, 16, 31, 0.72) 55%, #07101f 92%);
+  background: linear-gradient(180deg, rgba(7, 16, 31, 0.2), rgba(7, 16, 31, 0.72) 55%, #07101f 92%);
 }
 /* One surface recipe for every panel. */
 .glass {
@@ -204,7 +204,9 @@ button.shoulder:hover { color: var(--fg); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   text-shadow: 0 0.2rem 1.6rem rgba(0, 0, 0, 0.35);
 }
-.hero p { margin-top: 0.5rem; font-size: 1.05rem; color: var(--muted); }
+/* Near white, not --muted: over the brightest light a game can give (yellow) the muted grey falls
+   to 3.5:1; this stays above 5:1. */
+.hero p { margin-top: 0.5rem; font-size: 1.05rem; color: rgba(255, 255, 255, 0.88); text-shadow: 0 1px 0.6rem rgba(0, 0, 0, 0.45); }
 .hero h2, .hero p {
   -webkit-transition: opacity 0.2s, -webkit-transform 0.2s ease-out; transition: opacity 0.2s, transform 0.2s ease-out;
 }
