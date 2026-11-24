@@ -3,7 +3,7 @@
 A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/extended drives,
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
-The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng, with the pkg and p5z modes; its CI
+The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng: quer3q's v0.5.1, with its pkg mode, plus our p5z mode; now `v0.5.1-maxpack.1`; its CI
 run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
 `-maxpack.N`; `SHA256SUMS` copied from that CI run, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from

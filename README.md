@@ -52,7 +52,7 @@ Lo que añade MaxPack:
 - **La caché y el reloj**: cada caché apunta el tamaño y la fecha de los archivos de los que sale
   (el `.pkg`, el `.p5z`, el backport, los de la carpeta) y se rehace solo si alguno cambia. No los
   compara con el reloj de la consola, que en una consola sin conexión suele ir años atrasado.
-- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.3`, con el modo `.p5z`), de
+- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.1-maxpack.1`: la v0.5.1 de quer3q con el modo `.p5z`), de
   [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
   actualización automática está apagada hasta que se publique.
 - **La biblioteca de la página**: «Jugar» arranca un juego listo desde la ficha (también desde el

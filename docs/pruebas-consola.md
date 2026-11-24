@@ -55,8 +55,8 @@ un FPKG (`.pkg`).
     guarda `maxpack.log`.
 - [ ] **B.3. Aviso de ampr-emu-ng.**
   - Lanza el juego en zstd.
-  - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (zstd) running», **sin** `-beta`; con el de LZ4,
-    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.3`.
+  - Esperado: el aviso dice «ampr-emu-ng: v0.5.1 (zstd) running», **sin** `-beta`; con el de LZ4,
+    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.1-maxpack.1`.
   - Esta compilación sale sin `-beta` (la de `main`, la de la etapa 1, sí lo llevaba: `v0.5.0-beta.a52648f`).
     Si sale `-beta` u otra versión, no es la de esta rama: mira `/data/maxpack/ampr/libSceAmpr.sprx` y
     `/data/maxpack/ampr.bundled`, y apúntalo.
@@ -300,7 +300,7 @@ USB es una raíz de escaneo por defecto) ya es un juego: MaxPack le hace la cach
 de que lo instales, y esta sección no prueba eso (la 6 sí). MaxPack no explora más abajo de la raíz de
 una unidad, y la pestaña Instalar mira también un nivel por debajo, así que los encuentra igual. Al
 arrancar, el registro dice `installer: ready in N ms (MaxPack engine 5780807, runtime ampr-emu-ng
-v0.5.0-maxpack.3 712624 bytes)`.
+v0.5.1-maxpack.1 716176 bytes)`.
 
 - [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**
   - En Instalar salen los dos en «Juegos para instalar»: el `.p5z` con su icono, lo que ahorra y lo
@@ -445,7 +445,7 @@ la prueba con él en marcha).
 - [ ] **6.1. El aviso de ampr-emu-ng.**
   - Copia el `.p5z` a `/data/homebrew` y espera a que salga en el menú; en `/api/state` su `kind` es
     `"p5z"`. Lánzalo.
-  - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (p5z) running» (sin `-beta`); en el registro,
+  - Esperado: el aviso dice «ampr-emu-ng: v0.5.1 (p5z) running» (sin `-beta`); en el registro,
     `<TID>: building cache` al principio y `<TID> overlay MOUNTED` al lanzar; en
     `/data/maxpack/caches/<TID>` hay `maxpack.image`, `p5z/` y `fakelib/`, y los sueltos, no los
     volúmenes. `maxpack.image` es texto: `maxpack-image 1`, `p5z/<nombre>.p5z` y una línea por volumen.
