@@ -42,6 +42,7 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
 | `/data/maxpack/ampr/` | ampr-emu-ng files (`libSceAmpr.sprx`, ...), copied on top of every game's `fakelib/` in its cache (chmod 0777 at start; a `libkernel.sprx` there is never copied and logs a warning) |
 | `/data/maxpack/maxpack.log` | log (setting `log`); each line starts with the UTC time and the milliseconds since boot (`2026-11-19 20:51:03Z [10643021] `); starts over past 1 MiB, no kept copy |
 | `/data/maxpack/maxpack.elf` | self copy the tile starts (Dump Forge style, below) |
+| `/data/maxpack/crashes.json` | the last crash of each title (see Crash report); not in a cache, which a pkg or .p5z game sees as `/app0` |
 
 ## Drives and scan roots (`src/storage.rs`)
 Drives: `/data` (label "Internal") always, plus each of `/mnt/usb0..7` ("USB n+1") and
@@ -80,6 +81,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `inject_ampr` | true | copy `/data/maxpack/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
 | `add_emulators` | true | add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes `fakelib/`) |
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
+| `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
 | `ampr_auto_update` | true | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
@@ -91,7 +93,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
-Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `playgo_off`) that is not
+Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `playgo_off`, `hidden`) that is not
 a valid value is logged and skipped, the other items stay (an array that does not parse, such as one with a number in it,
 is ignored as a whole). The web UI edits the same file.
 
@@ -380,13 +382,28 @@ still mounted. A later copy of the payload adopts the overlay, `/data`, USB and 
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
 No overlay when neither layer applies.
 
+## Crash report (`src/crash.rs`, `maxpack_logic::crash`)
+When an app crashes, the console writes `/user/devlog/system/sce_coredumps.0/<TID>_<n>/` with
+`prosperocore-<n>-0x<pid>-<process>.prosperodmp` inside, and deletes the folder seconds later. No thread or watch of
+its own: the launch watcher's NOTE_EXIT for a game it mounted (an exit-spawned ELF included) logs the exit status
+from the event's data (a wait(2) status) on the `exit pid=...` line (`exited with N`, `killed by signal N`), then
+reads that folder once for `<TID>_*` folders holding a dump with that pid. If none is there yet, it looks once more
+when that session's cleanup ends (0.4 to 3 s later, or when a stale session is replaced), and logs
+`pid=... killed by signal N; no crash dump in ...` when a killed game left none. A match logs `<TID>: crashed
+(<process>, <status>), dump found at exit|<ms> ms after exit; the console's crash dump: <folder path>` and is kept as
+the title's last crash in `/data/maxpack/crashes.json` (`{"<TID>": {at, process, folder, status}}`, keys sorted,
+temp file + rename; a file that does not parse, or a key that is not a title id, reads as no crash), so it survives a
+payload restart or a reboot. `at` is the console's clock, which may be years behind. `/api/state` shows it per game
+and the report (`GET /api/report/<TID>`) names it. Ported from the upstream project's crash report (after its
+0.3.1), with our paths.
+
 ## Module interfaces (contract between modules; keep these names)
 ```rust
 // config.rs
 pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings { pub scan_paths: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
-  pub playgo_off: Vec<String>, pub ampr_auto_update: bool,
+  pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub ampr_auto_update: bool,
   pub backports: bool, pub scan_interval_secs: u64, pub stability_wait_secs: u64, pub low_space_gb: u64,
   pub auto_remove_missing: bool, pub auto_remove_delay_secs: u64, pub notify: bool, pub log: bool, pub debug: bool }
 impl Default for Settings
@@ -474,6 +491,14 @@ pub fn stop();                                            // before exit: pause,
 // launch.rs (titles: overlay these; running: title ids with a live session, kept by the watcher)
 pub fn watch(titles: Arc<Mutex<HashSet<String>>>, running: Arc<Mutex<HashSet<String>>>);
 
+// crash.rs (the pure part, file format and matching, is maxpack_logic::crash)
+pub fn load() -> HashMap<String, maxpack_logic::crash::Crash>;           // crashes.json
+pub fn check(tid: &str, pid: libc::pid_t, status: &str, when: &str) -> bool; // dump found: logged and recorded
+
+// sys.rs (the page's Play and the report's firmware)
+pub fn launch_app(title_id: &str) -> Result<(), String>; // sceLncUtilLaunchApp, then sceSystemServiceLaunchApp
+pub fn firmware() -> Option<String>;                     // "13.60" from the SDK's kernel_get_fw_version
+
 // net.rs (blocking GET over sceHttp/sceSsl, 4 pinned root CAs; Err on non-200, sce error or > max bytes)
 pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
 ```
@@ -501,7 +526,10 @@ minute):
   `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
   shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
-  playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off)}],
+  playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off),
+  hidden: bool (in the `hidden` setting: the page lists it only with "show hidden" on),
+  crash: {at, process, status}|null (the last crash, from crashes.json, see Crash report),
+  rebuild_queued: bool (a rebuild asked for, not started yet: the title is in `forced`; the page keeps Rebuild disabled through it and while the game is pending, checking or building)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
@@ -511,6 +539,26 @@ minute):
 - `POST /api/playgo/<TID>`, body exactly `on` or `off` -> removes the title from / adds it to `playgo_off`,
   saves, applies, rescans, logs `<TID>: PlayGo stub on|off`, 204; 404 for an invalid or absent library
   title, 400 for any other body.
+- `POST /api/hidden/<TID>`, body exactly `on` or `off` -> adds the title to / removes it from `hidden`
+  (`maxpack_logic::titles::set_listed`: never twice, the others keep their order), saves, logs `<TID>: hidden in
+  the library|shown in the library`, 204; no rescan (nothing but the page changes). 404 for an invalid title id or,
+  with `on`, one not in the library (`off` also takes a title that is not there now, so a stale entry can go); 400
+  for any other body. A `POST /api/settings` without `hidden` keeps the list, as for `playgo_off`.
+- `POST /api/launch/<TID>` -> starts the title for the foreground user as its home-screen tile does
+  (`sys::launch_app`: `sceLncUtilLaunchApp` through its NID in libSceSystemService, taken when it returns >= 0 or
+  0x80940005; else `sceSystemServiceLaunchApp`), 204 once a launch is taken; the launch watcher then sees the game
+  as for any launch. Refused by `maxpack_logic::play::gate`, in this order: 404 for an invalid or absent library
+  title, 409 `a game is running`, 409 while MaxPack does not mount (another mounter or no kstuff: what the home screen
+  would start is not MaxPack's), 409 `the game is not ready` (any status but `ready`); 502 + error text when both
+  calls fail. Logged `<TID>: launch from the web UI` and each call's return code. Like every POST it passes the
+  Origin and Host checks above: another site's page cannot start a game.
+- `GET /api/report/<TID>` -> plain text for an issue (`maxpack_logic::report::text`): MaxPack's version, the
+  firmware (`sys::firmware`, else "unknown: please fill in"), who mounts (`waiting`), the game (name, title id,
+  version, source path, kind, drive, status and error, hidden), the backport, ampr-emu-ng (`/api/ampr` kind and
+  version), the PlayGo stub (on, off, or not added), the last crash, a ready row for `docs/compatibilidad.md`
+  (`compat_row`: result and date left as `?`, since the console's clock is often wrong; a `|` in the name escaped),
+  and the last 40 lines of the log tail (64 KiB) that contain the title id; 404 for an invalid or absent library
+  title. The game sheet's "Copy report" copies it.
 - `GET /api/ampr` -> `{kind: "bundled"|"downloaded"|"hand"|"missing"|"error", version, updating}` of
   `ampr/libSceAmpr.sprx`; `POST /api/ampr/update` -> forced update, answered when done: 200 + result text,
   409 while one runs, 502 + error text.
@@ -593,12 +641,32 @@ The page's **Install** tab is phase 2's page (`vendor/maxpack/web/index.html`) i
 progress, speed and time left (Pause), unfinished installs (Resume, Discard), what can be installed (icon,
 saving or "copied as is", Search again, a path added by hand through `probe`), the destination drives with
 their free space, Install (a replace asks first, listing the copies it deletes), and what MaxPack installed
-(Verify, Uninstall). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
+(Verify, Uninstall). The free-space check before a copy (the only copy the page offers; it moves nothing):
+each destination drive says whether the chosen game fits, as the engine's plan counts it (`install_size` plus
+the engine's 256 MiB `space_margin` against the drive's free space, plus what an unfinished install of that title
+already copied there), "Does not fit: N more needed" when not, and Install then says so without asking the engine;
+the engine checks again when it plans the install (`no_space`). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
 the UI's words, its Spanish `detail` under them. Its texts are English and Spanish (the other languages fall
 back to English). While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
-Host and Origin checks as the payload.
+Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
+rebuild and an install that does not fit on the internal SSD).
+
+## Library page (`src/ui.html`)
+Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
+pressed, the pill turns white and the grid shows only that drive's games (`drive`); pressed again, all; a drive that
+goes stops filtering; Unmount stays in the pill. The search box keeps the cards whose name or title id has every word
+of the query, case and accents ignored (`/` focuses it, Escape clears it). Hidden games (`hidden`) are left out of the
+grid and the chip counts; once one is hidden, a "Show hidden (n)" switch shows beside the search box, and on it lists
+them dimmed with "Hidden" on their badge (a per-browser choice, `localStorage` `maxpack.showHidden`). The empty state
+says which filter left nothing. The game sheet's buttons: Play (`POST /api/launch`: a ready title while no game runs
+and MaxPack mounts; after a launch it stays off up to 10 s, until the watcher reports the game), Rebuild cache (off while
+`rebuild_queued` or pending, checking or building), Copy report (the report is fetched when the sheet opens and when
+the game's status, crash or hidden state changes, so the copy happens inside the press: `execCommand('copy')` on the
+sheet's text box, else the clipboard API; when neither can, the text stays shown and selected), Hide / Show in the
+library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last crash" to the fields and a hint.
+New texts are in English and Spanish; the other languages show the English ones.
 
 ## Build and check
 `cargo check --target x86_64-unknown-freebsd` (fast, host). Full payload: `ps5/build.sh` (Docker).

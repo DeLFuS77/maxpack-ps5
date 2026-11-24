@@ -6,8 +6,9 @@ hacer y qué debe pasar. Marca cada casilla al comprobarla y apunta el firmware.
 Dónde mirar:
 - el registro, `/data/maxpack/maxpack.log` (también en la página, al final);
 - el estado, `http://<ip-de-la-consola>:8095/api/state`: los campos `waiting`, `games` (con
-  `kind == "p5z"` para un `.p5z`, y `error_code` y `missing_bytes` si no cabe), `images` y `unplayable`
-  (los `.p5z` que no se pueden jugar);
+  `kind == "p5z"` para un `.p5z`, y `error_code` y `missing_bytes` si no cabe; `hidden`, `crash` y
+  `rebuild_queued`), `images` y `unplayable` (los `.p5z` que no se pueden jugar);
+- el informe de un juego, `http://<ip-de-la-consola>:8095/api/report/<TITLE_ID>` (sección 7);
 - el del instalador, `http://<ip-de-la-consola>:8095/api/inst/state`: `job`, `pending`, `installed`
   y `last`;
 - los avisos de la consola.
@@ -533,3 +534,75 @@ la prueba con él en marcha).
     volúmenes tiene.
   - Esperado: tiempos parecidos con la carpeta y con el `.p5z`. Si el `.p5z` tarda claramente más,
     apunta los tiempos y guarda el registro.
+
+## 7. Jugar, informe, ocultar y lo que se trajo de Kraken Mount
+
+Lo de la rama `consola-mejoras`, con MaxPack solo. Cada resultado que valga la pena, apúntalo también
+en [`compatibilidad.md`](compatibilidad.md) (el informe de 7.3 trae la fila hecha).
+
+- [ ] **7.1. Jugar desde la ficha.**
+  - Abre la página en el móvil o en el PC (`http://<ip-de-la-consola>:8095`), abre la ficha de un juego
+    «Listo» y pulsa «Jugar». Repite con un juego en carpeta, un `.pkg` y un `.p5z`.
+  - Esperado: el juego arranca en la consola como desde su icono; en el registro,
+    `<TID>: launch from the web UI` y `sceLncUtilLaunchApp: 0x0` (o `0x80940005`, que también vale), y
+    después `overlay MOUNTED` como siempre. La ficha dice «Iniciando … en la consola» y «Jugar» se queda
+    apagado mientras el juego corre.
+  - Desde el navegador de la propia PS5 también vale: la consola pasa al juego.
+  - Si no arranca: apunta lo que dice la ficha («No se pudo iniciar el juego: …») y las dos líneas
+    `sceLncUtilLaunchApp` / `sceSystemServiceLaunchApp` del registro.
+- [ ] **7.2. Jugar, cuando no toca.**
+  - Con un juego abierto, pulsa «Jugar» en otro (o llama a `POST /api/launch/<TID>` con curl).
+    Esperado: el botón está apagado; curl recibe 409 `a game is running`, y no se lanza nada.
+  - Con un juego en «Creando» o «Error»: el botón está apagado (409 `the game is not ready`).
+  - Con ShadowMountPlus en marcha: apagado (409 `MaxPack does not mount now …`).
+  - Desde otra web (una página que haga `fetch('http://<ip>:8095/api/launch/<TID>', {method: 'POST'})`):
+    403 y `web: refused` en el registro; no se lanza nada.
+- [ ] **7.3. Cómo sale un juego, cierres inesperados y «Copiar informe».**
+  - Sal de un juego normalmente. Esperado: la línea `[launch] <TID> exit pid=… sandbox=…: exited with N`
+    o `: killed by signal N` (la consola suele cerrar el juego con una señal), y ningún «crashed».
+  - Si algún juego se cierra solo durante las pruebas (o con uno que sepas que falla): en el registro,
+    `<TID>: crashed (eboot.bin, killed by signal 11), dump found at exit` (o `… ms after exit`) y la
+    carpeta `/user/devlog/system/sce_coredumps.0/<TID>_<n>`; en `/data/maxpack/crashes.json`, el título
+    con `at`, `process`, `folder` y `status`; en la ficha, la fila «Último cierre inesperado» y el aviso
+    en rojo. Sigue ahí tras reiniciar MaxPack o la consola. Si no hubo volcado, el registro dice
+    `no crash dump in …`.
+  - En la ficha, pulsa «Copiar informe» desde el PC o el móvil. Esperado: «Informe copiado» y, al pegarlo,
+    el informe: versión de MaxPack, **firmware de la consola** (compruébalo con Ajustes > Sistema),
+    montador, juego, origen, estado, ampr-emu-ng, stub de PlayGo, último cierre, la fila para
+    `compatibilidad.md` y las últimas 40 líneas del registro con su `TITLE_ID`.
+  - Desde el navegador de la PS5: si no puede copiar, sale el texto seleccionado debajo, para copiarlo a
+    mano. También en `http://<ip-de-la-consola>:8095/api/report/<TID>`.
+  - Si el firmware sale como `(unknown: please fill in)`, apúntalo: la consola no lo dio.
+- [ ] **7.4. Ocultar y mostrar un juego.**
+  - En la ficha de un juego, «Ocultar en la biblioteca». Esperado: desaparece de la biblioteca y de los
+    contadores; junto al buscador sale «Mostrar ocultos 1»; en `/data/maxpack/config.toml`,
+    `hidden = ["<TID>"]`; en el registro, `<TID>: hidden in the library`.
+  - El juego sigue en la pantalla de inicio y arranca desde su icono (sigue montado y registrado).
+  - Pulsa «Mostrar ocultos». Esperado: sale atenuado, con «Oculto» en su etiqueta; desde su ficha,
+    «Mostrar en la biblioteca» lo devuelve.
+  - Guarda los Ajustes con el juego oculto y reinicia MaxPack. Esperado: sigue oculto.
+- [ ] **7.5. Buscar y filtrar por unidad.**
+  - Escribe parte de un nombre (sin tildes, en minúsculas) o de un `TITLE_ID` en «Buscar juegos».
+    Esperado: solo salen los que coinciden; con nada, «Ningún juego coincide con «…»»; Escape lo borra.
+  - Pulsa la pastilla de una unidad (Interno, USB 1). Esperado: se queda en blanco y solo salen los
+    juegos de esa unidad; otra pulsación los muestra todos. «Desmontar» sigue funcionando.
+- [ ] **7.6. Recrear caché, una sola vez.**
+  - Pulsa «Recrear caché» y confirma. Esperado: el botón se queda apagado mientras está en cola,
+    mientras se construye y mientras se registra, y vuelve cuando el juego está «Listo»; en el registro,
+    un solo `rebuild requested`.
+- [ ] **7.7. El espacio antes de instalar.**
+  - En Instalar, elige un juego más grande que el espacio libre de una unidad.
+  - Esperado: esa unidad dice «No cabe: faltan …» en rojo; si la eliges y pulsas «Instalar», sale
+    «No cabe: faltan …» y no empieza ninguna copia (nada nuevo en `/data/maxpack/tmp/`). En la otra
+    unidad, si cabe, se instala normal.
+- [ ] **7.8. La página tras el modo reposo.**
+  - Con MaxPack en marcha, pon la consola en reposo y despiértala (espera un minuto en reposo).
+  - Esperado: la página vuelve a responder en unos segundos sin reenviar el ELF. Si el reposo cerró el
+    puerto, en el registro `web: accept on port 8095 failed: …; binding it again` y `web UI on port
+    8095 again`; si no lo cerró, nada. No se arranca una segunda copia.
+- [ ] **7.9. Un juego que lanza un ELF al salir.**
+  - Con un `.pkg` (o un `.p5z`) cuyo juego, al salir o desde un menú, lanza otro ejecutable `*.elf` (un
+    lanzador o una herramienta dentro de su carpeta).
+  - Esperado: en la caché (`/data/maxpack/caches/<TID>/`) está ese `*.elf` suelto (nunca los de
+    `decrypted/` de un `.pkg`); al lanzarlo, `exec pid=… overlay already there` y se vuelven a montar
+    `/data` y `/app0/kraken` (o `/app0/p5z`); el ELF arranca y la consola no se cuelga al salir.

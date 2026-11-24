@@ -15,12 +15,16 @@ con zstd o LZ4) y `.p5z` de MaxPack, que se juegan tal cual, sin instalarlos; el
 
 **Sin probar en consola.** Nada de esto se ha ejecutado todavía en una PS5: el payload se compila en
 GitHub Actions y la lógica que no necesita la consola se prueba en el PC. Lo que hay que comprobar en
-la consola está en [`docs/pruebas-consola.md`](docs/pruebas-consola.md).
+la consola está en [`docs/pruebas-consola.md`](docs/pruebas-consola.md). Lo que ya se ha probado,
+juego a juego, está en la [lista de compatibilidad](docs/compatibilidad.md) (`docs/compatibilidad.md`).
 
 Lo que hace Kraken Mount 0.3.1, su base, lo hace igual: buscar juegos en las raíces de siempre, la
 caché de cada juego, el registro en la pantalla de inicio y el montaje al lanzar, ampr-emu-ng, los
 emuladores de DLC y PlayGo, los backports, los juegos movidos, quitar los que desaparecen, expulsar
-un USB, los avisos y los ajustes.
+un USB, los avisos y los ajustes. De lo que Kraken Mount añadió después trae: los juegos que lanzan
+un `*.elf` al salir, la página que vuelve sola tras el modo reposo, el icono en FW 12+, el botón
+Jugar, los cierres inesperados con su informe, el buscador, el filtro por unidad y «Recrear caché»
+apagado hasta que termina.
 
 Lo que añade MaxPack:
 - **El instalador** (pestaña Instalar), el de la fase 2 de MaxPack con su motor en C dentro del
@@ -51,6 +55,11 @@ Lo que añade MaxPack:
 - **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.3`, con el modo `.p5z`), de
   [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
   actualización automática está apagada hasta que se publique.
+- **La biblioteca de la página**: «Jugar» arranca un juego listo desde la ficha (también desde el
+  móvil), «Copiar informe» da un texto para una incidencia con el firmware, el último cierre
+  inesperado y la fila para la [lista de compatibilidad](docs/compatibilidad.md), y un juego se puede
+  ocultar de la biblioteca (sigue montado y en la pantalla de inicio; «Mostrar ocultos» lo enseña).
+  Antes de instalar, cada unidad dice si el juego cabe, y si no cabe no empieza la copia.
 - **Protecciones**: nunca registra ni monta un título que esté instalado en la consola, nunca explora
   carpetas del sistema ni de datos, y el puerto 8095 solo atiende a la página abierta con la IP de la
   consola (o `localhost`), no a otras webs.
@@ -63,7 +72,7 @@ Lo que añade MaxPack:
 ## Identidad
 
 - Binario: `maxpack.elf`; copia propia en `/data/maxpack/maxpack.elf`.
-- Datos en `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, y los del
+- Datos en `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, `crashes.json`, y los del
   instalador (`state/`, `installed/`, `tmp/`).
 - Icono de la pantalla de inicio: `MXPK00001`. Interfaz web en el puerto **8095**.
 - Versión propia, la de `Cargo.toml` (de ahí la toman la página y `/api/state`): 0.1.x es la etapa 1
