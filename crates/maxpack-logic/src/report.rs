@@ -109,6 +109,9 @@ pub fn text(r: &Report) -> String {
     if r.hidden {
         lines.push("Hidden in the library: yes".into());
     }
+    if r.overlay_off {
+        lines.push("MaxPack overlay: off (overlay_off: the game runs as registered, without MaxPack's fakelib, ampr-emu-ng, emulators or sandbox mounts)".into());
+    }
     lines.extend([
         format!("Backport: {}", r.backport.unwrap_or("none")),
         format!("ampr-emu-ng: {}", r.ampr),
