@@ -5,7 +5,8 @@ below, whose terms require these notices to accompany binary distributions.
 
 - Kraken Mount by quer3q, the base of MaxPack (v0.3.1, 387e665, whose history this repository keeps;
   parts of v0.3.2 are ported by hand, as DESIGN.md says): GPL-3.0-or-later (text in LICENSE).
-  Corresponding Source: https://github.com/quer3q/kraken-mount/tree/v0.3.1
+  Corresponding Source: https://github.com/quer3q/kraken-mount/tree/v0.3.1 and, for the parts
+  ported from v0.3.2, https://github.com/quer3q/kraken-mount/tree/v0.3.2
 - ps5-dump-forge by quer3q: crates/kraken-mount-pkg/src/decoder is a port of the Kraken decoder it
   vendors (kraken.rs, kraken/huff.rs, kraken_image.rs), and the self copy, tile and toasts follow
   it: GPL-3.0-or-later (text in LICENSE).

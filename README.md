@@ -49,6 +49,11 @@ that release's `SHA256SUMS` (nothing is sent when it does not match) and sends i
 new copy takes over. Close the running game first. While the repository has no published release,
 nothing is offered.
 
+Before its first update, MaxPack checks that the console refuses forged certificates: press
+**Check secure connections** in Settings (or in the update notice). It must be refused by three test
+sites with bad certificates at badssl.com and reach badssl.com and GitHub; until it has passed once,
+no update is downloaded or installed.
+
 To keep it updated with [ps5-payload-manager](https://github.com/itsPLK/ps5-payload-manager), add
 `https://github.com/DeLFuS77/maxpack-ps5/releases/latest/download/payloads.json` as a custom
 repository. Each published release carries that catalog (the `.elf` and its SHA-256, which the
@@ -57,7 +62,7 @@ the manager starts MaxPack at boot, update it there too.
 
 ## Status
 
-Early versions. MaxPack has run on a PS5 (firmware 13.60); what has been tried, game by game, and
+MaxPack 1.0.0 is the first public release. It has run on a PS5 (firmware 13.60); what has been tried, game by game, and
 with what result is in the [compatibility list](docs/compatibility.md). The full checklist for a
 console is [`docs/console-tests.md`](docs/console-tests.md); not every item of it has been checked
 yet. Tried a game? Add it with a [game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml). Logic that needs no console is tested on the PC.

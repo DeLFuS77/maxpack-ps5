@@ -49,6 +49,9 @@ licence, and replaces the earlier test builds (0.1.x and 0.2.x).
 - At start MaxPack looks at the latest release of this repository and the page offers it; **Update**
   downloads `maxpack.elf`, checks it against the release's `SHA256SUMS` and hands the port over to the
   new copy.
+- Nothing is downloaded or installed until Settings > "Check secure connections" has passed once on the
+  console: it must refuse an untrusted root, a wrong host and an expired certificate, and still reach
+  badssl.com and GitHub.
 - Each release carries a `payloads.json` catalog for
   [ps5-payload-manager](https://github.com/itsPLK/ps5-payload-manager).
 

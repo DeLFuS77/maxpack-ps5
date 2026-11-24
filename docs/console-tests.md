@@ -653,3 +653,37 @@ note it in [`compatibility.md`](compatibility.md) (7.3's report has the row read
   - In `/api/state`, each game carries `registered`, `mounted`, `source_present` and `overlay_off`: a
     ready, mounted game shows `registered: true` and `mounted: true`; after unplugging its USB drive,
     `source_present: false` until the pass removes it.
+
+## 8. The self-update
+
+The secure-connection check and the update notice, with MaxPack alone and the console online. Until
+`v1.0.0` is published there is no release to offer: 8.1 and 8.2 are what can be checked before it.
+
+- [ ] **8.1. Check secure connections (it must pass before `v1.0.0` is tagged).**
+  - In Settings, press "Check secure connections". Expected, within a minute: "Passed: this console
+    refuses forged certificates."; under the row, `untrusted-root.badssl.com`, `wrong.host.badssl.com`
+    and `expired.badssl.com` "refused, as expected" with a code (`0x80435060` or similar, maybe with
+    `SSL 0x..`), and `badssl.com` and `api.github.com` "connected, as expected (HTTP ...)"; in the log,
+    one `tls check:` line per site and `tls check: passed; the self-update is allowed`; in
+    `/data/maxpack/tls_check.json`, `"passed":true`.
+  - Note the five codes and the line `sceHttpsEnableOption ... failed` if the log has it.
+  - If a bad site says "accepted, but it must be refused": the console does not check certificates.
+    Stop: report it with the five lines; nothing may be released with the self-update until it is fixed.
+  - If a bad site says "failed before the certificate check": note its code. Without internet that is
+    expected (the result is "Could not finish" and nothing changes); with internet, the code is one
+    `maxpack_logic::tls` does not know yet.
+  - Restart MaxPack. Expected: Settings says "Passed on <date>" (the result is kept).
+- [ ] **8.2. Nothing is installed before the check passes.**
+  - Delete `/data/maxpack/tls_check.json` and restart MaxPack. Expected: Settings says "Not checked
+    yet"; `curl -X POST -H 'Content-Type: application/json' --data '{"version":"v9.9.9"}'
+    http://<console-ip>:8095/api/self_update` answers 400 `not_offered` (no release offered), and, when a
+    newer release is offered, 409 `tls_unchecked` with nothing downloaded (no `update:` download line in
+    the log).
+  - With a newer release published: the notice says MaxPack checks the console's certificates first and
+    its button is "Check secure connections"; once it passes, the notice offers "Update".
+- [ ] **8.3. Update (once a release newer than the running one is published).**
+  - Press "Update". Expected: the notice says it is downloading and checking against `SHA256SUMS`; in
+    the log, `update: v... (N bytes) matches SHA256SUMS and went to elfldr`; the new copy takes port
+    8095 and the page reloads with the new version.
+  - Start an install in the Install tab and press "Update" while it copies. Expected: "the installer is
+    copying a game; try again when it ends.", also when the install starts during the download.
