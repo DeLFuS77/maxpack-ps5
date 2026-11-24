@@ -1044,8 +1044,9 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
         })
 }
 
-/// A .p5z build stopped before writing anything: its loose files and SPACE_MARGIN do not fit on
-/// /data. The caller (main.rs) does not memoize it: it is tried again every pass.
+/// A .p5z build stopped at its space check: its loose files and SPACE_MARGIN do not fit on /data.
+/// clear_build has run (the last build's files are gone, the game's own stay), nothing was
+/// extracted. The caller (main.rs) does not memoize it: it is tried again every pass.
 #[derive(Debug)]
 pub struct NoSpace {
     /// Bytes missing, the margin included.
@@ -1067,7 +1068,9 @@ pub fn missing_bytes(e: &Error) -> Option<u64> {
 }
 
 /// Always rebuilds `src`'s cache. Errors carry the title id and source path and are logged, but a
-/// NoSpace (kept as such for missing_bytes), which main.rs logs once.
+/// NoSpace (kept as such for missing_bytes), which main.rs logs once. A failed build leaves no
+/// `.done` and a `.built` of what it could not remove (normally empty): the next build's
+/// clear_build removes only that, never the game's files.
 pub fn build(src: &Source, s: &Settings) -> Result<()> {
     let d = dir(&src.title_id);
     // A .p5z logs it once its loose files fit (build_p5z): one short of space retries every pass, quietly.
@@ -1076,6 +1079,7 @@ pub fn build(src: &Source, s: &Settings) -> Result<()> {
     }
     let t0 = std::time::Instant::now();
     let mut before = HashSet::new();
+    let mut cleared = false;
     let r = (|| {
         // Keep the dir: /system_ex/app/<TID> is a nullfs of this exact directory, and deleting it
         // would leave that mount on a dead inode (launch fails with 0x80940033).
@@ -1083,6 +1087,7 @@ pub fn build(src: &Source, s: &Settings) -> Result<()> {
         clear_build(&d)?;
         // What is left is the game's own files: never part of the build, never removed by it.
         before = walk(&d).into_iter().map(|e| e.0).collect();
+        cleared = true;
         build_inner(src, s, &before)
     })();
     if r.is_ok() {
@@ -1100,12 +1105,20 @@ pub fn build(src: &Source, s: &Settings) -> Result<()> {
         };
         // Without `.done` the cache is unusable: free what this build wrote.
         remove_created(&d, &before);
+        // What is left is the game's files: say so in `.built`, or the next clear_build (a NoSpace
+        // retries next pass) finds none and empties the dir. Without `.done` it stays untrusted.
+        if cleared {
+            if let Err(w) = write_built(&d, &before) {
+                log!("{}: {}: {w}", src.title_id, d.join(BUILT).display());
+            }
+        }
         e
     })
 }
 
-/// Writes `.built` (what this build created) and then `.done`.
-fn finish(dir: &Path, src: &Source, s: &Settings, start: SystemTime, before: &HashSet<PathBuf>) -> Result<()> {
+/// Writes `.built`: what the build created that is still under `dir` (not in `before`), one path
+/// per line relative to `dir`.
+fn write_built(dir: &Path, before: &HashSet<PathBuf>) -> Result<()> {
     let mut list = String::new();
     for (p, _) in created(dir, before) {
         if let Ok(rel) = p.strip_prefix(dir) {
@@ -1113,7 +1126,12 @@ fn finish(dir: &Path, src: &Source, s: &Settings, start: SystemTime, before: &Ha
             list.push('\n');
         }
     }
-    fs::write(dir.join(BUILT), list)?;
+    fs::write(dir.join(BUILT), list)
+}
+
+/// Writes `.built` (what this build created) and then `.done`.
+fn finish(dir: &Path, src: &Source, s: &Settings, start: SystemTime, before: &HashSet<PathBuf>) -> Result<()> {
+    write_built(dir, before)?;
     write_done(dir, src, s, start)
 }
 
@@ -1196,7 +1214,7 @@ fn copy_backport(src: &Source, dir: &Path, keep: impl Fn(&str) -> bool) -> Resul
 }
 
 /// build_inner of a .p5z: only its loose files go to /data, and only when they fit with
-/// SPACE_MARGIN to spare (else NoSpace, before anything is written); the volumes stay in the .p5z,
+/// SPACE_MARGIN to spare (else NoSpace, before anything is extracted); the volumes stay in the .p5z,
 /// where ng reads them through maxpack.image. No index of ours: the .p5z ships ampr_zstd.index and
 /// ampr_emu.index among its loose files.
 fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, before: &HashSet<PathBuf>) -> Result<()> {
