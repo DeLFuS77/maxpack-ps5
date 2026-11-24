@@ -498,9 +498,8 @@ fn local_title<'a>(lp: &'a serde_json::Value, want: &str) -> Option<&'a str> {
         .or_else(|| titles().filter(|(k, _)| base(k) == base(want)).find_map(|(_, v)| name(v)))
 }
 
-/// Game title ids only: NPXS ids are system apps (SMP is_supported_game_title_id).
+/// Game title ids only: NPXS ids are system apps (SMP is_supported_game_title_id;
+/// maxpack_logic::titles, where the crash records check theirs too).
 pub fn valid_tid(t: &str) -> bool {
-    let b = t.as_bytes();
-    b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
-        && !t.starts_with("NPXS")
+    maxpack_logic::titles::valid_tid(t)
 }

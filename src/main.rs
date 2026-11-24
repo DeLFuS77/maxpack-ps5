@@ -11,6 +11,7 @@ mod i18n;
 mod ampr_index;
 mod cache;
 mod config;
+mod crash;
 mod installer;
 mod launch;
 mod net;
