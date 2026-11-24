@@ -205,14 +205,18 @@ fn cached_param(cached: &HashMap<PathBuf, String>, pkg: &Path, size: u64, mtime:
 
 fn scan_error(result: &mut ScanResult, path: PathBuf, error: impl std::fmt::Display) {
     let message = error.to_string();
-    // Log only new or changed errors per path: a bad entry would otherwise log every scan.
+    log_once(&path, &message);
+    result.errors.push((path, message));
+}
+
+/// Logs only new or changed messages per path: a bad entry would otherwise log every scan.
+fn log_once(path: &Path, message: &str) {
     let logged = LOGGED.get_or_init(|| Mutex::new(HashMap::new()));
     let mut logged = logged.lock().unwrap_or_else(|e| e.into_inner());
-    if logged.get(&path) != Some(&message) {
+    if logged.get(path).map(String::as_str) != Some(message) {
         log!("{}: {message}", path.display());
-        logged.insert(path.clone(), message.clone());
+        logged.insert(path.to_path_buf(), message.to_string());
     }
-    result.errors.push((path, message));
 }
 
 /// Last logged scan error per path.
@@ -362,7 +366,8 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
                 None => match p5z_param(&path, metadata.len(), mtime) {
                     Ok(p) => Ok(p),
                     Err(crate::p5z::OpenError::Unplayable(u)) => {
-                        scan_error(&mut result, path.clone(), format!("cannot be played ({}): {}", u.code(), crate::p5z::reason(&u)));
+                        // Only in `unplayable` (the page's own section), not in `errors`: log line only.
+                        log_once(&path, &format!("cannot be played ({}): {}", u.code(), crate::p5z::reason(&u)));
                         result.unplayable.push((path, u));
                         continue;
                     }
@@ -426,7 +431,8 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
     result.games.sort_by(|a, b| a.title_name.cmp(&b.title_name));
     // A fixed error that comes back is logged again.
     if let Some(logged) = LOGGED.get() {
-        let errors: HashSet<&PathBuf> = result.errors.iter().map(|(p, _)| p).collect();
+        let errors: HashSet<&PathBuf> =
+            result.errors.iter().map(|(p, _)| p).chain(result.unplayable.iter().map(|(p, _)| p)).collect();
         logged.lock().unwrap_or_else(|e| e.into_inner()).retain(|p, _| errors.contains(p));
     }
     // A source copied again later is logged again.

@@ -518,6 +518,11 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
     <p class="hint" data-i18n="imagesHint">MaxPack does not mount these images yet.</p>
     <div id="imagelist"></div>
   </div>
+  <div class="images" id="unplayable" hidden>
+    <h3 data-i18n="unplayTitle">.p5z files that cannot be played</h3>
+    <p class="hint" data-i18n="unplayHint">MaxPack does not list these as games.</p>
+    <div id="unplaylist"></div>
+  </div>
 </section>
 
 <section id="install" role="tabpanel" aria-labelledby="tab-install" hidden>
@@ -708,6 +713,7 @@ var MSG = {
     deleteTitle: 'Delete {name}?',
     deletePkg: 'The .pkg file and its cache will be deleted from the drive: {path}. This cannot be undone.',
     deleteFolder: 'The game folder and its cache will be deleted from the drive: {path}. This cannot be undone.',
+    deleteP5z: 'The .p5z file and its cache will be deleted from the drive: {path}. This cannot be undone.',
     stopTitle: 'Stop MaxPack?',
     stopText: 'Games stay registered. Open the MaxPack tile to start it again.',
     stopYes: 'Stop',
@@ -759,13 +765,17 @@ var MSG = {
     aboutLicense: 'Free software under GPL-3.0-or-later, with no warranty. The licences are in THIRD_PARTY_NOTICES.',
     // Game sheet: a title id installed on the console (status error)
     errInstalledCopy: 'This title is installed on the console ({path}): MaxPack does not register or mount this copy, so the installed game stays as it is.',
+    // Library: a .p5z that cannot be built for lack of space, and the .p5z files that cannot be played
+    errNoSpace: 'There is not enough room on the internal SSD for the loose files of this game: {size} missing. Free up space and it is tried again.',
+    unplayTitle: '.p5z files that cannot be played', unplayHint: 'MaxPack does not list these as games.',
+    unplayDamaged: 'Damaged or incomplete', unplayTooMany: 'Too many volumes',
     // Library: ShadowMountPlus images (listed, not mounted)
     imagesTitle: 'ShadowMountPlus images', imagesHint: 'MaxPack does not mount these images yet.',
     imageWith: 'for now, with ShadowMountPlus',
     // Install: the phase-2 installer (its error codes: INST_CODES)
     installTab: 'Install', iTitle: 'Install games',
     iSmpOn: 'ShadowMountPlus {version} connected: what you install is registered in it too',
-    iMounts: 'MaxPack mounts the game folders and .p5z you install on its next scan; images are played with ShadowMountPlus for now.',
+    iMounts: 'MaxPack mounts the game folders and .p5z you install on its next scan. A .p5z placed in a folder it scans is played as it is; installing it leaves a folder, which wins over its .p5z. Images are played with ShadowMountPlus for now.',
     iImagePlays: 'Image: for now it is played with ShadowMountPlus, not mounted by MaxPack.',
     iFound: 'Games to install', iRescan: 'Search again',
     iFoundEmpty: 'No .p5z, game folder or image on the drives or in /data/maxpack. Plug in a USB drive with them and press Search again.',
@@ -1099,6 +1109,7 @@ var MSG = {
     deleteTitle: '¿Eliminar {name}?',
     deletePkg: 'El archivo .pkg y su caché se eliminarán de la unidad: {path}. No se puede deshacer.',
     deleteFolder: 'La carpeta del juego y su caché se eliminarán de la unidad: {path}. No se puede deshacer.',
+    deleteP5z: 'El archivo .p5z y su caché se eliminarán de la unidad: {path}. No se puede deshacer.',
     stopTitle: '¿Detener MaxPack?',
     stopText: 'Los juegos siguen registrados. Abre el icono de MaxPack para iniciarlo de nuevo.',
     stopYes: 'Detener',
@@ -1147,11 +1158,14 @@ var MSG = {
     aboutParts: 'Usa ampr-emu-ng (quer3q); código de ShadowMountPlus y los emuladores dlc_emu y pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib y SQLite.',
     aboutLicense: 'Software libre con licencia GPL-3.0-or-later, sin garantía. Las licencias están en THIRD_PARTY_NOTICES.',
     errInstalledCopy: 'Este título está instalado en la consola ({path}): MaxPack no registra ni monta esta copia, así que el juego instalado se queda como está.',
+    errNoSpace: 'No hay sitio en el SSD interno para los archivos sueltos de este juego: faltan {size}. Libera espacio y se vuelve a intentar.',
+    unplayTitle: 'Archivos .p5z que no se pueden jugar', unplayHint: 'MaxPack no los muestra como juegos.',
+    unplayDamaged: 'Dañado o incompleto', unplayTooMany: 'Demasiados volúmenes',
     imagesTitle: 'Imágenes de ShadowMountPlus', imagesHint: 'MaxPack aún no monta estas imágenes.',
     imageWith: 'por ahora, con ShadowMountPlus',
     installTab: 'Instalar', iTitle: 'Instalar juegos',
     iSmpOn: 'ShadowMountPlus {version} conectado: lo que instales se registra también en él',
-    iMounts: 'MaxPack monta las carpetas de juego y los .p5z que instales en su siguiente pasada; las imágenes, por ahora, se juegan con ShadowMountPlus.',
+    iMounts: 'MaxPack monta las carpetas de juego y los .p5z que instales en su siguiente pasada. Un .p5z puesto en una carpeta que MaxPack explora se juega tal cual; instalarlo deja una carpeta, que gana a su .p5z. Las imágenes, por ahora, se juegan con ShadowMountPlus.',
     iImagePlays: 'Imagen: por ahora se juega con ShadowMountPlus; MaxPack no la monta.',
     iFound: 'Juegos para instalar', iRescan: 'Buscar otra vez',
     iFoundEmpty: 'No hay ningún .p5z, carpeta de juego ni imagen en las unidades ni en /data/maxpack. Conecta un USB con ellos y pulsa Buscar otra vez.',
@@ -1801,7 +1815,7 @@ var ELF = 'http://127.0.0.1:9021/data/maxpack/maxpack.elf';
 var LOOPBACK = (location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '8095';
 var stopped = false, launchTried = false;
 var KINDS = [
-  { id: 'all', key: 'kindAll' }, { id: 'pkg', label: 'PKG' }, { id: 'folder', key: 'kindFolders' },
+  { id: 'all', key: 'kindAll' }, { id: 'pkg', label: 'PKG' }, { id: 'p5z', label: 'P5Z' }, { id: 'folder', key: 'kindFolders' },
   { id: 'lz4', label: 'LZ4' }, { id: 'zstd', label: 'ZSTD' }
 ];
 function kindLabel(kind) { return kind.key ? t(kind.key) : kind.label; }
@@ -1865,10 +1879,11 @@ function findGame(id) {
 }
 function gameKind(g) {
   if (g.kind === 'pkg') return 'pkg';
+  if (g.kind === 'p5z') return 'p5z';
   if (g.packing === 'lz4' || g.packing === 'zstd') return g.packing;
   return 'folder';
 }
-function badgeText(g) { return { pkg: 'PKG', folder: t('badgeFolder'), lz4: 'LZ4', zstd: 'ZSTD' }[gameKind(g)]; }
+function badgeText(g) { return { pkg: 'PKG', p5z: 'P5Z', folder: t('badgeFolder'), lz4: 'LZ4', zstd: 'ZSTD' }[gameKind(g)]; }
 function gameName(g) { return g.title_name || g.title_id; }
 function gameSub(g) { return g.title_id + (g.version ? ' · ' + g.version : ''); }
 function isRunning(g) { return state && Array.isArray(state.running) && state.running.indexOf(g.title_id) >= 0; }
@@ -1928,7 +1943,7 @@ function updateCover(c, g) {
 }
 
 function renderChips(games) {
-  var counts = { all: 0, pkg: 0, folder: 0, lz4: 0, zstd: 0 };
+  var counts = { all: 0, pkg: 0, p5z: 0, folder: 0, lz4: 0, zstd: 0 };
   games.forEach(function (g) { if (g && g.title_id) { counts.all++; counts[gameKind(g)]++; } });
   var box = $('chips');
   KINDS.forEach(function (kind, i) {
@@ -2163,7 +2178,8 @@ function renderModal() {
       fields.appendChild(dd);
     });
   }
-  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : g.error) || '');
+  var noSpace = g.error_code === 'no_space' ? t('errNoSpace', { size: gb(Math.ceil((Number(g.missing_bytes) || 0) / 107374182.4) * 107374182.4) }) : '';
+  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || g.error) || '');
   // A duplicate shares the title id of the library copy: the API calls would act on that copy.
   $('m-rebuild').disabled = g.status === 'duplicate' || g.status === 'building';
   $('m-delete').disabled = g.status === 'duplicate';
@@ -2259,7 +2275,7 @@ $('m-delete').onclick = function () {
   var g = openTid && findGame(openTid);
   if (!g) return;
   var tid = g.title_id;
-  ask(t('deleteTitle', { name: gameName(g) }), t(g.kind === 'pkg' ? 'deletePkg' : 'deleteFolder', { path: g.path }),
+  ask(t('deleteTitle', { name: gameName(g) }), t(g.kind === 'pkg' ? 'deletePkg' : g.kind === 'p5z' ? 'deleteP5z' : 'deleteFolder', { path: g.path }),
     t('delete'), async function () {
       try {
         var r = await fetch('/api/delete/' + encodeURIComponent(tid), { method: 'POST', body: g.path });
@@ -2352,6 +2368,22 @@ function renderImages(images) {
     box.appendChild(row);
   });
 }
+// .p5z files that cannot be played (state.unplayable): listed under the grid, never as games.
+function renderUnplayable(items) {
+  var list = Array.isArray(items) ? items : [], box = $('unplaylist'), key = lang + JSON.stringify(list);
+  $('unplayable').hidden = !list.length;
+  if (box._key === key) return;
+  box._key = key;
+  box.textContent = '';
+  list.forEach(function (u) {
+    var row = el('div', 'row'), text = el('span');
+    text.appendChild(el('span', 'lbl', String(u.path || '').split('/').pop()));
+    text.appendChild(el('span', 'hint', t(u.code === 'too_many_volumes' ? 'unplayTooMany' : 'unplayDamaged')));
+    text.appendChild(el('span', 'hint mono', u.path));
+    row.appendChild(text);
+    box.appendChild(row);
+  });
+}
 
 async function poll() {
   if (stopped) return;
@@ -2373,6 +2405,7 @@ async function poll() {
     renderStorage(state.drives);
     renderGrid(games);
     renderImages(state.images);
+    renderUnplayable(state.unplayable);
     if (modalOpen()) renderModal();
     if (typeof renderSettingsInfo === 'function') renderSettingsInfo();
     var lines = Array.isArray(state.log) ? state.log : [];
@@ -3071,6 +3104,7 @@ function renderAll() {
     renderStorage(state.drives);
     renderGrid(games);
     renderImages(state.images);
+    renderUnplayable(state.unplayable);
     if (modalOpen()) { renderModal(); if ($('m-legend')._redo) $('m-legend')._redo(); }
     renderSettingsInfo();
   }

@@ -52,6 +52,8 @@ pub struct State {
     pub mounter: Arc<Mutex<MounterState>>,
     /// ShadowMountPlus images of the last scan: listed for the UI, not mounted.
     pub images: Mutex<Vec<Image>>,
+    /// .p5z files of the last scan that cannot be played (damaged, too many volumes): listed for the UI.
+    pub unplayable: Mutex<Vec<(PathBuf, maxpack_logic::p5z::Unplayable)>>,
     /// Held by the scan loop for a whole pass (scan, purge, build, register); delete takes it.
     pub work: Mutex<()>,
     pub low_space: AtomicBool,
@@ -76,6 +78,7 @@ impl State {
             // what it waits for.
             mounter: Arc::new(Mutex::new(MounterState::Ready)),
             images: Mutex::new(Vec::new()),
+            unplayable: Mutex::new(Vec::new()),
             work: Mutex::new(()),
             low_space: AtomicBool::new(false),
             cache_total: Mutex::new(0),
@@ -693,6 +696,14 @@ fn api_state(state: &State) -> Vec<u8> {
         }
         o
     }).collect();
+    // {path, code, detail}: detail is the engine's reason (damaged) or the volume count (too_many_volumes).
+    let unplayable: Vec<_> = state.unplayable.lock().unwrap().iter().map(|(p, u)| {
+        let detail = match u {
+            maxpack_logic::p5z::Unplayable::Damaged(why) => why.clone(),
+            maxpack_logic::p5z::Unplayable::TooManyVolumes(n) => n.to_string(),
+        };
+        serde_json::json!({"path": p.to_string_lossy(), "code": u.code(), "detail": detail})
+    }).collect();
     let v = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "busy": state.busy.load(Ordering::SeqCst),
@@ -702,6 +713,7 @@ fn api_state(state: &State) -> Vec<u8> {
         "running": running,
         "games": games,
         "images": images,
+        "unplayable": unplayable,
         "drives": drives,
         "cache": {
             "path": cache::CACHES,

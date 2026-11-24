@@ -342,6 +342,19 @@ fn publish(state: &State, r: &scan::ScanResult) {
         }
     }
 }
+/// A toast for each .p5z that cannot be played, once per path and run (the page lists them all).
+fn warn_unplayable(s: &Settings, r: &scan::ScanResult) {
+    static WARNED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+    let mut warned = WARNED.lock().unwrap_or_else(|e| e.into_inner());
+    for (path, _) in &r.unplayable {
+        if !warned.contains(path) {
+            warned.push(path.clone());
+            let name = path.file_name().map_or_else(|| path.to_string_lossy(), |n| n.to_string_lossy());
+            toast(s, &i18n::p5z_unplayable(i18n::lang(), &name));
+        }
+    }
+}
+
 /// Debug: copies the kernel log (/dev/klog: module load failures, process crashes) to
 /// /data/maxpack/klog.txt, read through the web UI's /file route.
 /// ponytail: restarts the file at 4 MiB; only one reader of /dev/klog can exist.
@@ -1007,6 +1020,8 @@ fn main() {
         }
         publish(&state, &r);
         *state.images.lock().unwrap() = r.images.clone();
+        *state.unplayable.lock().unwrap() = r.unplayable.clone();
+        warn_unplayable(&s, &r);
         // A source that left the scan (USB unplugged) goes through register::mount again when back.
         // A source still being copied stays registered (skipped this pass, not gone).
         registered.retain(|t| r.games.iter().any(|g| &g.title_id == t)

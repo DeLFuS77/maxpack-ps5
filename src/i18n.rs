@@ -153,6 +153,15 @@ pub fn no_space(l: Lang, name: &str, missing: u64) -> String {
     }
 }
 
+/// A .p5z that cannot be played (damaged or incomplete, or too many volumes).
+/// New in MaxPack: Spanish and English, English for the other languages.
+pub fn p5z_unplayable(l: Lang, file_name: &str) -> String {
+    match l {
+        Lang::Es => format!("No se puede jugar {file_name}: está dañado o incompleto"),
+        _ => format!("{file_name} cannot be played: it is damaged or incomplete"),
+    }
+}
+
 /// `bytes` in GB (2^30) with one decimal and `mark` between, rounded up: a shortage never reads 0.0.
 fn gb_up(bytes: u64, mark: char) -> String {
     let tenths = (u128::from(bytes) * 10).div_ceil(1 << 30);

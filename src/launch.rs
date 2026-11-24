@@ -359,14 +359,15 @@ impl Session {
             self.mount_dir(&format!("{}{from}", root.display()), &from, 0);
         }
         // Writable /app0 (the game's files: the dump folder, or the pkg cache), then the pkg's folder
-        // at /app0/kraken (ng finds the .pkg there). Both on top of the system's /app0.
+        // at /app0/kraken (ng finds the .pkg there) or, for a .p5z game, the .p5z's folder at /app0/p5z (ng finds
+        // the .p5z there, by maxpack.image). Both on top of the system's /app0.
         let app0 = format!("{}/app0", root.display());
         if !self.mount_app0(&app0) {
             return;
         }
         if let Some((at, pkg)) = crate::cache::mount_source(&self.tid) {
-            // Read-only: the game must never write into the folder holding its .pkg.
-            // A single-file nullfs of the .pkg fails here with ENOTDIR.
+            // Read-only: the game must never write into the folder holding its .pkg or .p5z.
+            // A single-file nullfs of the file fails here with ENOTDIR.
             if let Some(pkg_dir) = std::path::Path::new(&pkg).parent().and_then(|p| p.to_str()) {
                 self.mount_dir(&format!("{app0}/{at}"), pkg_dir, libc::MNT_RDONLY as i32);
             }
@@ -376,8 +377,8 @@ impl Session {
     /// A read-write nullfs of /system_ex/app/<TID> (the registered app0 stack, backport unionfs
     /// included) over the sandbox's /app0, only when the system's one is read-only. Not yet mounted
     /// at the sandbox's first sight: the exec pass (mount_data again) gets it.
-    /// ponytail: not adopted by a later copy of the payload (adopt knows /data, USB and /app0/kraken).
-    /// False while the system's /app0 is not mounted (then /app0/kraken must wait too).
+    /// ponytail: not adopted by a later copy of the payload (adopt knows /data, USB and /app0/kraken or /app0/p5z).
+    /// False while the system's /app0 is not mounted (then /app0/kraken or /app0/p5z must wait too).
     fn mount_app0(&mut self, app0: &str) -> bool {
         let from = format!("/system_ex/app/{}", self.tid);
         match top_mount(app0) {
@@ -669,7 +670,7 @@ impl Watcher {
                     s.data.push((path.clone(), m.fsid));
                 }
             }
-            // /app0/kraken too: left behind on exit it hangs the sandbox teardown like /data.
+            // /app0/kraken or /app0/p5z too: left behind on exit it hangs the sandbox teardown like /data.
             let pkg_dir = crate::cache::mount_source(&tid).and_then(|(at, p)| {
                 std::path::Path::new(&p).parent().and_then(|d| d.to_str()).map(|d| (at, d.to_string()))
             });

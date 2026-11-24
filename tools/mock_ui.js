@@ -56,13 +56,18 @@ function games() {
   const g = (tid, name, kind, packing, status, extra) => Object.assign({
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
-    cache_built: BUILT, backport: null, playgo: false, playgo_off: false,
+    cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false, playgo_off: false,
   }, extra || {});
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0' }),
     g('PPSA02345', 'Folder Quest', 'folder', 'zstd', 'ready'),
     g('PPSA03456', 'Plain Racer', 'folder', 'plain', 'building', { cache_built: null, cache_size: 0 }),
     g('PPSA04567', 'Lz4 Tactics', 'folder', 'lz4', 'pending'),
+    // A .p5z in a scanned root: ready, and one short of space on the internal SSD (shows the size missing).
+    g('PPSA07100', 'Packed Example', 'p5z', null, 'ready', { path: '/mnt/usb0/homebrew/Packed Example.p5z', drive: '/mnt/usb0', size: 21 * GB }),
+    g('PPSA07200', 'Roomless Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Roomless Example.p5z', drive: '/mnt/usb0',
+      size: 33 * GB, cache_built: null, cache_size: 0, error_code: 'no_space', missing_bytes: Math.round(3.84 * GB),
+      error: 'PPSA07200 (/mnt/usb0/homebrew/Roomless Example.p5z): no space' }),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
     // A dump whose title id is installed on the console: left alone, the sheet says why.
     g('PPSA06000', 'Installed Twin', 'folder', 'plain', 'error', { cache_built: null, cache_size: 0,
@@ -78,6 +83,10 @@ function apiState() {
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
       { path: '/mnt/usb0/homebrew/varios/otro.ffpkg', kind: 'ffpkg' },
+    ],
+    unplayable: mock.empty ? [] : [
+      { path: '/mnt/usb0/homebrew/Broken Pack.p5z', code: 'damaged', detail: 'el volumen 2 está incompleto' },
+      { path: '/mnt/usb0/homebrew/Huge Pack.p5z', code: 'too_many_volumes', detail: '300' },
     ],
     drives: [
       { mount: '/mnt/usb0', label: 'USB 1', kind: 'usb', total: 1000 * GB, free: 412 * GB, ejectable: true },
