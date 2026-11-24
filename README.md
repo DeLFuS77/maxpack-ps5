@@ -24,7 +24,10 @@ emuladores de DLC y PlayGo, los backports, los juegos movidos, quitar los que de
 un USB, los avisos y los ajustes. De lo que Kraken Mount añadió después trae: los juegos que lanzan
 un `*.elf` al salir, la página que vuelve sola tras el modo reposo, el icono en FW 12+, el botón
 Jugar, los cierres inesperados con su informe, el buscador, el filtro por unidad y «Recrear caché»
-apagado hasta que termina.
+apagado hasta que termina. De su 0.3.2: las fuentes de la consola dentro del juego, las «Rutas
+excluidas» (en Ajustes: el escaneo nunca las abre) y, en la ficha de un juego en carpeta sin
+empaquetar, «Librerías de MaxPack al lanzar», que se puede apagar para un juego que deba ir tal cual
+(un `.pkg`, un `.p5z` o una carpeta zstd o LZ4 no pueden ir sin ellas).
 
 Lo que añade MaxPack:
 - **El instalador** (pestaña Instalar), el de la fase 2 de MaxPack con su motor en C dentro del

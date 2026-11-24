@@ -17,7 +17,9 @@
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
 // (PPSA01234, its sheet shows it and Copy report copies GET /api/report), Play (POST /api/launch:
 // the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
-// for 3 s). Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
+// for 3 s), the overlay switch (POST /api/overlay: only "Plain Racer", a plain folder game, shows it;
+// "Shell Title" has it off; any other kind answers 409 as the payload does), and the Excluded paths
+// of Settings. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -49,6 +51,7 @@ const MB = 1024 * 1024;
 const BUILT = Math.floor(Date.now() / 1000) - 3600;
 // The page's switches and actions, as the payload keeps them.
 const hidden = new Set(['PPSA02345']);
+const overlayOff = new Set(['PPSA06100']);
 const queued = new Set();
 let running = null; // { tid, until }
 function runningNow() {
@@ -70,6 +73,8 @@ function games() {
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
     cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false, playgo_off: false,
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
+    registered: status === 'ready', mounted: status === 'ready', source_present: true,
+    overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid),
   }, extra || {});
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
@@ -77,6 +82,8 @@ function games() {
     g('PPSA02345', 'Folder Quest', 'folder', 'zstd', 'ready'),
     g('PPSA03456', 'Plain Racer', 'folder', 'plain', 'building', { cache_built: null, cache_size: 0 }),
     g('PPSA04567', 'Lz4 Tactics', 'folder', 'lz4', 'pending'),
+    // A plain folder game with MaxPack's overlay turned off (overlay_off): it runs as registered.
+    g('PPSA06100', 'Shell Title', 'folder', 'plain', 'ready'),
     // A .p5z in a scanned root: ready, and one short of space on the internal SSD (shows the size missing).
     g('PPSA07100', 'Packed Example', 'p5z', null, 'ready', { path: '/mnt/usb0/homebrew/Packed Example.p5z', drive: '/mnt/usb0', size: 21 * GB }),
     g('PPSA07200', 'Roomless Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Roomless Example.p5z', drive: '/mnt/usb0',
@@ -112,7 +119,7 @@ function apiState() {
 }
 
 const settings = {
-  scanpath: [], inject_ampr: true, add_emulators: true, ampr_auto_update: false, backports: true,
+  scanpath: [], exclude: ['/data/homebrew/old-copies'], inject_ampr: true, add_emulators: true, ampr_auto_update: false, backports: true,
   scan_interval_seconds: 10, stability_wait_seconds: 10, auto_remove_missing: true,
   auto_remove_delay_seconds: 300, low_space_gb: 20, notify: true, log: true, debug: false,
 };
@@ -342,6 +349,16 @@ http.createServer((req, res) => {
       const tid = p.slice('/api/hidden/'.length);
       if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
       if (chunks === 'on') hidden.add(tid); else hidden.delete(tid);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/overlay/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/overlay/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
+      // maxpack_logic::overlay::needed: only a plain folder game can run without it.
+      if (chunks === 'off' && !(g.kind === 'folder' && g.packing === 'plain'))
+        return send(res, 409, 'text/plain', 'not a plain folder game');
+      if (chunks === 'off') overlayOff.add(g.title_id); else overlayOff.delete(g.title_id);
       return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p.startsWith('/api/rebuild/')) {

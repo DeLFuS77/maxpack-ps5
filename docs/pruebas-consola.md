@@ -614,3 +614,29 @@ en [`compatibilidad.md`](compatibilidad.md) (el informe de 7.3 trae la fila hech
     ProsperoEden): esperado, el texto se ve, sin cuadros vacíos.
   - Si MaxPack se cierra con un juego abierto (un fallo) y lo vuelves a cargar: la línea `<TID> adopted
     <sandbox>: 1 layer(s), N data mount(s)` cuenta también las fuentes, y al salir del juego no se cuelga.
+- [ ] **7.11. Rutas excluidas.**
+  - Con un juego en carpeta ya registrado en `/data/homebrew/<carpeta>`, añade esa ruta en Ajustes >
+    «Rutas excluidas» y guarda. Esperado: en `config.toml`, `exclude = ["/data/homebrew/<carpeta>"]`;
+    en la siguiente pasada el juego deja de salir en la biblioteca (ni como duplicado ni con error),
+    pero sigue en la pantalla de inicio y arranca desde su icono; no hay `building cache` para él.
+  - Excluye una carpeta que tenga dentro una subcarpeta ilegible o un `.p5z` dañado. Esperado: ningún
+    error ni aviso de lo que hay dentro (no se abre).
+  - Escribe una ruta relativa (`homebrew/x`) y guarda. Esperado: «No se pudo guardar» con
+    `exclude: expected an absolute path …`, y nada cambia.
+  - Quita la ruta y guarda. Esperado: el juego vuelve a la biblioteca en la siguiente pasada.
+- [ ] **7.12. Un juego sin las librerías de MaxPack.**
+  - Abre la ficha de un juego en carpeta **sin empaquetar** y apaga «Librerías de MaxPack al lanzar».
+    Esperado: en el registro, `<TID>: overlay off` y, en la siguiente pasada, `<TID>: fakelib: overlay
+    off (overlay_off)`; `/data/maxpack/caches/<TID>/fakelib/` queda vacía; la ficha dice «Va sin las
+    librerías de MaxPack…»; «Copiar informe» trae `MaxPack overlay: off`.
+  - Lanza el juego. Esperado: `<TID> empty fakelib, nothing to overlay; not mounting` y ninguna línea
+    `overlay MOUNTED` ni `sandbox … MOUNTED` para él; el juego arranca tal como está registrado (uno que
+    no necesita ampr-emu-ng ni los emuladores). Al salir, la consola no se cuelga.
+  - Vuelve a encenderlo. Esperado: `<TID>: overlay on`, la `fakelib/` vuelve a llenarse y al lanzar sale
+    `overlay MOUNTED` como siempre.
+  - En la ficha de un `.pkg`, un `.p5z` o una carpeta zstd o LZ4 el interruptor no sale. Con curl,
+    `curl -X POST --data off http://<ip>:8095/api/overlay/<TID>` de uno de ellos responde 409 con el
+    motivo (el modo pkg o p5z de ampr-emu-ng, o los packs) y no cambia nada.
+  - En `/api/state`, cada juego trae `registered`, `mounted`, `source_present` y `overlay_off`: un juego
+    listo y montado sale con `registered: true` y `mounted: true`; tras desenchufar su USB,
+    `source_present: false` hasta que la pasada lo quite.

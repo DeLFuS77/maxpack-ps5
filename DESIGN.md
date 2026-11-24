@@ -581,7 +581,7 @@ minute):
   Origin and Host checks above: another site's page cannot start a game.
 - `GET /api/report/<TID>` -> plain text for an issue (`maxpack_logic::report::text`): MaxPack's version, the
   firmware (`sys::firmware`, else "unknown: please fill in"), who mounts (`waiting`), the game (name, title id,
-  version, source path, kind, drive, status and error, hidden), the backport, ampr-emu-ng (`/api/ampr` kind and
+  version, source path, kind, drive, status and error, hidden, and "MaxPack overlay: off" for an `overlay_off` game), the backport, ampr-emu-ng (`/api/ampr` kind and
   version), the PlayGo stub (on, off, or not added), the last crash, a ready row for `docs/compatibilidad.md`
   (`compat_row`: result and date left as `?`, since the console's clock is often wrong; a `|` in the name escaped),
   and the last 40 lines of the log tail (64 KiB) that contain the title id; 404 for an invalid or absent library
@@ -678,7 +678,7 @@ back to English). While `waiting` is `other:<process>` the banner says MaxPack o
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
-rebuild and an install that does not fit on the internal SSD).
+rebuild, a plain folder game with its overlay off, the Excluded paths, and an install that does not fit on the internal SSD).
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -693,6 +693,10 @@ and MaxPack mounts; after a launch it stays off up to 10 s, until the watcher re
 the game's status, crash or hidden state changes, so the copy happens inside the press: `execCommand('copy')` on the
 sheet's text box, else the clipboard API; when neither can, the text stays shown and selected), Hide / Show in the
 library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last crash" to the fields and a hint.
+Under the PlayGo switch, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries
+at launch" (`POST /api/overlay`, `overlay_off`): on by default; off, the sheet notes that the game runs as registered.
+A pkg, a `.p5z` or a packed folder never shows it (the payload refuses it for them). Settings has "Excluded paths"
+under "Scan paths", one path per line (`exclude`).
 New texts are in English and Spanish; the other languages show the English ones.
 
 ## Build and check
