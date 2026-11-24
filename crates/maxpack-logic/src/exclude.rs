@@ -19,6 +19,16 @@ pub fn excluded(path: &str, exclude: &[String]) -> bool {
     exclude.iter().filter(|e| e.starts_with('/')).any(|e| p.starts_with(&parts(e)))
 }
 
+/// The `backports` folders to look in for a game found under scan root `owner`, in ShadowMountPlus's
+/// order (resolve_backport_path_for_title): the game's own root, the other roots, then
+/// `/data/homebrew` (its installed backports) even when `scanpath` replaces it; each root once
+/// (compared as text with `//`, `.` and `..` resolved), and none that is `excluded`, so the scan never
+/// opens an excluded one.
+pub fn backport_dirs(owner: &str, roots: &[String], exclude: &[String]) -> Vec<String> {
+    let _ = (owner, roots, exclude);
+    Vec::new()
+}
+
 /// The components of `path` with `//`, `.` and `..` resolved as text (as `roots`).
 fn parts(path: &str) -> Vec<&str> {
     let mut out = Vec::new();
@@ -82,6 +92,35 @@ mod tests {
         // Nothing excluded by an empty list; `/` excludes everything.
         assert!(!excluded("/data/homebrew/Game", &[]));
         assert!(excluded("/data/homebrew/Game", &["/".to_string()]));
+    }
+
+    #[test]
+    fn backports_are_looked_for_in_the_owner_then_the_roots_then_data_homebrew() {
+        let roots: Vec<String> = ["/mnt/usb0/homebrew", "/data/homebrew", "/mnt/ext1/homebrew/"].iter().map(|r| r.to_string()).collect();
+        assert_eq!(backport_dirs("/mnt/ext1/homebrew", &roots, &[]),
+            ["/mnt/ext1/homebrew/backports", "/mnt/usb0/homebrew/backports", "/data/homebrew/backports"]);
+        // /data/homebrew always last, even when no root names it.
+        assert_eq!(backport_dirs("/mnt/usb0", &["/mnt/usb0".to_string()], &[]),
+            ["/mnt/usb0/backports", "/data/homebrew/backports"]);
+        // Each root once, however it is written.
+        assert_eq!(backport_dirs("/data/homebrew/", &["/data//homebrew".to_string(), "/data/./homebrew".to_string()], &[]),
+            ["/data/homebrew/backports"]);
+        // A drive's own root.
+        assert_eq!(backport_dirs("/", &[], &[]), ["/backports", "/data/homebrew/backports"]);
+    }
+
+    #[test]
+    fn an_excluded_backports_folder_is_never_opened() {
+        let roots: Vec<String> = ["/mnt/usb0/homebrew", "/data/homebrew"].iter().map(|r| r.to_string()).collect();
+        // The backports folder itself, or a folder above it.
+        assert_eq!(backport_dirs("/mnt/usb0/homebrew", &roots, &["/data/homebrew/backports".to_string()]),
+            ["/mnt/usb0/homebrew/backports"]);
+        assert_eq!(backport_dirs("/mnt/usb0/homebrew", &roots, &["/mnt/usb0".to_string()]),
+            ["/data/homebrew/backports"]);
+        assert!(backport_dirs("/mnt/usb0/homebrew", &roots, &["/".to_string()]).is_empty());
+        // One backport inside it excluded: the folder is still looked in (the caller skips that one).
+        assert_eq!(backport_dirs("/data/homebrew", &roots, &["/data/homebrew/backports/PPSA01234".to_string()]),
+            ["/data/homebrew/backports", "/mnt/usb0/homebrew/backports"]);
     }
 
     #[test]
