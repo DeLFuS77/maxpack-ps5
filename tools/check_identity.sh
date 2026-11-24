@@ -18,12 +18,14 @@ EXCEPTIONS=(
   "^src/ui\.html:[0-9]+: *aboutBased: 'Basado en Kraken Mount, de quer3q\.',$"
   # The same credit line in the other nine languages (double-quoted, the only entry on its line).
   '^src/ui\.html:[0-9]+: *aboutBased: "[^"]*Kraken Mount[^"]*",$'
+  # The bug report form asks which other mounters were running: the original is one of the options.
+  '^\.github/ISSUE_TEMPLATE/bug_report\.yml:[0-9]+: *- Kraken Mount$'
 )
 # The console checklist tests the original mounter itself (before anything, coming from it and
 # going back to it), so there, and only there, it may name it, its data folder and its process:
 # those three tokens are taken out of each of its lines, which is then checked again. Anything
 # else of the old identity (its port, its log...) still fails there too.
-CHECKLIST='docs/pruebas-consola.md'
+CHECKLIST='docs/console-tests.md'
 CHECKLIST_ALLOWED='Kraken Mount|/data/krakenmount|kraken-mount\.elf'
 # The ampr-emu-ng contract (kraken.image, /app0/kraken/, kraken.pkg, kraken_zero.dat, "ampr-emu-ng ")
 # needs no entry: none of those names match PATTERN. The internal crate kraken-mount-pkg lives in

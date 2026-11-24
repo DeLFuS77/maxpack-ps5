@@ -359,7 +359,7 @@ http.createServer((req, res) => {
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
         ['Backport: none', 'ampr-emu-ng: bundled v0.5.0-maxpack.3', 'PlayGo stub: on',
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
-          '', 'Row for docs/compatibilidad.md (fill in the result and the date):',
+          '', 'Row for docs/compatibility.md (fill in the result and the date):',
           `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 1.0.0 | ? | ? |`, '',
           `maxpack.log, last 40 lines with ${g.title_id}:`, `2026-11-23 20:00:05Z [5000] ${g.title_id}: cache fresh`]).join('\n') + '\n';
       return send(res, 200, 'text/plain; charset=utf-8', text);

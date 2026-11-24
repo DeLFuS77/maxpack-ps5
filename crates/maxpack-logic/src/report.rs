@@ -1,5 +1,5 @@
 //! The per-game report (`GET /api/report/<TID>`, the page's "Copy report"): plain text to paste into
-//! an issue, with a ready row for `docs/compatibilidad.md`. See DESIGN.md "Web API".
+//! an issue, with a ready row for `docs/compatibility.md`. See DESIGN.md "Web API".
 use crate::crash::Crash;
 
 /// maxpack.log lines (those with the title id) at the end of a report.
@@ -72,7 +72,7 @@ pub fn utc(secs: u64) -> String {
     format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}Z", rem / 3600, rem / 60 % 60, rem % 60)
 }
 
-/// A row of `docs/compatibilidad.md` with the result and the date left to fill in ("?"): the
+/// A row of `docs/compatibility.md` with the result and the date left to fill in ("?"): the
 /// console's clock is often years behind, so the date is not taken from it. A `|` is escaped and a
 /// control character (a line break or a tab in a param.json name) is a space, so the row stays one line.
 pub fn compat_row(r: &Report) -> String {
@@ -123,7 +123,7 @@ pub fn text(r: &Report) -> String {
         format!("PlayGo stub: {}", r.playgo),
         format!("Last crash: {crash}"),
         String::new(),
-        "Row for docs/compatibilidad.md (fill in the result and the date):".into(),
+        "Row for docs/compatibility.md (fill in the result and the date):".into(),
         compat_row(r),
         String::new(),
         format!("maxpack.log, last {LOG_LINES} lines with {}:", r.title_id),
@@ -214,7 +214,7 @@ ampr-emu-ng: bundled v0.5.0-maxpack.3\n\
 PlayGo stub: on\n\
 Last crash: 2026-01-01 00:00:00Z in eboot.bin, killed by signal 11 (console dump folder PPSA12544_1795166239)\n\
 \n\
-Row for docs/compatibilidad.md (fill in the result and the date):\n\
+Row for docs/compatibility.md (fill in the result and the date):\n\
 | PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |\n\
 \n\
 maxpack.log, last 40 lines with PPSA12544:\n\

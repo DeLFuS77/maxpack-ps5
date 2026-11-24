@@ -58,7 +58,7 @@ jobs:
           expect_fail "planted old name"
           mk
           # The old port, written without the literal so this file stays clean.
-          echo "puerto $((8000 + 97))" >> "$t/docs/pruebas-consola.md"
+          echo "puerto $((8000 + 97))" >> "$t/docs/console-tests.md"
           expect_fail "old port in the checklist"
           mk
           printf 'v0.5.0' > "$t/vendor/ampr-emu-ng/VERSION"
