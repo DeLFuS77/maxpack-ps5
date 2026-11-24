@@ -78,7 +78,7 @@ const HELP: &[(&str, &str)] = &[
     ("overlay_off", "title ids of plain folder games that get no MaxPack overlay at launch: not the game's fakelib/, not ampr-emu-ng, not the emulators, and no /data, USB or writable /app0 in its sandbox; a pkg, a .p5z or a packed folder always keeps it (a change only refreshes fakelib/)"),
     ("fakelib_emulators", "title ids whose fakelib gets only the bundled emulators they need and ampr-emu-ng, not the game's or backport's fakelib (for a game that shows a black screen with those libraries; a change only refreshes fakelib/)"),
     ("fakelib_off", "title ids whose fakelib gets only ampr-emu-ng, and that only for a pkg, a .p5z or a packed folder (a plain folder gets an empty fakelib), for a game that still stalls with the emulators; a title in both lists is off (a change only refreshes fakelib/)"),
-    ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from MaxPack's own repository (DeLFuS77/ampr-emu-ng); off by default until MaxPack is published, and it only ever downloads MaxPack's own build (a hand-placed libSceAmpr.sprx is kept)"),
+    ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from MaxPack's own repository (DeLFuS77/ampr-emu-ng); off by default; it installs only MaxPack's own build, checked against the release's SHA256SUMS and only after the secure-connection check (a hand-placed libSceAmpr.sprx is kept)"),
     ("backports", "true = apply backports/<TID>* from the game's scan root, then the other roots, then /data/homebrew"),
     ("scan_interval_seconds", "scan loop period, 1..3600"),
     ("stability_wait_seconds", "skip a source changed less than this many seconds ago (still being copied), 0..3600, 0 = off"),
