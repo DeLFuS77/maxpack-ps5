@@ -18,7 +18,8 @@
 // (PPSA01234, its sheet shows it and Copy report copies GET /api/report), Play (POST /api/launch:
 // the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
 // for 3 s), the overlay switch (POST /api/overlay: only "Plain Racer", a plain folder game, shows it;
-// "Shell Title" has it off; any other kind answers 409 as the payload does), and the Excluded paths
+// "Shell Title" has it off; "Packed Example", a .p5z, is still listed from before, so its sheet shows
+// the switch to clear it; turning a non-plain game off answers 409 as the payload does), and the Excluded paths
 // of Settings. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
@@ -51,7 +52,7 @@ const MB = 1024 * 1024;
 const BUILT = Math.floor(Date.now() / 1000) - 3600;
 // The page's switches and actions, as the payload keeps them.
 const hidden = new Set(['PPSA02345']);
-const overlayOff = new Set(['PPSA06100']);
+const overlayOff = new Set(['PPSA06100', 'PPSA07100']);
 const queued = new Set();
 let running = null; // { tid, until }
 function runningNow() {
@@ -74,7 +75,7 @@ function games() {
     cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false, playgo_off: false,
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
     registered: status === 'ready', mounted: status === 'ready', source_present: true,
-    overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid),
+    overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid), overlay_off_listed: overlayOff.has(tid),
   }, extra || {});
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',

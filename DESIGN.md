@@ -555,7 +555,8 @@ minute):
   rebuild_queued: bool (a rebuild asked for, not started yet: the title is in `forced`; the page keeps Rebuild disabled through it and while the game is pending, checking or building),
   registered: bool (`register::registered`: the staged `param.json` files and the title id in app.db; app.db is read and scanned again only when its length or mtime, or the titles asked, changed: `maxpack_logic::presence::DbMemo`),
   mounted: bool (`/system_ex/app/<TID>` is a mount point, one mount table per request), source_present: bool (the source path exists),
-  overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`)}],
+  overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`),
+  overlay_off_listed: bool (listed in `overlay_off`, whatever this copy is: true with `overlay_off` false is a stale entry)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
@@ -707,7 +708,10 @@ sheet's text box, else the clipboard API; when neither can, the text stays shown
 library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last crash" to the fields and a hint.
 Under the PlayGo switch, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries
 at launch" (`POST /api/overlay`, `overlay_off`): on by default; off, the sheet notes that the game runs as registered.
-A pkg, a `.p5z` or a packed folder never shows it (the payload refuses it for them). Settings has "Excluded paths"
+A pkg, a `.p5z` or a packed folder does not show it (the payload refuses turning it off for them), except while the
+title is still listed in `overlay_off` from an earlier copy (`overlay_off_listed`: packed since, or a pkg or `.p5z` took
+over): then the switch shows off with a note that this copy keeps the libraries, so the stale entry can be cleared
+(turned on, the row goes). The entry is never dropped by itself: a plain folder copy coming back would use it again. Settings has "Excluded paths"
 under "Scan paths", one path per line (`exclude`).
 New texts are in English and Spanish; the other languages show the English ones.
 

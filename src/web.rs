@@ -184,6 +184,8 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
         "rebuild_queued": x.queued.contains(tid),
         // Listed in overlay_off and a plain folder game (as cache::overlay_off): no overlay at launch.
         "overlay_off": maxpack_logic::overlay::off(kind, packing, x.overlay_off.iter().any(|t| t == tid)),
+        // Listed, whatever this copy is: the page shows the switch for a stale entry too, to clear it.
+        "overlay_off_listed": x.overlay_off.iter().any(|t| t == tid),
     })
 }
 

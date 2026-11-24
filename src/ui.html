@@ -899,6 +899,7 @@ var MSG = {
     overlayLbl: 'MaxPack libraries at launch',
     overlayHint: 'Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.',
     overlayOffNote: 'Runs without MaxPack\'s libraries: as registered, with no ampr-emu-ng, emulators or sandbox mounts.',
+    overlayStaleNote: 'This game is set to run without MaxPack\'s libraries, but this copy cannot (a pkg, a .p5z or a packed folder needs them), so it keeps them. Turn the switch on to clear that setting.',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
     sizesNone: 'Sizes unavailable', sizesLoading: 'Loading sizes...',
@@ -1311,6 +1312,7 @@ var MSG = {
     overlayLbl: 'Librerías de MaxPack al lanzar',
     overlayHint: 'Apágalo solo para un juego que deba ir sin ellas (un título de Playden): entonces no lleva ampr-emu-ng, ni emuladores, ni /data ni USB en su sandbox.',
     overlayOffNote: 'Va sin las librerías de MaxPack: tal como está registrado, sin ampr-emu-ng, emuladores ni montajes en su sandbox.',
+    overlayStaleNote: 'Este juego está puesto para ir sin las librerías de MaxPack, pero esta copia no puede (un .pkg, un .p5z o una carpeta empaquetada las necesita), así que las lleva. Enciende el interruptor para quitar ese ajuste.',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
     sizesNone: 'Tamaños no disponibles', sizesLoading: 'Cargando tamaños...',
@@ -2596,7 +2598,8 @@ function renderModal() {
   var noSpace = g.error_code === 'no_space' ? t('errNoSpace', { size: gb(Math.ceil((Number(g.missing_bytes) || 0) / 107374182.4) * 107374182.4) }) : '';
   setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || g.error) ||
     (g.crash ? t('crashHint') : ''));
-  setText($('m-note'), modalNote ? modalNote() : g.hidden ? t('hiddenNote') : g.overlay_off ? t('overlayOffNote') : '');
+  setText($('m-note'), modalNote ? modalNote() : g.hidden ? t('hiddenNote') : g.overlay_off ? t('overlayOffNote') :
+    g.overlay_off_listed && !overlayOptional(g) ? t('overlayStaleNote') : '');
   // A duplicate shares the title id of the library copy: the API calls would act on that copy.
   var dup = g.status === 'duplicate';
   $('m-rebuild').disabled = rebuildLocked(g);
@@ -2620,9 +2623,11 @@ function renderModal() {
   pg.disabled = !!pg._busy || g.status === 'duplicate' || g.status === 'building';
   // MaxPack's overlay: only a plain folder game can run without it (a pkg, a .p5z or a packed folder
   // is read through ampr-emu-ng, which comes in it; the payload refuses those, maxpack_logic::overlay).
+  // A title still listed whose copy now needs it (packed since, or a pkg or .p5z took over) shows the
+  // switch off too, with a note, so the stale entry can be cleared; turned on, the row goes.
   var ov = $('m-overlay');
-  $('m-overlay-row').hidden = dup || !overlayOptional(g);
-  if (!ov._busy) ov.checked = !g.overlay_off;
+  $('m-overlay-row').hidden = dup || !(overlayOptional(g) || g.overlay_off_listed);
+  if (!ov._busy) ov.checked = !g.overlay_off_listed;
   ov.disabled = !!ov._busy || g.status === 'building';
 }
 function overlayOptional(g) { return g.kind === 'folder' && g.packing === 'plain'; }
@@ -2826,7 +2831,8 @@ $('m-overlay').onchange = async function () {
     var r = await fetch('/api/overlay/' + encodeURIComponent(g.title_id), { method: 'POST', body: on ? 'on' : 'off' });
     if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
     // Until the next state arrives, draw the new value.
-    g.overlay_off = !on;
+    g.overlay_off = !on && overlayOptional(g);
+    g.overlay_off_listed = !on;
     modalActionError = '';
     if (state && state.paused) { queued = true; setBanner('paused', true, pausedText); }
   } catch (e) {
