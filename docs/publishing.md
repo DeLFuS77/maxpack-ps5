@@ -6,27 +6,11 @@ one's README and Corresponding Source links point at the others.
 
 ## Before the first release
 
-- **`vendor/ampr-emu-ng/SOURCE` names a run that is not public.** The vendored `libSceAmpr.sprx` was
-  built by CI run 45365840836 before ampr-emu-ng was public, and that run cannot be seen today. Its
-  `ci-run` line and the sentence "built by its CI run 45365840836" in `THIRD_PARTY_NOTICES` name it.
-  Re-point both to the public release of ampr-emu-ng that carries this exact `libSceAmpr.sprx`
-  (`v0.5.1-maxpack.1`, same SHA-256 as `vendor/ampr-emu-ng/SHA256SUMS`). The commit line
-  (`13344a83fb9df203fdbbf28364e31812ab599248`) stays: it has the code that run built (only some
-  comments differ), and it must remain reachable from ampr-emu-ng's `main` (merge there without
-  squashing or rebasing). Change the vendored binary only together with `SHA256SUMS`, `VERSION` and
-  `SOURCE` (DESIGN.md, Vendored components).
-- **If ampr-emu-ng's release is not byte-identical to the vendored file.** ampr-emu-ng's `main` has
-  commits after `13344a8` (README, CI, docs and comments), and its CI build of `main` (run
-  45410931296, commit `73b2973`) gave a `libSceAmpr.sprx` with another SHA-256 than the vendored one,
-  so a `v0.5.1-maxpack.1` released from that tip may not carry the same bytes either. Compare the
-  `SHA256SUMS` of that release with `vendor/ampr-emu-ng/SHA256SUMS`. When they differ, do one of these,
-  never leave the two apart:
-  - tag `13344a8` itself as `v0.5.1-maxpack.1` in ampr-emu-ng, so the release is built from the vendored
-    commit (check its `SHA256SUMS` again: if that rebuild differs too, attach to the release the
-    vendored `libSceAmpr.sprx` and `libSceAmpr-debug.sprx`, which CI run 45365840836 built); or
-  - re-vendor: put the release's `libSceAmpr.sprx` in `vendor/ampr-emu-ng/`, with new `SHA256SUMS`,
-    `SOURCE` (the release commit and its run), `VERSION` if the tag changes, and the commit and run in
-    `THIRD_PARTY_NOTICES`; then rebuild and play a `.p5z` again (docs/console-tests.md, section 6).
+- **ampr-emu-ng is settled.** `vendor/ampr-emu-ng/libSceAmpr.sprx` is byte-identical to the
+  `libSceAmpr.sprx` of the public release `v0.5.1-maxpack.1` of DeLFuS77/ampr-emu-ng (CI run 45435074348,
+  tag on `73b2973`): same SHA-256. `SOURCE`, `SHA256SUMS` and `THIRD_PARTY_NOTICES` point at that release.
+  Publish that draft release before or with this repository's `v1.0.0`. Change the vendored binary only
+  together with `SHA256SUMS`, `VERSION` and `SOURCE` (DESIGN.md, Vendored components).
 - **The secure-connection check passes on a console before `v1.0.0` is tagged.** With a build of the
   commit to be tagged, Settings > "Check secure connections" (docs/console-tests.md, 8.1) must end with
   "Passed": the console refuses an untrusted root, a wrong host and an expired certificate, and reaches
