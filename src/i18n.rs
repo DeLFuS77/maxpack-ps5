@@ -93,6 +93,24 @@ pub fn port_busy(l: Lang, port: u16) -> String {
     }
 }
 
+/// The running copy did not hand the port over because it is finishing a build (web::take_port's
+/// PortTaken::Building): sending this one again in a moment works.
+pub fn finishing_build(l: Lang) -> &'static str {
+    match l {
+        Lang::En => "MaxPack is finishing a build, so this copy did not start. Try again in a moment",
+        Lang::Ru => "MaxPack завершает сборку, поэтому эта копия не запущена. Повторите через минуту",
+        Lang::Zh => "MaxPack 正在完成一次构建，因此这个副本没有启动。请稍后再试",
+        Lang::De => "MaxPack schließt gerade einen Build ab, daher wurde diese Kopie nicht gestartet. Versuche es gleich noch einmal",
+        Lang::Es => "MaxPack está terminando de construir una caché, así que esta copia no se ha iniciado. Vuelve a probar en un momento",
+        Lang::Fr => "MaxPack termine une construction, cette copie n'a donc pas été lancée. Réessayez dans un instant",
+        Lang::Ja => "MaxPack がビルドを終えるところのため、このコピーは起動しませんでした。少し待ってからもう一度お試しください",
+        Lang::Pt => "O MaxPack está terminando uma construção, por isso esta cópia não foi iniciada. Tente de novo daqui a pouco",
+        Lang::It => "MaxPack sta finendo una build, quindi questa copia non è stata avviata. Riprova tra un momento",
+        Lang::Ko => "MaxPack이 빌드를 마무리하는 중이라 이 사본은 시작되지 않았습니다. 잠시 후 다시 시도하세요",
+        Lang::Ar => "يُنهي MaxPack عملية بناء، لذلك لم تبدأ هذه النسخة. حاول مرة أخرى بعد قليل",
+    }
+}
+
 /// `/data` free space is below `low_space_gb`.
 pub fn low_space(l: Lang, gb: u64) -> String {
     match l {

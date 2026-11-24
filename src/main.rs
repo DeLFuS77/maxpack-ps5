@@ -944,9 +944,16 @@ fn main() {
     }
     let s = config::load();
     sys::LOG_FILE.store(s.log, Ordering::Relaxed);
-    let Some(listener) = web::take_port() else {
-        toast(&s, &i18n::port_busy(i18n::lang(), web::PORT));
-        return;
+    let listener = match web::take_port() {
+        Ok(l) => l,
+        Err(web::PortTaken::Building) => {
+            toast(&s, i18n::finishing_build(i18n::lang()));
+            return;
+        }
+        Err(web::PortTaken::Busy) => {
+            toast(&s, &i18n::port_busy(i18n::lang(), web::PORT));
+            return;
+        }
     };
     toast(&s, i18n::started(i18n::lang()));
     install_bundled_ampr();

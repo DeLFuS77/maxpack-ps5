@@ -69,9 +69,39 @@ pub fn check(head: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
+/// What a running copy answers a newer copy's quit (`POST /api/quit` from loopback) while a scan
+/// pass holds the build lock: 409 with this text (src/web.rs). The newer copy (web::take_port) tells
+/// it from any other refusal.
+pub const QUIT_BUILDING: &str = "a scan or build is in progress";
+
+/// `answer` (the raw HTTP answer to that quit, as far as it was read) is the "finishing a build"
+/// refusal: status 409 and QUIT_BUILDING in the body.
+pub fn quit_refused_for_build(answer: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(answer);
+    let status = text.lines().next().and_then(|l| l.split(' ').nth(1));
+    let body = text.split_once("\r\n\r\n").map_or("", |(_, b)| b);
+    status == Some("409") && body.contains(QUIT_BUILDING)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_quit_refused_for_a_build() {
+        let answer = |status: &str, body: &str| {
+            format!("HTTP/1.1 {status}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+        };
+        assert!(quit_refused_for_build(answer("409 Conflict", QUIT_BUILDING).as_bytes()));
+        // A game running is another refusal; a quit that went through is none.
+        assert!(!quit_refused_for_build(answer("409 Conflict", "a game is running").as_bytes()));
+        assert!(!quit_refused_for_build(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"));
+        // The text with another status, the text only in a header, nothing read, junk.
+        assert!(!quit_refused_for_build(answer("404 Not Found", QUIT_BUILDING).as_bytes()));
+        assert!(!quit_refused_for_build(format!("HTTP/1.1 409 Conflict\r\nX: {QUIT_BUILDING}\r\n\r\n").as_bytes()));
+        assert!(!quit_refused_for_build(b""));
+        assert!(!quit_refused_for_build(b"\xff\xfe409"));
+    }
 
     #[test]
     fn host_takes_ip_literals_and_localhost() {

@@ -189,25 +189,40 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
     })
 }
 
+/// Why take_port gave up.
+pub enum PortTaken {
+    /// The older copy answered the last quit with "a scan or build is in progress": it is finishing
+    /// a build, so trying again in a moment works.
+    Building,
+    /// Anything else: the phase-2 maxpack.elf (whose server refuses that quit), an older build
+    /// without /api/quit, an older copy with a game running, or another app.
+    Busy,
+}
+
 /// Single instance: binds PORT, asking an older copy on it to quit first (POST /api/quit),
-/// retrying for 5 s. None: the port stays taken (the phase-2 maxpack.elf, whose server refuses that
-/// quit, an older build without /api/quit, an older copy in the middle of a scan pass, or another
-/// app), so this copy must not run.
-pub fn take_port() -> Option<TcpListener> {
+/// retrying for 5 s. Err: the port stays taken, so this copy must not run.
+pub fn take_port() -> Result<TcpListener, PortTaken> {
     if let Ok(l) = TcpListener::bind(("0.0.0.0", PORT)) {
-        return Some(l);
+        return Ok(l);
     }
+    let mut building = false;
     for _ in 0..20 {
         // Asked again each try: the older copy refuses while a scan pass (a build) runs.
         if let Ok(mut s) = TcpStream::connect(("127.0.0.1", PORT)) {
-            let _ = s.write_all(b"POST /api/quit HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n");
+            // Its answer (Connection: close) says why it stays. It answers at once: a short wait.
+            let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
+            if s.write_all(b"POST /api/quit HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n").is_ok() {
+                let mut answer = Vec::new();
+                let _ = (&mut s).take(4096).read_to_end(&mut answer);
+                building = maxpack_logic::http::quit_refused_for_build(&answer);
+            }
         }
         std::thread::sleep(Duration::from_millis(250));
         if let Ok(l) = TcpListener::bind(("0.0.0.0", PORT)) {
-            return Some(l);
+            return Ok(l);
         }
     }
-    None
+    Err(if building { PortTaken::Building } else { PortTaken::Busy })
 }
 
 /// Listens on 0.0.0.0:PORT forever, one short-lived thread per connection. (The home-screen tile
@@ -444,7 +459,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             // exit, so no pass starts meanwhile.
             if !user {
                 let Ok(work) = state.work.try_lock() else {
-                    return reply(409, "text/plain", "a scan or build is in progress");
+                    return reply(409, "text/plain", maxpack_logic::http::QUIT_BUILDING);
                 };
                 std::mem::forget(work);
             }
