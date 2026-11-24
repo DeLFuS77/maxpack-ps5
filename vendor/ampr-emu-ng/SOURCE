@@ -1,7 +1,7 @@
 # Where vendor/ampr-emu-ng/libSceAmpr.sprx comes from (Corresponding Source for THIRD_PARTY_NOTICES).
 # Not listed in SHA256SUMS: ps5/build.sh checks with --ignore-missing.
 repository: https://github.com/DeLFuS77/ampr-emu-ng
-commit: 3f91dbee4ab9eee80709ab878c6a7d77489bcc3d
-upstream: https://github.com/quer3q/ampr-emu-ng v0.5.1 (e1789c1); the commits above add the p5z mode (a game served from a .p5z file) and, before it, a CI change that publishes nothing
-ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45365840836 (workflow build, branch consola-v051, success)
+commit: 13344a83fb9df203fdbbf28364e31812ab599248
+upstream: https://github.com/quer3q/ampr-emu-ng v0.5.1 (e1789c1; c19915c in the repository above); the commits above add the p5z mode (a game served from a .p5z file) and, before it, a CI change that publishes nothing
+ci-run: 45365840836 (workflow build, branch consola-v051, success), run before the repository was public and not visible today; it built the same code as the commit above, where only some comments differ (docs/publishing.md)
 version: v0.5.1-maxpack.1 (VERSION)

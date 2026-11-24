@@ -3,7 +3,7 @@
 # installer): the sources of one commit of the MaxPack repository, with the zstd and zlib sources
 # its submodules pin at that commit and their licences. The commit goes into vendor/maxpack/COMMIT,
 # and the tag that keeps it into vendor/maxpack/COMMIT.tag.
-# A copy, not a submodule: this repository's CI cannot read the other private repository.
+# A copy, not a submodule: the payload builds from this repository alone.
 #
 #   tools/sync_maxpack.sh <path-to-the-maxpack-repo> <commit>
 #
@@ -25,7 +25,7 @@ rm -rf "$dest"
 mkdir -p "$dest"
 # What CMakeLists.txt reads with -DMAXPACK_PS5=ON: cmake/, the library sources and src/ps5 (its
 # maxpack_elf target must configure, though the payload does not build it). The engine's own
-# installer page (web/index.html) is gone since its commit f8f69a7: the payload serves src/ui.html.
+# installer page (web/index.html) is gone since its commit f8e931a: the payload serves src/ui.html.
 archive "$repo" "$commit" CMakeLists.txt LICENSE cmake src/core src/analyze src/pack src/net \
   src/install src/web src/ps5 | tar -x -C "$dest"
 

@@ -732,7 +732,7 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-3`, e9e0ec4: its `ampr_emu.index` reader takes a slot table aligned to 8 bytes, as other packers write it), with the zstd and
+there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-3`, e8de15a: its `ampr_emu.index` reader takes a slot table aligned to 8 bytes, as other packers write it), with the zstd and
 zlib its submodules pin. `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
 `mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's

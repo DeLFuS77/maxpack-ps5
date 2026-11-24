@@ -56,7 +56,8 @@ one game of each kind of source: an unpacked folder, one packed with zstd, one w
   - Launch the zstd game.
   - Expected: the notice says "ampr-emu-ng: v0.5.1 (zstd) running", **without** `-beta`; with the LZ4
     one, "(lz4)". In Settings, ampr-emu-ng shows as bundled, version `v0.5.1-maxpack.1`.
-  - This build has no `-beta` (the one on `main`, the stage-1 one, did: `v0.5.0-beta.a52648f`). If
+  - This build has no `-beta` (the one on `main`, the stage-1 one, did: `v0.5.0-beta.a52648f`;
+    `a52648f` is `ecae2ff` in ampr-emu-ng's public history). If
     `-beta` or another version appears, it is not this branch's: look at
     `/data/maxpack/ampr/libSceAmpr.sprx` and `/data/maxpack/ampr.bundled`, and note it.
 - [ ] **B.4. The DLC and PlayGo emulators.**
@@ -299,8 +300,9 @@ both in a folder of their own on the drive, for example `/mnt/usb0/install/`: no
 root is a scan root by default) is already a game: MaxPack builds its cache and registers it before you
 install it, and this section does not test that (section 6 does). MaxPack does not scan below a
 drive's root, and the Install tab looks one level further down, so it finds them all the same. At
-start the log says `installer: ready in N ms (MaxPack engine e9e0ec4, runtime ampr-emu-ng
-v0.5.1-maxpack.1 716176 bytes)`.
+start the log says `installer: ready in N ms (MaxPack engine e8de15a, runtime ampr-emu-ng
+v0.5.1-maxpack.1 716176 bytes)`. A build from before the repositories were public says `e9e0ec4`
+there: the same engine code.
 
 - [ ] **5.1. Install a `.p5z` and a `.exfat` as they are.**
   - In Install both show under "Games to install": the `.p5z` with its icon, what it saves and what it
