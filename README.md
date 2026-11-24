@@ -65,6 +65,9 @@ Lo que añade MaxPack:
 - Datos en `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, y los del
   instalador (`state/`, `installed/`, `tmp/`).
 - Icono de la pantalla de inicio: `MXPK00001`. Interfaz web en el puerto **8095**.
+- Versión propia, la de `Cargo.toml` (de ahí la toman la página y `/api/state`): 0.1.x es la etapa 1
+  (montar) y 0.2.x la etapa 2 (jugar desde el `.p5z`). No sigue la numeración de Kraken Mount, cuya
+  0.3.1 es la base.
 - La parte que habla con [ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) no cambia de nombre
   (`kraken.image`, `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`), y el crate interno sigue
   llamándose `kraken-mount-pkg` para facilitar las mezclas con el original.

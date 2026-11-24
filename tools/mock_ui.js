@@ -78,7 +78,7 @@ function games() {
 
 function apiState() {
   return {
-    version: '0.3.1', busy: false, paused: false, waiting: waitingValue(), running: [],
+    version: '0.2.0', busy: false, paused: false, waiting: waitingValue(), running: [],
     games: games(),
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
@@ -281,7 +281,7 @@ http.createServer((req, res) => {
       return send(res, 403, 'text/plain; charset=utf-8', REFUSED[why].join('\n') + '\n');
     }
     if (req.method === 'GET' && p === '/') {
-      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '0.3.1-mock');
+      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '0.2.0-mock');
       return send(res, 200, 'text/html; charset=utf-8', html);
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
