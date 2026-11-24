@@ -299,7 +299,7 @@ los dos en una carpeta propia del USB, por ejemplo `/mnt/usb0/instalar/`: ni en 
 USB es una raíz de escaneo por defecto) ya es un juego: MaxPack le hace la caché y lo registra antes
 de que lo instales, y esta sección no prueba eso (la 6 sí). MaxPack no explora más abajo de la raíz de
 una unidad, y la pestaña Instalar mira también un nivel por debajo, así que los encuentra igual. Al
-arrancar, el registro dice `installer: ready in N ms (MaxPack engine 5780807, runtime ampr-emu-ng
+arrancar, el registro dice `installer: ready in N ms (MaxPack engine e9e0ec4, runtime ampr-emu-ng
 v0.5.1-maxpack.1 716176 bytes)`.
 
 - [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**

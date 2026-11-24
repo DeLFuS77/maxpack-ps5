@@ -10,6 +10,7 @@
 #define IDX3_HEADER 48u
 #define IDX3_RECORD 24u
 #define IDX3_SLOT 16u
+#define IDX3_SLOT_ALIGN 8u   // lo que exige leer un slot: mp_idx3_build alinea a 16, otros generadores a 8
 #define APP0 "/app0/"
 #define APP0_LEN 6u
 
@@ -254,7 +255,7 @@ int mp_idx3_parse(const uint8_t *d, size_t n, mp_idx3_entry **out, size_t *count
     uint64_t rows = rd64(d + 16), blob = rd64(d + 24), hash_off = rd64(d + 32), slots = rd32(d + 44);
     if (rows == 0 || rows > 0xFFFFFFFEu || rows > n / IDX3_RECORD) return bad(e, "número de filas");
     uint64_t path_end = IDX3_HEADER + IDX3_RECORD * rows + blob;
-    if (blob > n || path_end > hash_off || hash_off % IDX3_SLOT || slots < 2 || (slots & (slots - 1)) ||
+    if (blob > n || path_end > hash_off || hash_off % IDX3_SLOT_ALIGN || slots < 2 || (slots & (slots - 1)) ||
         slots < 2 * rows || hash_off > n || n - hash_off != IDX3_SLOT * slots)   // sin dar la vuelta
         return bad(e, "posición o tamaño de las tablas");
     const uint8_t *bp = d + IDX3_HEADER + IDX3_RECORD * rows;
