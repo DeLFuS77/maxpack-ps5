@@ -1,6 +1,7 @@
 //! Per-game cache /data/maxpack/caches/<TID> (DESIGN.md "Cache"). Folder: fakelib/ only.
 //! FPKG: the cache is /app0: sce_sys, eboot.bin and every PRX and ELF extracted, fakelib/, kraken/ (launch.rs
-//! mounts the pkg's folder there), the two AMPR indexes; `.done` (JSON stamp, mtime = build start) last.
+//! mounts the pkg's folder there), the two AMPR indexes; `.done` (JSON stamp with each input's size and
+//! mtime at the build's start, its own mtime = build start) last.
 //! .p5z: the cache is /app0 too: its loose files extracted, fakelib/, p5z/ (the .p5z's folder goes
 //! there) and maxpack.image (where ng finds each volume inside the .p5z); no index of ours.
 //! fakelib/ (every kind) = the game's or backport's libs, then /data/maxpack/ampr/* copied on
@@ -14,6 +15,7 @@ use crate::ampr_index::{self, Chunk, IndexFile, Kraken};
 use crate::config::Settings;
 use crate::scan::{Kind, Source};
 use kraken_mount_pkg::{Entry, Pkg, PRead};
+use maxpack_logic::fresh::{self, Input};
 use maxpack_logic::p5z::{image_text, loose_dest, space_short, LooseDest};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
@@ -412,7 +414,10 @@ fn lib_dir(src: &Source) -> Option<PathBuf> {
 /// The cache layout version in the stamp. 2: the pkg reader also extracts container-only sce_sys
 /// files (save_data.png, pic0/pic1, snd0.at9, trophy00.ucp, nptitle.dat, npbind.dat), and files the
 /// index cannot map are extracted; every v1 cache rebuilds once. 3: *.elf outside decrypted/ extracted too.
-const STAMP_V: u64 = 3;
+/// 4: `.done` records each input's size and mtime (`fresh::KEY`) and `check` compares them for
+/// equality, no longer an input's mtime against `.done`'s (a console clock behind the PC that wrote
+/// the drive made such a cache stale on every pass); every v3 cache rebuilds once.
+const STAMP_V: u64 = 4;
 
 pub fn stamp(src: &Source, _s: &Settings) -> serde_json::Value {
     serde_json::json!({
@@ -430,7 +435,8 @@ pub fn stamp(src: &Source, _s: &Settings) -> serde_json::Value {
     })
 }
 
-/// Existing paths whose mtime must be older than `.done`. The ampr dir is not one: launch mounts it.
+/// Existing paths whose size and mtime `.done` records at the build's start (`record_inputs`): any
+/// change, an input added or one removed rebuilds (`check`). The ampr dir is not one: launch mounts it.
 pub fn inputs(src: &Source, _s: &Settings) -> Vec<PathBuf> {
     let mut v = Vec::new();
     match src.kind {
@@ -454,6 +460,26 @@ pub fn inputs(src: &Source, _s: &Settings) -> Vec<PathBuf> {
         }
     }
     v
+}
+
+/// `inputs` as they are now: each path with its (size, mtime ns), or None when its lstat fails.
+fn input_states(src: &Source, s: &Settings) -> Vec<(String, Option<(u64, i64)>)> {
+    inputs(src, s)
+        .into_iter()
+        .map(|p| {
+            let state = fs::symlink_metadata(&p).ok().and_then(|m| Some((m.len(), fresh::ns(m.modified().ok()?))));
+            (p.to_string_lossy().into_owned(), state)
+        })
+        .collect()
+}
+
+/// What `.done` records of the inputs, taken before a build reads them: an input that changes during
+/// the build differs from the record, so the next check rebuilds.
+fn record_inputs(src: &Source, s: &Settings) -> Vec<Input> {
+    input_states(src, s)
+        .into_iter()
+        .filter_map(|(path, state)| state.map(|(size, mtime_ns)| Input { path, size, mtime_ns }))
+        .collect()
 }
 
 pub enum Fresh {
@@ -548,7 +574,7 @@ fn is_move(old: &serde_json::Value, new: &serde_json::Value, old_exists: bool, s
 
 /// `is_move`'s file check. ponytail: a cache built before `pkg_id` was stamped is rebuilt once
 /// when its pkg moves.
-fn same_files(src: &Source, s: &Settings, old: &serde_json::Value, done_mtime: SystemTime) -> bool {
+fn same_files(src: &Source, s: &Settings, old: &serde_json::Value) -> bool {
     let (key, id): (_, fn(&Path) -> Result<String>) = match src.kind {
         // folder_id covers the bytes of everything a folder cache is made from (param.json, the
         // lib dir), so a copy with new mtimes (copy, then delete the old one) still relinks.
@@ -556,12 +582,15 @@ fn same_files(src: &Source, s: &Settings, old: &serde_json::Value, done_mtime: S
         Kind::Pkg => (PKG_ID, pkg_id),
         Kind::P5z => (P5Z_ID, crate::p5z::id),
     };
-    // The moved file itself may be newer than `.done` (a copy to another drive): its id decides;
-    // the other inputs (the backport, copied into the cache) must be older than `.done`.
-    let older = inputs(src, s).iter().filter(|p| **p != src.path).all(|p| {
-        fs::symlink_metadata(p).and_then(|m| m.modified()).is_ok_and(|m| m < done_mtime)
-    });
-    older && old[key].as_str().is_some_and(|old_id| id(&src.path).ok().as_deref() == Some(old_id))
+    // The moved file itself has another path and may have another mtime (a copy to another drive):
+    // its id decides. The other inputs (the backport, copied into the cache) must be as `.done`
+    // recorded them (fresh::changed: equality, never against `.done`'s mtime).
+    let from = old["source"].as_str().unwrap_or_default();
+    let was: Vec<Input> = fresh::recorded(old).into_iter().filter(|i| i.path != from).collect();
+    let to = src.path.to_string_lossy();
+    let now: Vec<_> = input_states(src, s).into_iter().filter(|(p, _)| *p != to).collect();
+    fresh::changed(&was, &now).is_none()
+        && old[key].as_str().is_some_and(|old_id| id(&src.path).ok().as_deref() == Some(old_id))
 }
 
 /// The ampr files fakelib/ should carry: {name: [size, mtime]} of /data/maxpack/ampr's
@@ -787,7 +816,9 @@ fn wants_playgo_memo(src: &Source, had: &serde_json::Value, state: &mut serde_js
 
 pub fn check(src: &Source, s: &Settings) -> Fresh {
     let done = dir(&src.title_id).join(DONE);
-    let Ok(done_mtime) = fs::metadata(&done).and_then(|m| m.modified()) else { return Fresh::Missing };
+    if fs::metadata(&done).is_err() {
+        return Fresh::Missing;
+    }
     let old: serde_json::Value =
         fs::read(&done).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let new = stamp(src, s);
@@ -798,7 +829,7 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
     if old.get("source") != new.get("source") {
         if let Some(from) = old["source"].as_str().map(PathBuf::from) {
             let exists = fs::symlink_metadata(&from).is_ok();
-            if is_move(&old, &new, exists, || same_files(src, s, &old, done_mtime)) {
+            if is_move(&old, &new, exists, || same_files(src, s, &old)) {
                 return Fresh::Moved(from);
             }
         }
@@ -818,15 +849,11 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
     if let Some(image) = image.filter(|i| !dir(&src.title_id).join(i).is_file()) {
         return Fresh::Stale(format!("{image} missing"));
     }
-    // ponytail: an input with a future mtime (wrong clock on the PC that wrote the USB) rebuilds every scan.
-    for p in inputs(src, s) {
-        // inputs() lists existing paths only, and the stamp records the lib dir used, so a missing one is a removal.
-        let Ok(m) = fs::symlink_metadata(&p).and_then(|m| m.modified()) else {
-            return Fresh::Stale(format!("{} missing", p.display()));
-        };
-        if m >= done_mtime {
-            return Fresh::Stale(format!("{} changed", p.display()));
-        }
+    // Every input with the size and mtime `.done` recorded at the build's start, and no input added
+    // or removed. Equality only: a source written on a PC whose clock is years ahead of the
+    // console's is fresh (maxpack_logic::fresh).
+    if let Some(why) = fresh::changed(&fresh::recorded(&old), &input_states(src, s)) {
+        return Fresh::Stale(why);
     }
     // A `.done` from before the game_fakelib setting was removed: emulators/off filtered fakelib/.
     // refresh_fakelib recomposes it in full and rewrites `.done` without the key; "full" is fresh.
@@ -1031,11 +1058,13 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
     let inside = pkg.as_ref().map(|(io, p)| Inside::Pkg(io, p)).or(play.as_ref().map(Inside::P5z));
     compose_fakelib(src, s, inside)
         .and_then(|()| {
-            // check() matched the stamp and inputs: the current stamp with `.done`'s own mtime
-            // (drops a legacy game_fakelib key, keeps the input checks).
+            // check() matched the stamp and inputs: the current stamp with `.done`'s own mtime and
+            // inputs record (drops a legacy game_fakelib key, keeps the input checks).
             let d = dir(&src.title_id);
-            let mtime = fs::metadata(d.join(DONE))?.modified()?;
-            write_done(&d, src, s, mtime)
+            let done = d.join(DONE);
+            let mtime = fs::metadata(&done)?.modified()?;
+            let old: serde_json::Value = serde_json::from_slice(&fs::read(&done)?).unwrap_or_default();
+            write_done(&d, src, s, mtime, &fresh::recorded(&old))
         })
         .map_err(|e| {
             let e = Error::new(e.kind(), format!("{} ({}): fakelib refresh: {e}", src.title_id, src.path.display()));
@@ -1130,17 +1159,19 @@ fn write_built(dir: &Path, before: &HashSet<PathBuf>) -> Result<()> {
 }
 
 /// Writes `.built` (what this build created) and then `.done`.
-fn finish(dir: &Path, src: &Source, s: &Settings, start: SystemTime, before: &HashSet<PathBuf>) -> Result<()> {
+fn finish(dir: &Path, src: &Source, s: &Settings, start: SystemTime, inputs: &[Input], before: &HashSet<PathBuf>) -> Result<()> {
     write_built(dir, before)?;
-    write_done(dir, src, s, start)
+    write_done(dir, src, s, start, inputs)
 }
 
-/// Writes `.done` with mtime `start`, so an input changed during the build is newer than it.
+/// Writes `.done` with mtime `start` (the build's start: `built_at`) and `inputs` (`fresh::KEY`), the
+/// inputs as the build found them (`record_inputs`), which `check` compares for equality.
 /// The stamp also gets the source's identity, `pkg_id`, `p5z_id` or `folder_id` (for `is_move`;
-/// check() ignores the extra key).
-fn write_done(dir: &Path, src: &Source, s: &Settings, start: SystemTime) -> Result<()> {
+/// check() compares neither).
+fn write_done(dir: &Path, src: &Source, s: &Settings, start: SystemTime, inputs: &[Input]) -> Result<()> {
     let done = dir.join(DONE);
     let mut st = stamp(src, s);
+    st[fresh::KEY] = fresh::to_json(inputs);
     let (key, id) = match src.kind {
         Kind::Pkg => (PKG_ID, pkg_id(&src.path)?),
         Kind::P5z => (P5Z_ID, crate::p5z::id(&src.path)?),
@@ -1175,9 +1206,10 @@ pub fn relink(src: &Source, s: &Settings, from: &Path) -> Result<()> {
                 fs::write(d.join(file), image)?;
             }
         }
-        // `.done` mtime now: the moved inputs may be newer than the old one (a copy). A legacy
-        // game_fakelib `.done` never gets here: it has no pkg_id/folder_id, so it is never a move.
-        write_done(&d, src, s, SystemTime::now())
+        // `.done` records the inputs as they are now (the moved source has its new path, maybe a new
+        // mtime). A legacy game_fakelib `.done` never gets here: it has no pkg_id/folder_id, so it is
+        // never a move.
+        write_done(&d, src, s, SystemTime::now(), &record_inputs(src, s))
     })();
     r.map_err(|e| {
         let e = Error::new(e.kind(), format!("{} ({} -> {}): relink: {e}", src.title_id, from.display(), src.path.display()));
@@ -1217,9 +1249,9 @@ fn copy_backport(src: &Source, dir: &Path, keep: impl Fn(&str) -> bool) -> Resul
 /// SPACE_MARGIN to spare (else NoSpace, before anything is extracted); the volumes stay in the .p5z,
 /// where ng reads them through maxpack.image. No index of ours: the .p5z ships ampr_zstd.index and
 /// ampr_emu.index among its loose files.
-fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, before: &HashSet<PathBuf>) -> Result<()> {
+fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: &[Input], before: &HashSet<PathBuf>) -> Result<()> {
     let play = crate::p5z::open(&src.path)?;
-    // First: a file name the contract cannot carry (not printable ASCII) is a build failure.
+    // First: a file name the contract cannot carry (not UTF-8, or a control byte) is a build failure.
     let image = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE_FILE}: {e}")))?;
     let loose: Vec<_> = play.info.loose.iter().map(|l| (l, loose_dest(&l.path))).collect();
     let need = loose.iter().filter(|(_, d)| *d != LooseDest::Skip).fold(0u64, |a, (l, _)| a.saturating_add(l.size));
@@ -1255,15 +1287,16 @@ fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, before: 
     // launch.rs mounts the .p5z's folder on /app0/p5z; maxpack.image names the .p5z in it for ng.
     fs::create_dir_all(dir.join(P5Z_MOUNT_DIR))?;
     fs::write(dir.join(P5Z_IMAGE_FILE), image)?;
-    finish(dir, src, s, start, before)
+    finish(dir, src, s, start, inputs, before)
 }
 
 fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<()> {
     let start = SystemTime::now();
+    let inputs = record_inputs(src, s);
     let is_pkg = src.kind == Kind::Pkg;
     let dir = dir(&src.title_id);
     if src.kind == Kind::P5z {
-        return build_p5z(src, s, &dir, start, before);
+        return build_p5z(src, s, &dir, start, &inputs, before);
     }
     let mut files: BTreeMap<String, IndexFile> = BTreeMap::new();
     let pkg = if is_pkg { Some(open(&src.path)?) } else { None };
@@ -1327,7 +1360,7 @@ fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<
     }
     compose_fakelib(src, s, pkg.as_ref().map(|(io, p)| Inside::Pkg(io, p)))?;
     if !is_pkg {
-        return finish(&dir, src, s, start, before);
+        return finish(&dir, src, s, start, &inputs, before);
     }
     // Backport files (except its fakelib/fakelib2) go loose over the pkg's.
     let not_lib = |rel: &str| !LIB_DIRS.iter().any(|d| rel.to_ascii_lowercase().starts_with(d));
@@ -1341,5 +1374,5 @@ fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<
     fs::write(dir.join(IMAGE_FILE), format!("{PKG_MOUNT_DIR}/{}", utf8_name(&src.path)?))?;
     let files: Vec<IndexFile> = files.into_values().collect();
     ampr_index::write(&dir, &src.path, &files)?;
-    finish(&dir, src, s, start, before)
+    finish(&dir, src, s, start, &inputs, before)
 }

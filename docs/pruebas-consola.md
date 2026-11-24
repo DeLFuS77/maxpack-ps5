@@ -293,8 +293,13 @@ un FPKG (`.pkg`).
 ## 5. El instalador (pestaña Instalar)
 
 Prepara en un USB un `.p5z` hecho con `maxpack pack --p5z` y una imagen `.exfat` de otro juego,
-los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in N ms (MaxPack engine
-5780807, runtime ampr-emu-ng v0.5.0-maxpack.3 712624 bytes)`.
+los dos en una carpeta propia del USB, por ejemplo `/mnt/usb0/instalar/`: ni en la raíz ni en
+`homebrew/` o `etaHEN/games/`. Desde la etapa 2, un `.p5z` en una carpeta que se explora (la raíz del
+USB es una raíz de escaneo por defecto) ya es un juego: MaxPack le hace la caché y lo registra antes
+de que lo instales, y esta sección no prueba eso (la 6 sí). MaxPack no explora más abajo de la raíz de
+una unidad, y la pestaña Instalar mira también un nivel por debajo, así que los encuentra igual. Al
+arrancar, el registro dice `installer: ready in N ms (MaxPack engine 5780807, runtime ampr-emu-ng
+v0.5.0-maxpack.3 712624 bytes)`.
 
 - [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**
   - En Instalar salen los dos en «Juegos para instalar»: el `.p5z` con su icono, lo que ahorra y lo
@@ -448,6 +453,9 @@ la prueba con él en marcha).
   - Pon el `.p5z` en `homebrew/` de un USB (o una carpeta más abajo) y quítalo de `/data/homebrew`.
   - Esperado: arranca, los vídeos se ven sin tirones, cargar y guardar partida funcionan, y 10 minutos
     de juego sin errores. Sales al menú sin cuelgue; en el registro, `cleanup done`.
+  - Esperado también: `<TID>: building cache` sale una sola vez, no en cada pasada, aunque el reloj de la
+    consola vaya años por detrás del PC que escribió el USB (la caché compara el tamaño y la fecha del
+    `.p5z` con los que apuntó, no con el reloj).
 - [ ] **6.3. Un `.p5z` en la unidad M.2.** Lo mismo desde `homebrew/` de `/mnt/ext1`. Esperado: igual
   que 6.2.
 - [ ] **6.4. Un `.p5z` en el SSD interno.**
@@ -475,8 +483,11 @@ la prueba con él en marcha).
     en una raíz de escaneo.
   - Esperado:
     - no sale en la biblioteca como juego;
-    - sale en «Archivos .p5z que no se pueden jugar», con «Dañado o incompleto»; en `/api/state`,
-      `unplayable` lo lista con `code` `damaged` y su `detail`;
+    - en la primera pasada que lo ve, el registro dice `cannot be read now, tried again next pass: …`
+      (un fallo de lectura de un momento se ve igual) y todavía no sale en la lista;
+    - en la pasada siguiente (unos 10 s después, `scan_interval`), con el mismo motivo, sale en «Archivos
+      .p5z que no se pueden jugar», con «Dañado o incompleto»; en `/api/state`, `unplayable` lo lista
+      con `code` `damaged` y su `detail`;
     - un aviso «No se puede jugar <archivo>: está dañado o incompleto», una sola vez;
     - los demás juegos siguen igual. Borra el archivo al acabar: desaparece de la lista.
 - [ ] **6.9. Sin espacio.**
@@ -499,3 +510,10 @@ la prueba con él en marcha).
     monta ni se construye (ninguna línea `building cache`, `registered` ni `overlay MOUNTED` suya), y el
     instalador sigue funcionando (Instalar responde).
   - Cierra ShadowMountPlus. Esperado: a los 2-4 s MaxPack vuelve a montar y el `.p5z` sale en el menú.
+- [ ] **6.12. Un nombre con tildes, ™ o japonés.**
+  - Renombra el `.p5z` como lo nombra MaxPack en el PC con un título así, por ejemplo
+    `Marvel’s Spider-Man™ 2 [PPSA01234].p5z` (o `God of War Ragnarök [PPSA01411].p5z`), con el juego
+    cerrado.
+  - Esperado: se vuelve a enlazar como en 6.5 (`moved … relinking`, sin `building cache`), la línea 2
+    de `maxpack.image` es `p5z/` y el nombre nuevo tal cual, el aviso dice «(p5z) running» y el juego
+    arranca. Si sale «ampr-emu-ng: p5z: bad maxpack.image», para y guarda `maxpack.image` y el registro.

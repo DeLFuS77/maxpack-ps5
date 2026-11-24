@@ -7,7 +7,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use maxpack_logic::dups::{claim, RANK_FOLDER, RANK_P5Z, RANK_PKG};
-use maxpack_logic::p5z::Unplayable;
+use maxpack_logic::p5z::{refusal, Refusal, Unplayable};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Packing {
@@ -119,11 +119,19 @@ fn pkg_param(path: &Path, size: u64, mtime: SystemTime) -> PkgParam {
 type P5zParam = Result<(String, String, String), Unplayable>;
 type P5zMemo = HashMap<PathBuf, (u64, SystemTime, P5zParam)>;
 static P5Z_MEMO: OnceLock<Mutex<P5zMemo>> = OnceLock::new();
+/// The engine's refusals of the last pass not believed yet (maxpack_logic::p5z::refusal), by path:
+/// (size, mtime, verdict). `scan` keeps them for the next pass only.
+type P5zPending = HashMap<PathBuf, (u64, SystemTime, Unplayable)>;
+static P5Z_PENDING: OnceLock<Mutex<P5zPending>> = OnceLock::new();
 
 /// (title id, name, version) of a .p5z from the engine's description; the name is the title id
-/// when the .p5z has none. A refusal of the engine is memoized by (size, mtime), so a copy that
-/// ends later (another size or mtime) is read again; a file that cannot be opened is not.
-fn p5z_param(path: &Path, size: u64, mtime: SystemTime) -> Result<(String, String, String), crate::p5z::OpenError> {
+/// when the .p5z has none. A refusal of the engine is memoized by (size, mtime) once believed, so a
+/// copy that ends later (another size or mtime) is read again. A first "damaged" is not believed
+/// (a read error looks the same): it goes to `pending` and is tried again next pass, as a file that
+/// cannot be opened, which is never memoized; the same verdict for the same file in the next pass
+/// (`last`) is believed.
+fn p5z_param(path: &Path, size: u64, mtime: SystemTime, last: &P5zPending, pending: &mut P5zPending)
+    -> Result<(String, String, String), crate::p5z::OpenError> {
     use crate::p5z::OpenError;
     let memo = P5Z_MEMO.get_or_init(|| Mutex::new(HashMap::new()));
     let mut memo = memo.lock().unwrap_or_else(|e| e.into_inner());
@@ -137,6 +145,12 @@ fn p5z_param(path: &Path, size: u64, mtime: SystemTime) -> Result<(String, Strin
             let i = play.info;
             let name = if i.name.is_empty() { i.title_id.clone() } else { i.name };
             Ok((i.title_id, name, i.version))
+        }
+        Err(OpenError::Unplayable(u)) if refusal(last.get(path), size, &mtime, &u) == Refusal::Retry => {
+            memo.remove(path);
+            let why = format!("cannot be read now, tried again next pass: {}", crate::p5z::reason(&u));
+            pending.insert(path.to_path_buf(), (size, mtime, u));
+            return Err(OpenError::Io(Error::other(why)));
         }
         Err(OpenError::Unplayable(u)) => Err(u),
         Err(e @ OpenError::Io(_)) => {
@@ -188,16 +202,13 @@ fn cached_sources() -> HashMap<PathBuf, String> {
 }
 
 /// (title id, name, version) from the cache's sce_sys/param.json when that cache was built from `pkg`
-/// after the pkg's last change and its stamp has the pkg's current size (a same-name replacement
-/// that kept an older mtime differs in size). ponytail: trusts the cache; the .pkg is not opened then.
+/// (a .pkg or .p5z) as it is now: its `.done` recorded the file's current size and mtime
+/// (maxpack_logic::fresh), whatever the console clock says. ponytail: trusts the cache; the file is
+/// not opened then.
 fn cached_param(cached: &HashMap<PathBuf, String>, pkg: &Path, size: u64, mtime: SystemTime) -> Option<(String, String, String)> {
     let dir = crate::cache::dir(cached.get(pkg)?);
-    let done = dir.join(crate::cache::DONE);
-    if fs::metadata(&done).and_then(|m| m.modified()).ok()? <= mtime {
-        return None;
-    }
-    let stamp: serde_json::Value = serde_json::from_slice(&fs::read(&done).ok()?).ok()?;
-    if stamp["size"].as_u64() != Some(size) {
+    let stamp: serde_json::Value = serde_json::from_slice(&fs::read(dir.join(crate::cache::DONE)).ok()?).ok()?;
+    if maxpack_logic::fresh::recorded_of(&stamp, &pkg.to_string_lossy()) != Some((size, maxpack_logic::fresh::ns(mtime))) {
         return None;
     }
     parse_param(&fs::read(dir.join("sce_sys/param.json")).ok()?).ok()
@@ -290,6 +301,10 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
     // A slot is emptied when a later source beats it.
     let mut games: Vec<Option<Source>> = Vec::new();
     let cached = cached_sources();
+    // The last pass's provisional .p5z refusals; this pass's replace them (p5z_param).
+    let pending_lock = || P5Z_PENDING.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap_or_else(|e| e.into_inner());
+    let last = std::mem::take(&mut *pending_lock());
+    let mut pending = P5zPending::new();
     // Every root's own entries first, in root order, then the nested ones: a nested copy never
     // beats a source found directly in a root (claim).
     let (mut listed, mut order, mut later) = (HashSet::new(), Vec::new(), Vec::new());
@@ -363,7 +378,7 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
             };
             let param = match cached_param(&cached, &path, metadata.len(), mtime) {
                 Some(p) => Ok(p),
-                None => match p5z_param(&path, metadata.len(), mtime) {
+                None => match p5z_param(&path, metadata.len(), mtime, &last, &mut pending) {
                     Ok(p) => Ok(p),
                     Err(crate::p5z::OpenError::Unplayable(u)) => {
                         // Only in `unplayable` (the page's own section), not in `errors`: log line only.
@@ -427,6 +442,7 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
         let tid = source.title_id.clone();
         claim(&mut seen, &mut games, &mut result.duplicates, &tid, rank, nested, Some(source));
     }
+    *pending_lock() = pending;
     result.games = games.into_iter().flatten().collect();
     result.games.sort_by(|a, b| a.title_name.cmp(&b.title_name));
     // A fixed error that comes back is logged again.

@@ -39,9 +39,14 @@ Lo que añade MaxPack:
   en `/app0/p5z` al lanzar, así que el archivo tiene que seguir donde está. Hace falta espacio para los
   sueltos más 256 MiB: si no cabe, el aviso dice cuánto falta y el juego se monta solo al liberarlo. Un
   `.p5z` dañado o con más de 256 volúmenes no es un juego: sale en «Archivos .p5z que no se pueden
-  jugar». Si el mismo juego está también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como
-  duplicado. El nombre del archivo debe ser ASCII imprimible. Siempre va con nuestra ampr-emu-ng, la
-  única que conoce este modo.
+  jugar». Para eso, el motor tiene que decir «dañado» dos pasadas seguidas sobre el mismo archivo: un
+  fallo de lectura de un momento (un USB que se reinicia) solo se reintenta. Si el mismo juego está
+  también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como duplicado. El nombre del archivo
+  puede llevar tildes, ™, ’ o japonés, como los que pone MaxPack en el PC; solo no valen los caracteres
+  de control. Siempre va con nuestra ampr-emu-ng, la única que conoce este modo.
+- **La caché y el reloj**: cada caché apunta el tamaño y la fecha de los archivos de los que sale
+  (el `.pkg`, el `.p5z`, el backport, los de la carpeta) y se rehace solo si alguno cambia. No los
+  compara con el reloj de la consola, que en una consola sin conexión suele ir años atrasado.
 - **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.3`, con el modo `.p5z`), de
   [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
   actualización automática está apagada hasta que se publique.

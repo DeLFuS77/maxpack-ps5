@@ -76,8 +76,10 @@ fn cpath(p: &Path) -> io::Result<CString> {
 fn err_text(buf: &[c_char]) -> String {
     // SAFETY: c_char and u8 have the same size; the engine NUL-terminates within errlen.
     let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr().cast::<u8>(), buf.len()) };
-    let msg = CStr::from_bytes_until_nul(bytes).map_or("", |s| s.to_str().unwrap_or("?"));
-    if msg.is_empty() { "no reason given".to_string() } else { msg.to_string() }
+    // Lossy: the engine's reasons are Spanish, and one cut at errlen inside a character keeps the
+    // rest (U+FFFD for the cut character) instead of becoming "?".
+    let msg = CStr::from_bytes_until_nul(bytes).map(|s| String::from_utf8_lossy(s.to_bytes()).into_owned()).unwrap_or_default();
+    if msg.is_empty() { "no reason given".to_string() } else { msg }
 }
 
 /// Opens and checks `path` (header, footer, index, ampr_zstd.index, each volume's header) and reads

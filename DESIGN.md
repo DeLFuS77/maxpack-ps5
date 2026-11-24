@@ -23,8 +23,13 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   validates it and describes it (title id, name, version, loose files, volumes); the scan takes the title from that
   description. The game itself stays inside the `.p5z`: only its loose files go to the cache (see Cache). A `.p5z`
   the engine refuses (cut short, damaged, more than 256 volumes) is not a game: it is listed apart
-  (`ScanResult::unplayable`, `/api/state.unplayable`, one toast per path and run). A `.p5z` still being copied is
-  skipped like a pkg (`stability_wait_seconds`).
+  (`ScanResult::unplayable`, `/api/state.unplayable`, one toast per path and run). A "damaged" verdict is believed
+  only the second time (`maxpack_logic::p5z::refusal`): a read error during the open (a USB drive that resets, the
+  engine out of memory) looks the same, so the first one for a (path, size, mtime) is a scan error that is tried
+  again next pass (`cannot be read now, tried again next pass: <reason>`; not memoized, not listed, no toast), and
+  only the same verdict in the next pass for the same size and mtime is memoized, listed and toasted. More than 256
+  volumes comes from a description that read fine: believed at once. A `.p5z` still being copied is skipped like a
+  pkg (`stability_wait_seconds`).
 - Any drive. The cache is always on the internal SSD.
 
 ## Paths
@@ -98,10 +103,14 @@ is ignored as a whole). The web UI edits the same file.
   inside `fakelib/` or `fakelib2/` goes to the game's lib dir of the fakelib composition. The volumes stay in the
   `.p5z`: ampr-emu-ng reads them through `maxpack.image`, and the `.p5z` ships its own `ampr_zstd.index` and
   `ampr_emu.index` among the loose files, so MaxPack writes no index. The cache also has `fakelib/`, `p5z/` (an empty
-  mount point, see Launch) and `maxpack.image`: ASCII, `\n` lines, no `\r`: `maxpack-image 1`, then `p5z/<file name>`
+  mount point, see Launch) and `maxpack.image`: UTF-8, `\n` lines, no `\r`: `maxpack-image 1`, then `p5z/<file name>`
   (the `.p5z` relative to `/app0`), then `<id> <offset> <length>` per volume (ids 0..n-1 in order, n from 1 to 256;
-  `maxpack_logic::p5z::image_text`). The file name must be printable ASCII (the contract): any other name, or a volume
-  list outside the contract, fails the build with that reason. Space (`maxpack_logic::p5z::space_short`): before
+  `maxpack_logic::p5z::image_text`). The file name is the directory's, in UTF-8 (MaxPack's PC app names a `.p5z`
+  `<Title> [<TITLE_ID>].p5z` with every character of the title: ™, ’, accents, Japanese), and ampr-emu-ng opens the
+  `.p5z` with those same bytes. It must not be empty, `.` or `..`, nor hold a byte below 0x20, 0x7F, `/` or `\` (the
+  contract, ampr-emu-ng's `docs/p5z-mode.md`; both sides test the same golden text, `"maxpack-image 1\np5z/Marvel’s
+  Spider-Man™ 2 [PPSA01234].p5z\n0 1234 5678\n"`): a name that is not UTF-8 or breaks those rules, or a volume list
+  outside the contract, fails the build with that reason. Space (`maxpack_logic::p5z::space_short`): before
   extracting anything, the loose files plus `SPACE_MARGIN` (256 MiB, the installer's `space_margin`) must fit in the
   free space of `/data`, else the build stops with `cache::NoSpace { missing }` (`cache::missing_bytes`). `main.rs` does
   not memoize it (no `failed` entry) and tries again every pass, so the game builds by itself once the space is there:
@@ -165,13 +174,17 @@ is ignored as a whole). The web UI edits the same file.
   one-time refresh also drops a `libSceSaveData.native.sprx` an older build copied (no separate check for such files).
   When "ampr" or "emus" differ (the ampr dir, `inject_ampr` or the emulator inputs changed) or `.done` still has a
   `game_fakelib` other than `full` (a cache built before the setting was removed), `check` says `Fakelib` and only `fakelib/` is
-  recomposed (`refresh_fakelib`, which then rewrites `.done` with its own mtime), no extraction or re-registration. `fakelib/` is not in the AMPR index.
+  recomposed (`refresh_fakelib`, which then rewrites `.done` with its own mtime and its inputs record), no extraction or re-registration. `fakelib/` is not in the AMPR index.
 - A folder game's cache is only `fakelib/`, `.ampr`, `.built`, `.done`: nothing of the game is copied.
 - Fresh when `.done` exists, its JSON stamp equals the expected one
-  (`{"v":2,"kind","source","size","backport","fakelib"}`; extra keys of an older stamp are ignored), and every input's
-  mtime is older than `.done`'s mtime. Inputs: FPKG = the .pkg, backport dir (recursive);
+  (`{"v":4,"kind","source","size","backport","fakelib"}`; extra keys of an older stamp are ignored), and every input
+  has the size and mtime `.done` recorded (`"inputs": [{"path","size","mtime_ns"}]`, taken before the build reads
+  them, so a change during the build differs), with none added or removed (`maxpack_logic::fresh::changed`). Equality
+  only, never against the clock or `.done`'s mtime: a jailbroken console is often offline with its clock years
+  behind (2012 on a real one), and a source written on a PC has a "future" mtime that must not rebuild every pass.
+  Inputs: FPKG = the .pkg, backport dir (recursive);
   folder = `eboot.bin`, `sce_sys/param.json`, its lib dir and files (not the folder itself: the game
-  writes there); .p5z = the file, and `maxpack.image` must exist. Otherwise rebuilt: a different `.p5z` of the same
+  writes there); .p5z = the file and the backport, and `maxpack.image` must exist. Otherwise rebuilt: a different `.p5z` of the same
   title (another version: another size, header or footer) rebuilds the cache. A pkg's `.done` also carries `pkg_id` (FNV-1a 64 of the size,
   the first 64 KiB, the 4 KiB CNT header and the last 64 KiB), a folder's `folder_id` (FNV-1a 64 of
   each input file's path relative to the folder and size, plus the bytes of every input but
@@ -179,15 +192,18 @@ is ignored as a whole). The web UI edits the same file.
   compared by the freshness check.
 - `"v"` is the cache layout. Another value is Stale (`cache layout v1 -> v2`), checked before Moved,
   so every older cache rebuilds once, moved or not. v2: the container-only `sce_sys` files and the
-  extraction of every file the index cannot map.
+  extraction of every file the index cannot map. v3: `*.elf` outside `decrypted/`. v4: the recorded inputs.
+- `scan::cached_param` trusts a cache's `sce_sys/param.json` (the `.pkg` or `.p5z` is not opened) when that
+  cache's `.done` recorded the file at its path with its current size and mtime (`fresh::recorded_of`).
 - Moved (`Fresh::Moved(old source)`, `relink`): the stamp differs only in "source" (and "fakelib"
   when it is the folder's own lib dir under the moved path), the old source path is gone, and the
-  files are the same: pkg = `pkg_id` equal (the moved .pkg may be newer than `.done`), its other
-  inputs older than `.done`; folder = `folder_id` equal (mtimes not compared: a copy-then-delete
-  move relinks too); .p5z = `p5z_id` equal. A copy while the old one
-  still exists is a duplicate, never a move. Relink: pkg = new stamp, `kraken.image` rewritten when
-  the file name changed, `.done` mtime now, extracted files and indexes kept (ng checks the pkg's
-  size only); folder = new stamp, `.done` mtime now; .p5z = new stamp and `maxpack.image` rewritten (the `.p5z` is opened for its
+  files are the same: pkg = `pkg_id` equal (the moved .pkg has another path and may have another mtime), its other
+  inputs (the backport) as `.done` recorded them; folder = `folder_id` equal (mtimes not compared: a copy-then-delete
+  move relinks too); .p5z = `p5z_id` equal, its other inputs as recorded. A copy while the old one
+  still exists is a duplicate, never a move. Relink (`.done` mtime now and the inputs recorded as they are now, the
+  moved source at its new path): pkg = new stamp, `kraken.image` rewritten when
+  the file name changed, extracted files and indexes kept (ng checks the pkg's
+  size only); folder = new stamp; .p5z = new stamp and `maxpack.image` rewritten (the `.p5z` is opened for its
   volumes), the extracted files kept: nothing is extracted again, and the log says `moved ... relinking`. Anything else is Stale (a cache stamped before `pkg_id`/`folder_id`
   existed rebuilds once when its game moves).
 - Access (`fix_access`, once per run per title from `main.rs`; never fails): games and system
@@ -381,7 +397,7 @@ pub struct ScanResult { pub games: Vec<Source>, pub duplicates: Vec<Source>, pub
   pub unstable: Vec<(std::path::PathBuf, Option<String> /* title id when known */)>, // still being copied: skipped, not gone
   pub images: Vec<Image>,                                                  // ShadowMountPlus images: listed, never mounted
   pub unplayable: Vec<(std::path::PathBuf, maxpack_logic::p5z::Unplayable)> } // .p5z files the engine refuses: not games
-pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads by (path, size, mtime)
+pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads and believed .p5z verdicts by (path, size, mtime)
 pub fn still_written(paths: &[std::path::PathBuf], wait: u64) -> Option<u64>; // age in s of the youngest max(mtime, ctime) under wait; None = stable
 pub fn parse_param(json: &[u8]) -> std::io::Result<(String, String, String)>; // (title_id, title_name, version); name: see below
 pub fn valid_tid(t: &str) -> bool;

@@ -1,5 +1,6 @@
 //! Logic of the MaxPack payload that needs no PS5: it is tested on the PC (`cargo test -p maxpack-logic`).
 pub mod dups;
+pub mod fresh;
 pub mod http;
 pub mod images;
 pub mod inst;

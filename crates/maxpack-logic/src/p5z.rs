@@ -141,13 +141,15 @@ pub fn loose_dest(path: &str) -> LooseDest {
     }
 }
 
-/// The `maxpack.image` text (ASCII, `\n` lines, no `\r`): `maxpack-image 1`, the .p5z path
-/// relative to /app0, then `<id> <offset> <length>` per volume. ampr-emu-ng parses exactly this.
+/// The `maxpack.image` text (UTF-8, `\n` lines, no `\r`): `maxpack-image 1`, `p5z/<file name>`
+/// (the .p5z relative to /app0), then `<id> <offset> <length>` per volume. ampr-emu-ng parses
+/// exactly this. The file name is the one the directory gave, in UTF-8 (MaxPack's PC app keeps every
+/// character of the title in it), and ampr-emu-ng opens the .p5z with those same bytes.
 pub fn image_text(file_name: &str, volumes: &[Volume]) -> Result<String, String> {
     if file_name.is_empty() || file_name == "." || file_name == ".."
         || file_name.contains(['/', '\\'])
-        // The contract is ASCII and ampr-emu-ng refuses any other byte: printable only.
-        || !file_name.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+        // The contract has no control byte: none below 0x20 (\n, \r, NUL, tab...) and no 0x7F.
+        || file_name.bytes().any(|b| b < 0x20 || b == 0x7f) {
         return Err(format!("unusable file name {file_name:?}"));
     }
     if volumes.is_empty() || volumes.len() > MAX_VOLUMES {
@@ -178,6 +180,30 @@ pub fn p5z_id(header: &[u8; 64], footer: &[u8; 32], size: u64) -> String {
 pub fn space_short(free: u64, need: u64) -> Option<u64> {
     let want = need.saturating_add(SPACE_MARGIN);
     want.checked_sub(free).filter(|s| *s > 0)
+}
+
+/// What a scan pass makes of the engine's refusal of a .p5z.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// Memoized by (size, mtime), listed in `unplayable` and toasted.
+    Believe,
+    /// Tried again next pass, like a file that cannot be opened.
+    Retry,
+}
+
+/// A `Damaged` verdict may be a read error and not the file (a USB drive that resets or is pulled
+/// during the open, the engine out of memory): a first `Damaged` for a file is provisional, and only
+/// the same verdict in the next pass for the same file (same size and mtime) is believed. `previous`
+/// is the last pass's provisional refusal of this path: (size, mtime, verdict). Too many volumes
+/// comes from a description that opened and read fine: believed at once.
+pub fn refusal<M: PartialEq>(previous: Option<&(u64, M, Unplayable)>, size: u64, mtime: &M, verdict: &Unplayable) -> Refusal {
+    match verdict {
+        Unplayable::TooManyVolumes(_) => Refusal::Believe,
+        Unplayable::Damaged(_) => match previous {
+            Some((s, m, v)) if *s == size && m == mtime && v == verdict => Refusal::Believe,
+            _ => Refusal::Retry,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -253,7 +279,13 @@ mod tests {
         assert_eq!(image_text("basic.p5z", &[v(0)]).unwrap(), "maxpack-image 1\np5z/basic.p5z\n0 1234 5678\n");
         assert_eq!(image_text("a.p5z", &[v(0), v(1)]).unwrap(), "maxpack-image 1\np5z/a.p5z\n0 1234 5678\n1 1234 5678\n");
         assert!(image_text("Hollow Knight Silksong.p5z", &[v(0)]).is_ok());
-        for n in ["a/b.p5z", "a\nb", "a\\b", "..", ".", "", "a\rb", "a\0b", "Pokémon.p5z", "a\tb.p5z", "a\u{7f}b.p5z"] {
+        // UTF-8 names, as MaxPack's PC app writes them ("<Title> [<TITLE_ID>].p5z").
+        for n in ["Pokémon.p5z", "God of War Ragnarök [PPSA01411].p5z", "グランツーリスモ７ [PPSA01316].p5z",
+                  "Gran Turismo® 7.p5z", "...", " a.p5z "] {
+            assert_eq!(image_text(n, &[v(0)]).unwrap(), format!("maxpack-image 1\np5z/{n}\n0 1234 5678\n"), "{n:?}");
+        }
+        for n in ["a/b.p5z", "a\nb", "a\\b", "..", ".", "", "a\rb", "a\0b", "a\tb.p5z", "a\u{7f}b.p5z", "a\u{1}b.p5z",
+                  "a\u{1f}b.p5z", "/a.p5z", "a.p5z/"] {
             assert!(image_text(n, &[v(0)]).is_err(), "{n:?}");
         }
         assert!(image_text("a.p5z", &[v(1), v(0)]).is_err());
@@ -262,6 +294,36 @@ mod tests {
         assert!(image_text("a.p5z", &ok).is_ok());
         let many: Vec<Volume> = (0..257).map(v).collect();
         assert!(image_text("a.p5z", &many).is_err());
+    }
+
+    /// The shared golden case of the contract: ampr-emu-ng's `parse_image` test reads this exact text.
+    #[test]
+    fn image_text_golden_utf8() {
+        let v = Volume { id: 0, offset: 1234, length: 5678 };
+        assert_eq!(
+            image_text("Marvel’s Spider-Man™ 2 [PPSA01234].p5z", &[v]).unwrap(),
+            "maxpack-image 1\np5z/Marvel’s Spider-Man™ 2 [PPSA01234].p5z\n0 1234 5678\n"
+        );
+    }
+
+    #[test]
+    fn refusal_table() {
+        use Refusal::*;
+        let damaged = |s: &str| Unplayable::Damaged(s.to_string());
+        let many = Unplayable::TooManyVolumes(300);
+        let before = |size: u64, mtime: i64, u: &Unplayable| Some((size, mtime, u.clone()));
+        // First sighting of a damaged verdict: tried again next pass.
+        assert_eq!(refusal(None, 10, &5, &damaged("crc")), Retry);
+        // The same verdict for the same file in the next pass: believed.
+        assert_eq!(refusal(before(10, 5, &damaged("crc")).as_ref(), 10, &5, &damaged("crc")), Believe);
+        // Another verdict, size or mtime: tried again (this pass is the new first sighting).
+        assert_eq!(refusal(before(10, 5, &damaged("read error")).as_ref(), 10, &5, &damaged("crc")), Retry);
+        assert_eq!(refusal(before(11, 5, &damaged("crc")).as_ref(), 10, &5, &damaged("crc")), Retry);
+        assert_eq!(refusal(before(10, 6, &damaged("crc")).as_ref(), 10, &5, &damaged("crc")), Retry);
+        assert_eq!(refusal(before(10, 5, &many).as_ref(), 10, &5, &damaged("crc")), Retry);
+        // Too many volumes comes from a description that opened and read fine: believed at once.
+        assert_eq!(refusal(None, 10, &5, &many), Believe);
+        assert_eq!(refusal(before(10, 5, &damaged("crc")).as_ref(), 10, &5, &many), Believe);
     }
 
     #[test]
