@@ -1,42 +1,8 @@
 //! Toast texts in the console's language (System Settings > Language), as ps5-dump-forge's
-//! notice.rs: the same 11 languages, English when the language can't be read. "MaxPack"
+//! notice.rs: the same 11 languages, English when the language can't be read or has no translation. "MaxPack"
 //! stays untranslated; arguments (title names, sizes, paths) are kept as given.
 
-/// A toast language, by the console's `SceSystemParamLang` code.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lang {
-    En,
-    Ru,
-    Zh,
-    De,
-    Es,
-    Fr,
-    Ja,
-    Pt,
-    It,
-    Ko,
-    Ar,
-}
-
-impl Lang {
-    /// `SCE_SYSTEM_PARAM_LANG_*`: both Englishes, Spanishes, Frenches, Portugueses and Chineses
-    /// map to the one we have (Chinese: Simplified, Portuguese: Brazil); any other is English.
-    fn from_console(code: i32) -> Self {
-        match code {
-            0 => Self::Ja,
-            2 | 22 => Self::Fr,
-            3 | 20 => Self::Es,
-            4 => Self::De,
-            5 => Self::It,
-            7 | 17 => Self::Pt,
-            8 => Self::Ru,
-            9 => Self::Ko,
-            10 | 11 => Self::Zh,
-            21 => Self::Ar,
-            _ => Self::En,
-        }
-    }
-}
+pub use maxpack_logic::lang::Lang;
 
 extern "C" {
     /// libSceSystemService: a system setting by id.
@@ -44,7 +10,7 @@ extern "C" {
 }
 
 /// The console's language now (read per toast, so a change applies without a restart);
-/// English when it can't be read.
+/// English when it can't be read or has no translation (`Lang::from_console`).
 pub fn lang() -> Lang {
     console_code().map_or(Lang::En, Lang::from_console)
 }
@@ -145,20 +111,39 @@ pub fn low_space(l: Lang, gb: u64) -> String {
 }
 
 /// A .p5z's loose files and the margin do not fit on the internal SSD: `missing` bytes short.
-/// New in MaxPack: Spanish and English, English for the other languages.
 pub fn no_space(l: Lang, name: &str, missing: u64) -> String {
+    // The decimal mark of each language (a comma where the language writes one).
+    let comma = matches!(l, Lang::Ru | Lang::De | Lang::Es | Lang::Fr | Lang::Pt | Lang::It);
+    let gb = gb_up(missing, if comma { ',' } else { '.' });
     match l {
-        Lang::Es => format!("No cabe {name} en el SSD interno: faltan {} GB", gb_up(missing, ',')),
-        _ => format!("{name} does not fit on the internal SSD: {} GB missing", gb_up(missing, '.')),
+        Lang::En => format!("{name} does not fit on the internal SSD: {gb} GB missing"),
+        Lang::Ru => format!("{name} не помещается на внутренний SSD: не хватает {gb} ГБ"),
+        Lang::Zh => format!("{name} 无法放入内部 SSD：还差 {gb} GB"),
+        Lang::De => format!("{name} passt nicht auf die interne SSD: {gb} GB fehlen"),
+        Lang::Es => format!("No cabe {name} en el SSD interno: faltan {gb} GB"),
+        Lang::Fr => format!("{name} ne tient pas sur le SSD interne\u{202f}: il manque {gb} Go"),
+        Lang::Ja => format!("{name} は内蔵 SSD に入りません：あと {gb} GB 必要です"),
+        Lang::Pt => format!("{name} não cabe no SSD interno: faltam {gb} GB"),
+        Lang::It => format!("{name} non entra nell'SSD interno: mancano {gb} GB"),
+        Lang::Ko => format!("{name}이(가) 내장 SSD에 들어가지 않습니다: {gb}GB 부족"),
+        Lang::Ar => format!("لا يتسع SSD الداخلي لـ {name}: ينقص {gb} غيغابايت"),
     }
 }
 
 /// A .p5z that cannot be played (damaged or incomplete, or too many volumes).
-/// New in MaxPack: Spanish and English, English for the other languages.
 pub fn p5z_unplayable(l: Lang, file_name: &str) -> String {
     match l {
+        Lang::En => format!("{file_name} cannot be played: it is damaged or incomplete"),
+        Lang::Ru => format!("{file_name}: игру нельзя запустить, файл повреждён или неполный"),
+        Lang::Zh => format!("无法运行 {file_name}：文件已损坏或不完整"),
+        Lang::De => format!("{file_name} kann nicht gespielt werden: beschädigt oder unvollständig"),
         Lang::Es => format!("No se puede jugar {file_name}: está dañado o incompleto"),
-        _ => format!("{file_name} cannot be played: it is damaged or incomplete"),
+        Lang::Fr => format!("{file_name} ne peut pas être lancé\u{202f}: endommagé ou incomplet"),
+        Lang::Ja => format!("{file_name} をプレイできません：破損しているか不完全です"),
+        Lang::Pt => format!("Não é possível jogar {file_name}: está danificado ou incompleto"),
+        Lang::It => format!("{file_name} non si può giocare: è danneggiato o incompleto"),
+        Lang::Ko => format!("{file_name}을(를) 플레이할 수 없습니다: 손상되었거나 불완전합니다"),
+        Lang::Ar => format!("تعذّر تشغيل {file_name}: الملف تالف أو غير مكتمل"),
     }
 }
 
@@ -322,19 +307,37 @@ pub fn kstuff_waiting(l: Lang) -> &'static str {
 }
 
 /// Another mounter (`name`, maxpack_logic::mounter::display_name) runs: MaxPack mounts nothing new
-/// until it stops. New in MaxPack: Spanish and English, English for the other languages.
+/// until it stops.
 pub fn other_mounter(l: Lang, name: &str) -> String {
     match l {
+        Lang::En => format!("MaxPack: {name} is running; MaxPack mounts no games until it stops"),
+        Lang::Ru => format!("MaxPack: запущен {name}; MaxPack не монтирует игры, пока он не остановится"),
+        Lang::Zh => format!("MaxPack：{name} 正在运行；在其停止前 MaxPack 不会挂载游戏"),
+        Lang::De => format!("MaxPack: {name} läuft; MaxPack bindet keine Spiele ein, bis es beendet ist"),
         Lang::Es => format!("MaxPack: {name} está en marcha; MaxPack no monta juegos hasta que se cierre"),
-        _ => format!("MaxPack: {name} is running; MaxPack mounts no games until it stops"),
+        Lang::Fr => format!("MaxPack\u{202f}: {name} est en cours d'exécution\u{202f}; MaxPack ne monte aucun jeu tant qu'il n'est pas arrêté"),
+        Lang::Ja => format!("MaxPack：{name} が実行中です。停止するまで MaxPack はゲームをマウントしません"),
+        Lang::Pt => format!("MaxPack: {name} está em execução; o MaxPack não monta jogos até ele parar"),
+        Lang::It => format!("MaxPack: {name} è in esecuzione; MaxPack non monta giochi finché non si arresta"),
+        Lang::Ko => format!("MaxPack: {name}이(가) 실행 중입니다. 종료될 때까지 MaxPack은 게임을 마운트하지 않습니다"),
+        Lang::Ar => format!("MaxPack: {name} قيد التشغيل؛ لن يركّب MaxPack أي لعبة حتى يتوقف"),
     }
 }
 
-/// The other mounter (`name`) stopped: MaxPack mounts again. Spanish and English, as other_mounter.
+/// The other mounter (`name`) stopped: MaxPack mounts again.
 pub fn mounting_resumed(l: Lang, name: &str) -> String {
     match l {
+        Lang::En => format!("MaxPack: {name} stopped; MaxPack mounts games again"),
+        Lang::Ru => format!("MaxPack: {name} остановлен; MaxPack снова монтирует игры"),
+        Lang::Zh => format!("MaxPack：{name} 已停止；MaxPack 恢复挂载游戏"),
+        Lang::De => format!("MaxPack: {name} wurde beendet; MaxPack bindet wieder Spiele ein"),
         Lang::Es => format!("MaxPack: {name} se ha cerrado; MaxPack vuelve a montar juegos"),
-        _ => format!("MaxPack: {name} stopped; MaxPack mounts games again"),
+        Lang::Fr => format!("MaxPack\u{202f}: {name} est arrêté\u{202f}; MaxPack monte de nouveau les jeux"),
+        Lang::Ja => format!("MaxPack：{name} が停止しました。MaxPack はゲームのマウントを再開します"),
+        Lang::Pt => format!("MaxPack: o {name} parou; o MaxPack volta a montar jogos"),
+        Lang::It => format!("MaxPack: {name} si è arrestato; MaxPack torna a montare i giochi"),
+        Lang::Ko => format!("MaxPack: {name}이(가) 종료되었습니다. MaxPack이 게임 마운트를 다시 시작합니다"),
+        Lang::Ar => format!("MaxPack: توقّف {name}؛ يعود MaxPack إلى تركيب الألعاب"),
     }
 }
 

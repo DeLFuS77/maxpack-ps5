@@ -7,6 +7,7 @@ pub mod fresh;
 pub mod http;
 pub mod images;
 pub mod inst;
+pub mod lang;
 pub mod mounter;
 pub mod overlay;
 pub mod p5z;

@@ -16,6 +16,8 @@ EXCEPTIONS=(
   '^src/ui\.html:[0-9]+: *<p data-i18n="aboutBased">Based on Kraken Mount by quer3q\.</p>$'
   "^src/ui\.html:[0-9]+: *aboutBased: 'Based on Kraken Mount by quer3q\.',$"
   "^src/ui\.html:[0-9]+: *aboutBased: 'Basado en Kraken Mount, de quer3q\.',$"
+  # The same credit line in the other nine languages (double-quoted, the only entry on its line).
+  '^src/ui\.html:[0-9]+: *aboutBased: "[^"]*Kraken Mount[^"]*",$'
 )
 # The console checklist tests the original mounter itself (before anything, coming from it and
 # going back to it), so there, and only there, it may name it, its data folder and its process:
