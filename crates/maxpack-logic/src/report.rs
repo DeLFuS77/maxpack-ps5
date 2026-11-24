@@ -73,9 +73,14 @@ pub fn utc(secs: u64) -> String {
 }
 
 /// A row of `docs/compatibilidad.md` with the result and the date left to fill in ("?"): the
-/// console's clock is often years behind, so the date is not taken from it.
+/// console's clock is often years behind, so the date is not taken from it. A `|` is escaped and a
+/// control character (a line break or a tab in a param.json name) is a space, so the row stays one line.
 pub fn compat_row(r: &Report) -> String {
-    let cell = |s: &str| if s.is_empty() { "?".to_string() } else { s.replace('|', "\\|") };
+    let cell = |s: &str| if s.is_empty() {
+        "?".to_string()
+    } else {
+        s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().replace('|', "\\|")
+    };
     let cells = [
         cell(r.title_id), cell(r.title_name), cell(r.game_version), kind_text(r.kind, r.packing).1.to_string(),
         cell(r.firmware.unwrap_or("")), format!("MaxPack {}", r.version), "?".into(), "?".into(),
