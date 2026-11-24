@@ -20,8 +20,21 @@ pub struct Mount<'a> {
 /// `<root>/app0` (the system's, which `mount_app0` covers only when it is read-only); then
 /// `/app0/<dir>` from the folder of the pkg or .p5z (`source`: (dir, folder), `cache::mount_source`).
 pub fn ours(mounts: &[Mount], root: &str, tid: &str, aliases: &[String], fonts: &str, source: Option<(&str, &str)>) -> Vec<usize> {
-    let _ = (mounts, root, tid, aliases, fonts, source);
-    Vec::new()
+    let nullfs_from = |path: String, from: &str| -> Vec<usize> {
+        mounts.iter().enumerate().filter(|(_, m)| m.on == path && m.fstype == "nullfs" && m.from == from).map(|(i, _)| i).collect()
+    };
+    let mut out = Vec::new();
+    for from in std::iter::once("/data").chain(aliases.iter().map(String::as_str)).chain([fonts]) {
+        out.extend(nullfs_from(format!("{root}{from}"), from));
+    }
+    let app0 = format!("{root}/app0");
+    let stack = format!("/system_ex/app/{tid}");
+    let first_ro = mounts.iter().position(|m| m.on == app0 && m.rdonly);
+    out.extend(nullfs_from(app0.clone(), &stack).into_iter().filter(|&i| !mounts[i].rdonly && first_ro.is_some_and(|ro| ro < i)));
+    if let Some((dir, folder)) = source {
+        out.extend(nullfs_from(format!("{app0}/{dir}"), folder));
+    }
+    out
 }
 
 #[cfg(test)]
