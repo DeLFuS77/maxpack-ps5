@@ -449,6 +449,11 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
 @keyframes banner-in { from { opacity: 0; -webkit-transform: translateY(-0.5rem); transform: translateY(-0.5rem); } }
 .banner.show { display: block; -webkit-animation: banner-in 0.35s var(--ease); animation: banner-in 0.35s var(--ease); }
 .banner:first-child { margin-top: 1rem; }
+/* The update notice: its text, then Update and Later (hidden while it runs). */
+#update.show { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem; }
+#update-msg { flex: 1 1 16rem; }
+.banner-btns { display: flex; gap: 0.6rem; }
+.banner-btns button[hidden] { display: none; }
 .card .status-pill, .card .running-pill {
   position: absolute; right: 0.75rem; top: 0.75rem; max-width: calc(100% - 1.5rem);
   padding: 0.3rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
@@ -661,6 +666,8 @@ button.inst-item[aria-checked="true"] {
   <div class="banner warn" id="paused" role="status"></div>
   <div class="banner warn" id="waiting" role="status"></div>
   <div class="banner" id="eject" role="status"></div>
+  <div class="banner ok" id="update"><span id="update-msg" role="status"></span>
+    <span class="banner-btns"><button class="small primary" type="button" id="update-go">Update</button><button class="small" type="button" id="update-later">Later</button></span></div>
 </div>
 
 <main>
@@ -883,6 +890,19 @@ var MSG = {
     emptyCopy: 'Copy {pkg} files or game folders to {dir} (or {usb} on a USB drive), then press Rescan.',
     emptyHome: 'Each game shows up here and on the home screen once it is registered.',
     showLog: 'Show log', hideLog: 'Hide log',
+    // Self-update (state.update): the latest release of MaxPack, checked once per start
+    updAvail: 'MaxPack {v} is available.', updNow: 'Update', updLater: 'Later', updRetry: 'Retry',
+    updRunning: 'Updating to {v}: downloading it and checking it against the release\'s SHA256SUMS. The page reloads once the new version runs.',
+    updFailed: 'Update failed: {error}', updTimeout: 'MaxPack {v} did not start (see maxpack.log).',
+    updFail_not_offered: 'that version is no longer the one offered; reload the page.',
+    updFail_game_running: 'a game is running: close it first.',
+    updFail_update_running: 'an update is already running.',
+    updFail_scan_running: 'a scan or cache build is in progress; try again in a moment.',
+    updFail_install_running: 'the installer is copying a game; try again when it ends.',
+    updFail_no_elfldr: 'elfldr does not answer on port 9021.',
+    updFail_download: 'the download from GitHub failed.',
+    updFail_checksum: 'the download does not match the release\'s SHA256SUMS: nothing was sent.',
+    updFail_send: 'sending it to elfldr failed.',
     // Game sheet
     delete: 'Delete', rebuildCache: 'Rebuild cache', close: 'Close', storage: 'Storage',
     fTitleId: 'Title ID', fVersion: 'Version', fStatus: 'Status', fType: 'Type', fDrive: 'Drive',
@@ -1297,6 +1317,18 @@ var MSG = {
     emptyCopy: 'Copia archivos {pkg} o carpetas de juegos en {dir} (o en {usb} en una unidad USB) y pulsa Volver a escanear.',
     emptyHome: 'Cada juego aparece aquí y en la pantalla de inicio cuando se registra.',
     showLog: 'Mostrar registro', hideLog: 'Ocultar registro',
+    updAvail: 'Hay una versión nueva: MaxPack {v}.', updNow: 'Actualizar', updLater: 'Más tarde', updRetry: 'Reintentar',
+    updRunning: 'Actualizando a {v}: se descarga y se comprueba con el SHA256SUMS de la versión. La página se recarga cuando la nueva esté en marcha.',
+    updFailed: 'No se pudo actualizar: {error}', updTimeout: 'MaxPack {v} no ha arrancado (mira maxpack.log).',
+    updFail_not_offered: 'esa versión ya no es la que se ofrece; recarga la página.',
+    updFail_game_running: 'hay un juego abierto: ciérralo antes.',
+    updFail_update_running: 'ya hay una actualización en marcha.',
+    updFail_scan_running: 'hay un escaneo o una caché en construcción; vuelve a probar en un momento.',
+    updFail_install_running: 'el instalador está copiando un juego; vuelve a probar cuando termine.',
+    updFail_no_elfldr: 'elfldr no responde en el puerto 9021.',
+    updFail_download: 'la descarga desde GitHub ha fallado.',
+    updFail_checksum: 'lo descargado no coincide con el SHA256SUMS de la versión: no se ha enviado nada.',
+    updFail_send: 'no se ha podido enviar a elfldr.',
     delete: 'Eliminar', rebuildCache: 'Recrear caché', close: 'Cerrar', storage: 'Almacenamiento',
     fTitleId: 'Title ID', fVersion: 'Versión', fStatus: 'Estado', fType: 'Tipo', fDrive: 'Unidad',
     fPath: 'Ruta', fCachePath: 'Ruta de caché', fCacheSize: 'Tamaño de caché', fCacheBuilt: 'Caché creada',
@@ -2965,7 +2997,10 @@ async function poll() {
     var r = await fetch('/api/state', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state = await r.json();
+    if (upd.from && state.version && state.version !== upd.from) { location.reload(); return; }
+    updTimedOut();
     setBanner('offline', false);
+    renderUpdate();
     var cache = state.cache || {};
     setBanner('lowspace', !!cache.low_space, function () { return t('lowSpace', { free: gb(cache.free) }); });
     setBanner('noampr', cache.ampr_present === false);
@@ -2992,9 +3027,98 @@ async function poll() {
   } catch (e) {
     if (stopped) return;
     setBanner('offline', true);
-    if (LOOPBACK && !launchTried) await startPayload();
+    // During a self-update the new copy is on its way: starting the saved (old) copy would race it.
+    if (updTimedOut()) renderUpdate();
+    if (LOOPBACK && !launchTried && !upd.busy) await startPayload();
   }
   if (!stopped) schedule(2000);
+}
+
+// The self-update notice (state.update: {version, size} of a newer release, or null). Later hides it
+// until the page reloads. from: the running version when Update was pressed; a poll that answers
+// with another version reloads the page. until: when the new copy is given up on.
+var upd = { v: '', hidden: false, busy: false, error: null, from: null, until: 0 };
+// The new copy had 2 minutes to answer with its version (polls failing or not): say it did not start.
+function updTimedOut() {
+  if (!(upd.busy && upd.until && Date.now() > upd.until)) return false;
+  upd.busy = false; upd.until = 0; upd.from = null;
+  upd.error = { timeout: true };
+  return true;
+}
+// The release's tag (`v1.0.1`) as the page shows a version (`1.0.1`).
+function updVersion() { return upd.v.replace(/^v/, ''); }
+// error: {code, detail} from POST /api/self_update, {timeout}, or {text} (no JSON answer).
+function updErrorText(e) {
+  if (e.timeout) return t('updTimeout', { v: updVersion() });
+  var own = e.code && t('updFail_' + e.code);
+  return t('updFailed', { error: own && own !== 'updFail_' + e.code ? own : (e.detail || e.text || '?') });
+}
+function renderUpdate() {
+  var u = state && state.update;
+  if (u && u.version && !upd.busy) upd.v = String(u.version);
+  var show = upd.busy || !!(u && u.version && (upd.error || !upd.hidden)) || !!(upd.error && upd.error.timeout);
+  live($('update-msg'), !show ? null : function () {
+    return upd.error ? updErrorText(upd.error) : t(upd.busy ? 'updRunning' : 'updAvail', { v: updVersion() });
+  });
+  $('update').classList.toggle('show', show);
+  $('update').classList.toggle('ok', !upd.error);
+  setText($('update-go'), t(upd.error ? 'updRetry' : 'updNow'));
+  setText($('update-later'), t(upd.error ? 'close' : 'updLater'));
+  $('update-go').hidden = $('update-later').hidden = upd.busy;
+  // A new copy that never started is not offered again from here: the page reloads to look.
+  if (upd.error && upd.error.timeout) $('update-go').hidden = true;
+}
+async function runSelfUpdate() {
+  if (upd.busy || !upd.v) return;
+  // Keep D-pad focus: the banner buttons hide while it runs.
+  if (bannerButtons().indexOf(document.activeElement) >= 0) document.querySelector('.nav [aria-selected="true"]').focus();
+  upd.busy = true;
+  upd.error = null;
+  upd.from = state && state.version;
+  renderUpdate();
+  try {
+    var r = await fetch('/api/self_update', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: upd.v }) });
+    if (!r.ok) {
+      var txt = await r.text(), j = null;
+      try { j = JSON.parse(txt); } catch (e) { /* plain text */ }
+      throw j && j.code ? j : { text: txt || 'HTTP ' + r.status };
+    }
+  } catch (e) {
+    upd.busy = false;
+    upd.from = null;
+    upd.error = e && (e.code || e.text) ? e : { text: (e && e.message) || '?' };
+    renderUpdate();
+    if (!$('update-go').hidden) $('update-go').focus();
+    return;
+  }
+  // The new copy has 2 minutes to answer with its version (it may wait for a scan pass).
+  upd.until = Date.now() + 120000;
+  schedule(1000);
+}
+$('update-go').onclick = runSelfUpdate;
+$('update-later').onclick = function () {
+  var had = document.activeElement === this;
+  upd.hidden = true;
+  upd.error = null;
+  renderUpdate();
+  if (had) document.querySelector('.nav [aria-selected="true"]').focus();
+};
+function bannerButtons() {
+  if (!$('update').classList.contains('show')) return [];
+  return [$('update-go'), $('update-later')].filter(function (b) { return !b.hidden; });
+}
+// ArrowDown from the top bar: the update notice first when it shows, then the open screen.
+function focusBelowTop() {
+  var row = bannerButtons();
+  if (row.length) row[0].focus(); else focusView();
+}
+function moveInBanner(btn, key) {
+  var row = bannerButtons(), i = row.indexOf(btn);
+  if (key === 'ArrowRight' && row[i + 1]) row[i + 1].focus();
+  else if (key === 'ArrowLeft' && row[i - 1]) row[i - 1].focus();
+  else if (key === 'ArrowUp') document.querySelector('.nav [aria-selected="true"]').focus();
+  else if (key === 'ArrowDown') focusView();
 }
 
 // ---- chunk 3: settings, log, views, keys ----
@@ -3602,7 +3726,7 @@ function moveInSeg(btn, key) {
     if (key === 'ArrowDown') $('q').focus();
     if (key === 'ArrowUp') document.querySelector('.nav [aria-selected="true"]').focus();
   } else if (key === 'ArrowDown') {
-    focusView();
+    focusBelowTop();
   }
 }
 // The drive pills (their filter and Unmount buttons), right of the type chips.
@@ -3720,12 +3844,13 @@ document.addEventListener('keydown', function (e) {
   if (t.classList.contains('card')) { e.preventDefault(); moveInGrid(t, k); }
   else if (t.classList.contains('seg-opt')) { e.preventDefault(); moveInSeg(t, k); }
   else if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('storage-pill')) { e.preventDefault(); moveInStorage(t, k); }
+  else if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('banner-btns')) { e.preventDefault(); moveInBanner(t, k); }
   else if ((k === 'ArrowLeft' || k === 'ArrowRight') && t.parentNode.classList.contains('top-actions')) {
     e.preventDefault(); moveInTop(t, k);
   }
   else if (k === 'ArrowDown' && document.querySelector('.topbar').contains(t)) {
     e.preventDefault();
-    focusView();
+    focusBelowTop();
   }
 });
 document.addEventListener('focusin', function (e) {
@@ -3741,6 +3866,7 @@ function renderAll() {
   fillLangSelect();
   setText($('logtoggle'), t(logOpen ? 'hideLog' : 'showLog'));
   ['offline', 'lowspace', 'paused', 'waiting', 'smsg', 'eject', 'i-msg'].forEach(function (id) { if ($(id)._live) live($(id), $(id)._live); });
+  renderUpdate();
   $('i-path').placeholder = t('iManualPh');
   $('i-path').setAttribute('aria-label', t('iManualAria'));
   if (inst) renderInst(true);

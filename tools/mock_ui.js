@@ -5,13 +5,19 @@
 //
 //   node tools/mock_ui.js [--port 8095] [--waiting other|kstuff|none] [--job on|paused|off]
 //                         [--last done|failed|needs_confirm|none] [--empty]
+//                         [--update v1.0.1|none] [--update-fail <code>|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
 // Install), --job on (a .p5z being copied, ~2 % a second), --last none.
 // --empty: no games, images, found items or installs (the empty states).
+// --update: a newer release found at start (state.update), so the page shows its notice with
+// Update and Later; Update (POST /api/self_update) "installs" it: 3 s later the mock answers with
+// that version and the page reloads. --update-fail answers Update with that error code instead
+// (maxpack_logic::update::Fail: game_running, scan_running, install_running, no_elfldr, download,
+// checksum, send...). Defaults: none.
 // The same switches at run time, without a restart (the page picks them up on its next poll):
-//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0
+//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.1&update_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
@@ -44,6 +50,27 @@ const mock = {
   job: arg('job', 'on'),
   last: arg('last', 'none'),
   empty: args.includes('--empty'),
+  update: arg('update', 'none'),
+  update_fail: arg('update-fail', 'none'),
+};
+// The running version: the one an Update in the mock "installs" once it is done.
+let version = '1.0.0';
+// state.update as src/update.rs `available` gives it: a newer release, or null.
+function updateValue() {
+  if (!mock.update || mock.update === 'none' || mock.update.replace(/^v/, '') === version) return null;
+  return { version: mock.update, size: 3456789 };
+}
+// maxpack_logic::update::Fail: the status of each code, and its English detail.
+const UPDATE_FAILS = {
+  not_offered: [400, 'not the newer release found at start'],
+  game_running: [409, 'a game is running: close it first'],
+  update_running: [409, 'an update is already running'],
+  scan_running: [409, 'a scan or build is in progress; try again in a moment'],
+  install_running: [409, 'the installer is copying a game; try again when it ends'],
+  no_elfldr: [503, 'elfldr does not answer: 127.0.0.1:9021: connection refused'],
+  download: [502, 'download failed: GET https://github.com/DeLFuS77/maxpack-ps5/releases/download/v1.0.1/maxpack.elf: HTTP status 404'],
+  checksum: [502, 'not the released maxpack.elf, not sent: SHA-256 0a1b... is not the 9f8e... that SHA256SUMS lists'],
+  send: [502, 'sending it to elfldr failed: 3456789 bytes to 127.0.0.1:9021: broken pipe'],
 };
 
 const GB = 1024 * 1024 * 1024;
@@ -100,7 +127,7 @@ function games() {
 
 function apiState() {
   return {
-    version: '1.0.0', busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
+    version, update: updateValue(), busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
@@ -311,7 +338,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
     if (p === '/mock') {
-      for (const k of ['waiting', 'job', 'last']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
+      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
@@ -345,6 +372,19 @@ http.createServer((req, res) => {
       if (g.status !== 'ready') return send(res, 409, 'text/plain', 'the game is not ready');
       running = { tid: g.title_id, until: Date.now() + 8000 };
       return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p === '/api/self_update') {
+      let v = null;
+      try { v = JSON.parse(chunks).version; } catch (e) { /* below */ }
+      if (typeof v !== 'string') return send(res, 400, 'text/plain', 'expected {"version":"<tag>"}');
+      const fail = (code) => json(res, UPDATE_FAILS[code][0], { code, detail: UPDATE_FAILS[code][1] });
+      const offered = updateValue();
+      if (!offered || offered.version !== v) return fail('not_offered');
+      if (runningNow().length) return fail('game_running');
+      if (UPDATE_FAILS[mock.update_fail]) return fail(mock.update_fail);
+      // Sent: the "new copy" answers with its version a little later, as a real take-over does.
+      setTimeout(() => { version = v.replace(/^v/, ''); }, 3000);
+      return json(res, 200, {});
     }
     if (req.method === 'POST' && p.startsWith('/api/hidden/')) {
       const tid = p.slice('/api/hidden/'.length);
@@ -395,7 +435,7 @@ http.createServer((req, res) => {
     return send(res, 404, 'text/plain', 'not found');
   });
 }).listen(port, () => {
-  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''})`);
+  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''}, update=${mock.update}, update_fail=${mock.update_fail})`);
   console.log(`switch at run time: http://localhost:${port}/mock?waiting=none&job=paused&last=needs_confirm`);
   // The addresses to try the banner's URL with (see the top of the file).
   const lan = Object.values(require('os').networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
