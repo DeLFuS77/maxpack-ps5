@@ -404,7 +404,7 @@ from the event's data (a wait(2) status) on the `exit pid=...` line (`exited wit
 once the sandbox's nullfs mounts are gone (they must go first, see Launch), reads that folder once for `<TID>_*`
 folders holding a dump with that pid. A launch it did not overlay (another mounter ran it, or its `fakelib/` is
 empty: `overlay_off`) gets the exit line only: no crash is recorded for it, since the page would blame our dump, ng or
-PlayGo stub. If none is there yet, it looks once more when that session's cleanup ends (0.4 to 3 s later, or when a
+PlayGo stub. If no dump is there yet, it looks once more when that session's cleanup ends (0.4 to 3 s later, or when a
 stale session is replaced, after its unmount), and logs
 `pid=... killed by signal N; no crash dump in ...` when a killed game left none. A match logs `<TID>: crashed
 (<process>, <status>), dump found at exit|<ms> ms after exit; the console's crash dump: <folder path>` and is kept as
@@ -642,6 +642,12 @@ minute):
   title id installed on the console, and after a running game exits; anything else is logged and left to
   auto-remove.
   Never gated on the mounter state: that is the "installer only" mode.
+- Not ported from the upstream project's 0.3.2: its ShadowMountPlus-shaped `POST /api/v1/*` routes (for Playden),
+  its self-update (`POST /api/self_update`, `update` in `/api/state`) and the release's `payloads.json`. The routes
+  would pass the checks above (Playden is a native app on the console: libcurl to `127.0.0.1`, no Origin), but Playden
+  calls ShadowMountPlus only, at `127.0.0.1:10101`, and the upstream project serves them on its own port, which
+  MaxPack never takes; on 8095 nothing would call them. Self-update and `payloads.json` wait until MaxPack's
+  repositories are public.
 
 ## Self copy and start on open (as Dump Forge)
 `ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `MAXPACK_SELF_ELF`) embedding
