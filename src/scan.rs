@@ -175,22 +175,19 @@ fn p5z_param(path: &Path, size: u64, mtime: SystemTime, last: &P5zPending, pendi
 }
 
 /// SMP order (resolve_backport_path_for_title): the game's own scan root, the other roots,
-/// then /data/homebrew (SMP's installed backports) even when custom scanpath lines replace it.
-fn backport_for(owner: &Path, roots: &[String], tid: &str) -> Option<PathBuf> {
-    let mut order: Vec<&Path> = vec![owner];
-    for root in roots.iter().map(Path::new).chain([Path::new("/data/homebrew")]) {
-        if !order.contains(&root) {
-            order.push(root);
-        }
-    }
-    for root in order {
-        let dir = root.join("backports");
+/// then /data/homebrew (SMP's installed backports) even when custom scanpath lines replace it
+/// (maxpack_logic::exclude::backport_dirs). An excluded `backports` folder is never opened, and an
+/// excluded backport in it is never used.
+fn backport_for(owner: &Path, roots: &[String], exclude: &[String], tid: &str) -> Option<PathBuf> {
+    for dir in maxpack_logic::exclude::backport_dirs(&owner.to_string_lossy(), roots, exclude) {
+        let dir = PathBuf::from(dir);
         let exact = dir.join(tid);
-        if exact.is_dir() {
+        if exact.is_dir() && !excluded(&exact, exclude) {
             return Some(exact);
         }
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         let mut matches: Vec<_> = entries.flatten().map(|e| e.path())
+            .filter(|p| !excluded(p, exclude))
             .filter(|p| p.is_dir() && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(tid)))
             .collect();
         matches.sort();
@@ -466,7 +463,7 @@ pub fn scan(roots: &[String], exclude: &[String], backports: bool, stability_wai
         }
         let source = Source {
             drive: crate::storage::drive_of(&path),
-            backport: if backports { backport_for(root, roots, &title_id) } else { None },
+            backport: if backports { backport_for(root, roots, exclude, &title_id) } else { None },
             path, kind, title_id, title_name, version, size,
         };
         let rank = match source.kind {

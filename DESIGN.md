@@ -85,7 +85,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
 | `ampr_auto_update` | true | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
-| `backports` | true | apply `<scan root>/backports/<TID>*` |
+| `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
 | `stability_wait_seconds` | 10 | skip a source changed less than this many seconds ago (still being copied) (0..3600, 0 = off) |
 | `low_space_gb` | 20 | warn when `/data` free space is below this |
@@ -453,7 +453,7 @@ pub struct ScanResult { pub games: Vec<Source>, pub duplicates: Vec<Source>, pub
   pub images: Vec<Image>,                                                  // ShadowMountPlus images: listed, never mounted
   pub unplayable: Vec<(std::path::PathBuf, maxpack_logic::p5z::Unplayable)> } // .p5z files the engine refuses: not games
 pub fn scan(roots: &[String], exclude: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads and believed .p5z verdicts by (path, size, mtime)
-pub fn excluded(path: &std::path::Path, exclude: &[String]) -> bool; // path is an exclude entry or under one (whole components)
+pub fn excluded(path: &std::path::Path, exclude: &[String]) -> bool; // path is an exclude entry or under one (whole components); backports too
 pub fn still_written(paths: &[std::path::PathBuf], wait: u64) -> Option<u64>; // age in s of the youngest max(mtime, ctime) under wait; None = stable
 pub fn parse_param(json: &[u8]) -> std::io::Result<(String, String, String)>; // (title_id, title_name, version); name: see below
 pub fn valid_tid(t: &str) -> bool;
