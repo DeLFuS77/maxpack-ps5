@@ -269,7 +269,9 @@ have run on a console, and how, is in the [compatibility list](docs/compatibilit
 ## Quick start
 
 1. Download `maxpack.elf` and `SHA256SUMS` from [Releases](https://github.com/DeLFuS77/maxpack-ps5/releases)
-   and check the file (`sha256sum -c SHA256SUMS`).
+   and check the file (`sha256sum -c SHA256SUMS`). Each release file also has a build attestation signed
+   through GitHub: `gh attestation verify maxpack.elf -R DeLFuS77/maxpack-ps5` proves it was built by this
+   repository's workflow from the tagged commit. Published releases are immutable.
 2. Plug in the USB drive with your games (`.p5z` files in its root or in `homebrew/`).
 3. With kstuff loaded, send `maxpack.elf` to the ELF loader: `nc -w 3 <PS5 IP> 9021 < maxpack.elf`,
    or use your payload loader.
