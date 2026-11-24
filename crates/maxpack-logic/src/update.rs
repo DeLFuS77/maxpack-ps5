@@ -61,15 +61,15 @@ fn plain_version(v: &str) -> Option<(u32, u32, u32)> {
     it.next().is_none().then_some(r)
 }
 
-/// The asset `name` of release `tag`: exactly one, at this repository's download URL for that tag,
-/// not empty and within `max`.
-fn pick(assets: &[serde_json::Value], tag: &str, name: &str, max: usize) -> Result<Asset, String> {
+/// The asset `name` of release `tag` of `repo`: exactly one, at that repository's download URL for
+/// that tag, not empty and within `max`. Also the ampr-emu-ng update's (`crate::ampr`).
+pub(crate) fn pick(assets: &[serde_json::Value], repo: &str, tag: &str, name: &str, max: usize) -> Result<Asset, String> {
     let mut found = assets.iter().filter(|a| a["name"].as_str() == Some(name));
     let (Some(a), None) = (found.next(), found.next()) else {
         return Err(format!("{tag}: not one {name} asset"));
     };
     let url = a["browser_download_url"].as_str().unwrap_or("");
-    let want = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
+    let want = format!("https://github.com/{repo}/releases/download/{tag}/{name}");
     if url != want {
         return Err(format!("{tag}: {name} is at {url:?}, not {want}"));
     }
@@ -96,7 +96,7 @@ pub fn latest(body: &[u8], running: &str) -> Latest {
         return Latest::NotNewer(tag.to_string());
     }
     let assets = j["assets"].as_array().map_or(&[][..], |a| a.as_slice());
-    let picked = pick(assets, tag, ELF_ASSET, ELF_MAX).and_then(|elf| Ok((elf, pick(assets, tag, SUMS_ASSET, SUMS_MAX)?)));
+    let picked = pick(assets, REPO, tag, ELF_ASSET, ELF_MAX).and_then(|elf| Ok((elf, pick(assets, REPO, tag, SUMS_ASSET, SUMS_MAX)?)));
     match picked {
         Ok((elf, sums)) => Latest::Newer(Offer { version: tag.to_string(), elf, sums }),
         Err(why) => Latest::Unusable(why),
@@ -122,7 +122,7 @@ pub fn look_failed(status: Option<u16>) -> LookFailed {
     }
 }
 
-/// ELF or SELF (the signed form elfldr also takes).
+/// ELF or SELF (the signed form elfldr and the PS5 loader also take).
 pub fn is_module(b: &[u8]) -> bool {
     b.starts_with(&[0x7f, 0x45, 0x4c, 0x46]) || b.starts_with(&[0x4f, 0x15, 0x3d, 0x1d])
 }
@@ -163,17 +163,24 @@ pub fn listed_sha256(sums: &[u8], name: &str) -> Result<[u8; 32], String> {
 /// The downloaded ELF is the offered one: the asset's size, an ELF or SELF, and the SHA-256 that the
 /// release's SHA256SUMS (`sums`) lists for maxpack.elf. Err says what differs; nothing is sent then.
 pub fn verify(elf: &[u8], offer: &Offer, sums: &[u8]) -> Result<(), String> {
-    if elf.len() != offer.elf.size {
-        return Err(format!("{} bytes, the release's {ELF_ASSET} has {}", elf.len(), offer.elf.size));
+    verify_asset(elf, ELF_ASSET, offer.elf.size, sums)
+}
+
+/// `data`, downloaded as the release asset `name` of `size` bytes, is that asset: its size, an ELF or
+/// SELF, and the SHA-256 that the release's SHA256SUMS (`sums`) lists for `name`. Err says what
+/// differs. Also the ampr-emu-ng update's (`crate::ampr::verify`).
+pub(crate) fn verify_asset(data: &[u8], name: &str, size: usize, sums: &[u8]) -> Result<(), String> {
+    if data.len() != size {
+        return Err(format!("{} bytes, the release's {name} has {size}", data.len()));
     }
-    if !is_module(elf) {
-        return Err(format!("not an ELF (magic {:02x?})", &elf[..elf.len().min(4)]));
+    if !is_module(data) {
+        return Err(format!("not an ELF or SELF (magic {:02x?})", &data[..data.len().min(4)]));
     }
-    let want = listed_sha256(sums, ELF_ASSET)?;
-    let got = crate::sha256::digest(elf);
+    let want = listed_sha256(sums, name)?;
+    let got = crate::sha256::digest(data);
     if got != want {
         let (got, want) = (crate::sha256::hex(&got), crate::sha256::hex(&want));
-        return Err(format!("SHA-256 {got} is not the {want} that {SUMS_ASSET} lists"));
+        return Err(format!("SHA-256 {got} is not the {want} that {SUMS_ASSET} lists for {name}"));
     }
     Ok(())
 }
@@ -248,6 +255,17 @@ impl Fail {
     }
 }
 
+/// What every update that downloads code to run (this payload, and the ampr-emu-ng every game loads,
+/// `crate::ampr::gate`) waits for: the secure-connection self-test passed on this console
+/// (`crate::tls::passed`). Asked before anything is downloaded.
+pub fn tls_gate(tls_passed: bool) -> Result<(), Fail> {
+    if tls_passed {
+        Ok(())
+    } else {
+        Err(Fail::TlsUnchecked)
+    }
+}
+
 /// The offer found at start and the update in flight, kept behind one lock (src/update.rs).
 #[derive(Debug, Default)]
 pub struct Updater {
@@ -280,9 +298,7 @@ impl Updater {
     /// game runs now.
     pub fn begin(&mut self, version: &str, tls_passed: bool, game_running: bool, now_ms: u64) -> Result<Offer, Fail> {
         let offer = self.offer.as_ref().filter(|o| o.version == version).ok_or(Fail::NotOffered)?.clone();
-        if !tls_passed {
-            return Err(Fail::TlsUnchecked);
-        }
+        tls_gate(tls_passed)?;
         if game_running {
             return Err(Fail::GameRunning);
         }

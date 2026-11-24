@@ -4,7 +4,8 @@
 //! console itself: libSceHttp must refuse a certificate that chains to no trusted root, one for
 //! another host and an expired one, and still connect to a good site with the same chain as the
 //! wrong-host one and to GitHub's API. The self-update offers and installs nothing until it has
-//! passed once on this console (`passed`, `maxpack_logic::update::Fail::TlsUnchecked`).
+//! passed once on this console (`passed`, `maxpack_logic::update::Fail::TlsUnchecked`), and neither
+//! does the ampr-emu-ng update (`crate::ampr::gate`).
 //! Here: the probes, what each outcome means, the verdict and the record kept in FILE. Nothing
 //! here touches the network.
 

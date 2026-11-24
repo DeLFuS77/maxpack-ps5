@@ -1,7 +1,7 @@
 //! The secure-connection self-test (maxpack_logic::tls): `POST /api/selftest/tls` runs it from
 //! Settings (or from the update notice), and the self-update offers and installs nothing until it
-//! has passed once on this console (`passed`, update::install). The last conclusive result is
-//! kept in maxpack_logic::tls::FILE.
+//! has passed once on this console (`passed`, update::install); nor does the ampr-emu-ng update
+//! (main::ampr_update). The last conclusive result is kept in maxpack_logic::tls::FILE.
 
 use maxpack_logic::tls::{self as logic, Outcome, Record, FILE, PROBES};
 use std::sync::atomic::{AtomicBool, Ordering};

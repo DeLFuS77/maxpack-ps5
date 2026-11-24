@@ -1,0 +1,290 @@
+//! The ampr-emu-ng update (src/main.rs `ampr_update`: `ampr_auto_update` at start, and Settings'
+//! "Update ampr-emu-ng now", `POST /api/ampr/update`). Every game loads the `libSceAmpr.sprx` it
+//! installs, so it is checked as the payload's own self-update checks `maxpack.elf` (`crate::update`,
+//! whose SHA256SUMS parsing, checksum check and gate it reuses): the latest stable release of
+//! DeLFuS77/ampr-emu-ng, its `libSceAmpr.sprx` installed only when its SHA-256 is the one the
+//! release's `SHA256SUMS` lists for it, and nothing downloaded until the secure-connection self-test
+//! has passed on this console. Nothing here touches the network.
+
+use crate::update::{self, Asset};
+
+/// The repository whose releases are looked at: MaxPack's own build of ampr-emu-ng.
+pub const REPO: &str = "DeLFuS77/ampr-emu-ng";
+/// GitHub's latest published release (not a draft, not a pre-release: betas are pre-releases).
+pub const LATEST_URL: &str = "https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest";
+/// The asset installed. The release also carries `libSceAmpr-debug.sprx`, never installed.
+pub const SPRX_ASSET: &str = "libSceAmpr.sprx";
+/// Read limits: the API answer, SHA256SUMS (as the self-update's) and the sprx.
+pub const LATEST_MAX: usize = update::LATEST_MAX;
+pub const SUMS_MAX: usize = update::SUMS_MAX;
+pub const SPRX_MAX: usize = 16 << 20;
+
+/// A releases/latest answer: its tag, its libSceAmpr.sprx and its SHA256SUMS. `sums` is Err (why)
+/// when the release has no usable SHA256SUMS: the look still says whether an update is due, but
+/// nothing is installed from such a release.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Release {
+    pub tag: String,
+    pub sprx: Asset,
+    pub sums: Result<Asset, String>,
+}
+
+/// The release in a releases/latest answer (`body`). Err: not the answer expected, a draft or a
+/// pre-release, or not exactly one libSceAmpr.sprx at REPO's download URL for the tag within SPRX_MAX.
+pub fn release(body: &[u8]) -> Result<Release, String> {
+    let j: serde_json::Value = serde_json::from_slice(body).map_err(|e| format!("bad JSON: {e}"))?;
+    let tag = j["tag_name"].as_str().ok_or("no tag_name")?;
+    if j["draft"].as_bool() != Some(false) || j["prerelease"].as_bool() != Some(false) {
+        return Err(format!("{tag}: a draft or a pre-release"));
+    }
+    let assets = j["assets"].as_array().map_or(&[][..], |a| a.as_slice());
+    let sprx = update::pick(assets, REPO, tag, SPRX_ASSET, SPRX_MAX)?;
+    let sums = update::pick(assets, REPO, tag, update::SUMS_ASSET, SUMS_MAX);
+    Ok(Release { tag: tag.to_string(), sprx, sums })
+}
+
+/// Nothing is downloaded until the secure-connection self-test has passed on this console: the
+/// self-update's gate (`update::tls_gate`), with its 409 and code.
+pub fn gate(tls_passed: bool) -> Result<(), Fail> {
+    update::tls_gate(tls_passed).map_err(|_| Fail::TlsUnchecked)
+}
+
+/// The downloaded libSceAmpr.sprx (`sprx`) is the release's: the asset's `size`, an ELF or SELF, and
+/// the SHA-256 that the release's SHA256SUMS (`sums`) lists for libSceAmpr.sprx (that exact name, 64
+/// hex digits). Err says what differs; nothing is installed then.
+pub fn verify(sprx: &[u8], size: usize, sums: &[u8]) -> Result<(), String> {
+    update::verify_asset(sprx, SPRX_ASSET, size, sums)
+}
+
+/// Why the ampr-emu-ng update installed nothing: the HTTP status and code `POST /api/ampr/update`
+/// answers (`{code, detail}`), and the detail for the log.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Fail {
+    /// The secure-connection self-test has not passed on this console: as the self-update's
+    /// (`update::Fail::TlsUnchecked`), the same 409, code and page text.
+    TlsUnchecked,
+    /// Another ampr-emu-ng update runs (the start-up one or another press).
+    UpdateRunning,
+    /// The look at LATEST_URL or a download failed.
+    Download(String),
+    /// The answer is not a release that can be installed (no libSceAmpr.sprx, an asset elsewhere).
+    Release(String),
+    /// The download is not the release's libSceAmpr.sprx: SHA256SUMS missing, malformed or listing
+    /// another SHA-256, or another size or no ELF magic. Not installed; logged and toasted.
+    Checksum(String),
+    /// Reading what is installed, or writing the new file, failed.
+    Install(String),
+}
+
+impl Fail {
+    pub fn status(&self) -> u16 {
+        match self {
+            Fail::TlsUnchecked => update::Fail::TlsUnchecked.status(),
+            Fail::UpdateRunning => 409,
+            Fail::Download(_) | Fail::Release(_) | Fail::Checksum(_) => 502,
+            Fail::Install(_) => 500,
+        }
+    }
+
+    /// The page shows its own text for `tls_unchecked` (the self-update's), `update_running` and
+    /// `download` (the self-update's too) and `checksum` (ui.html `amprFail_checksum`); the
+    /// detail for the others.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Fail::TlsUnchecked => update::Fail::TlsUnchecked.code(),
+            Fail::UpdateRunning => "update_running",
+            Fail::Download(_) => "download",
+            Fail::Release(_) => "release",
+            Fail::Checksum(_) => "checksum",
+            Fail::Install(_) => "install",
+        }
+    }
+
+    /// English, for the log and the page.
+    pub fn detail(&self) -> String {
+        match self {
+            Fail::TlsUnchecked => update::Fail::TlsUnchecked.detail(),
+            Fail::UpdateRunning => "an ampr-emu-ng update is already running".into(),
+            Fail::Download(e) => format!("download failed: {e}"),
+            Fail::Release(e) => format!("not a release to install: {e}"),
+            Fail::Checksum(e) => format!("not the released {SPRX_ASSET}, not installed: {e}"),
+            Fail::Install(e) => format!("install failed: {e}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sha256;
+    use serde_json::json;
+
+    /// A stand-in for libSceAmpr.sprx (a SELF), and for the debug build the release also carries.
+    const SPRX: &[u8] = b"\x4f\x15\x3d\x1d a tiny stand-in for libSceAmpr.sprx";
+    const DEBUG: &[u8] = b"\x4f\x15\x3d\x1d a tiny stand-in for libSceAmpr-debug.sprx";
+    const TAG: &str = "v0.5.2-maxpack.1";
+
+    fn asset(tag: &str, name: &str, size: usize) -> serde_json::Value {
+        json!({"name": name, "size": size,
+            "browser_download_url": format!("https://github.com/DeLFuS77/ampr-emu-ng/releases/download/{tag}/{name}")})
+    }
+
+    fn answer(tag: &str, assets: Vec<serde_json::Value>) -> serde_json::Value {
+        json!({"tag_name": tag, "draft": false, "prerelease": false, "assets": assets})
+    }
+
+    /// As DeLFuS77/ampr-emu-ng's releases are: the debug build first, then the sprx and SHA256SUMS.
+    fn full(tag: &str) -> Vec<u8> {
+        answer(tag, vec![asset(tag, "libSceAmpr-debug.sprx", 847_584), asset(tag, "libSceAmpr.sprx", 716_176), asset(tag, "SHA256SUMS", 170)])
+            .to_string().into_bytes()
+    }
+
+    fn line(data: &[u8], name: &str) -> String {
+        format!("{}  {name}\n", sha256::hex(&sha256::digest(data)))
+    }
+
+    /// The release's SHA256SUMS: both builds, as `sha256sum` writes it.
+    fn sums() -> Vec<u8> {
+        format!("{}{}", line(SPRX, "libSceAmpr.sprx"), line(DEBUG, "libSceAmpr-debug.sprx")).into_bytes()
+    }
+
+    #[test]
+    fn the_release_with_its_sprx_and_sha256sums() {
+        let dl = format!("https://github.com/DeLFuS77/ampr-emu-ng/releases/download/{TAG}/");
+        assert_eq!(release(&full(TAG)), Ok(Release {
+            tag: TAG.into(),
+            sprx: Asset { url: format!("{dl}libSceAmpr.sprx"), size: 716_176 },
+            sums: Ok(Asset { url: format!("{dl}SHA256SUMS"), size: 170 }),
+        }));
+    }
+
+    #[test]
+    fn a_release_without_a_usable_sha256sums_is_read_but_cannot_be_installed() {
+        let sums_err = |assets: Vec<serde_json::Value>| {
+            let r = release(answer(TAG, assets).to_string().as_bytes()).expect("the release is read");
+            assert_eq!(r.tag, TAG);
+            r.sums.expect_err("no usable SHA256SUMS")
+        };
+        assert!(sums_err(vec![asset(TAG, "libSceAmpr.sprx", 100)]).contains("SHA256SUMS"));
+        assert!(!sums_err(vec![asset(TAG, "libSceAmpr.sprx", 100), asset(TAG, "SHA256SUMS", 0)]).is_empty());
+        assert!(!sums_err(vec![asset(TAG, "libSceAmpr.sprx", 100), asset(TAG, "SHA256SUMS", SUMS_MAX + 1)]).is_empty());
+        let mut moved = asset(TAG, "SHA256SUMS", 170);
+        moved["browser_download_url"] = json!("https://example.com/SHA256SUMS");
+        assert!(!sums_err(vec![asset(TAG, "libSceAmpr.sprx", 100), moved]).is_empty());
+        assert!(!sums_err(vec![asset(TAG, "libSceAmpr.sprx", 100), asset(TAG, "SHA256SUMS", 170), asset(TAG, "SHA256SUMS", 170)]).is_empty());
+    }
+
+    #[test]
+    fn a_release_that_is_not_one_to_install() {
+        let bad = |body: Vec<u8>| release(&body).expect_err("refused");
+        // No libSceAmpr.sprx (the debug build alone does not do), or two.
+        assert!(bad(answer(TAG, vec![asset(TAG, "libSceAmpr-debug.sprx", 100), asset(TAG, "SHA256SUMS", 170)]).to_string().into_bytes()).contains("libSceAmpr.sprx"));
+        assert!(!bad(answer(TAG, vec![asset(TAG, "libSceAmpr.sprx", 100), asset(TAG, "libSceAmpr.sprx", 100)]).to_string().into_bytes()).is_empty());
+        // Elsewhere: another repository (quer3q's build, say), or another tag's download.
+        let mut moved = asset(TAG, "libSceAmpr.sprx", 100);
+        moved["browser_download_url"] = json!(format!("https://github.com/someone/ampr-emu-ng/releases/download/{TAG}/libSceAmpr.sprx"));
+        assert!(!bad(answer(TAG, vec![moved, asset(TAG, "SHA256SUMS", 170)]).to_string().into_bytes()).is_empty());
+        assert!(!bad(answer(TAG, vec![asset("v0.5.1-maxpack.1", "libSceAmpr.sprx", 100), asset(TAG, "SHA256SUMS", 170)]).to_string().into_bytes()).is_empty());
+        // Empty, or over the 16 MiB cap.
+        assert!(!bad(answer(TAG, vec![asset(TAG, "libSceAmpr.sprx", 0), asset(TAG, "SHA256SUMS", 170)]).to_string().into_bytes()).is_empty());
+        assert!(!bad(answer(TAG, vec![asset(TAG, "libSceAmpr.sprx", SPRX_MAX + 1), asset(TAG, "SHA256SUMS", 170)]).to_string().into_bytes()).is_empty());
+        // A draft or a pre-release (a beta), or not the answer expected.
+        let mut pre = answer(TAG, vec![asset(TAG, "libSceAmpr.sprx", 100), asset(TAG, "SHA256SUMS", 170)]);
+        pre["prerelease"] = json!(true);
+        assert!(!bad(pre.to_string().into_bytes()).is_empty());
+        pre["prerelease"] = json!(false);
+        pre["draft"] = json!(true);
+        assert!(!bad(pre.to_string().into_bytes()).is_empty());
+        assert!(!bad(b"not json".to_vec()).is_empty());
+        assert!(!bad(br#"{"message":"Not Found"}"#.to_vec()).is_empty());
+    }
+
+    #[test]
+    fn a_good_sum_is_installed() {
+        assert_eq!(verify(SPRX, SPRX.len(), &sums()), Ok(()));
+        // An ELF too; the other line first; CRLF; the binary-mode marker; upper-case hex.
+        let elf = b"\x7fELF\x02\x01\x01\x09 an ELF stand-in";
+        let text = format!("{}\r\n{} *libSceAmpr.sprx\r\n", line(DEBUG, "libSceAmpr-debug.sprx").trim_end(),
+            sha256::hex(&sha256::digest(elf)).to_uppercase());
+        assert_eq!(verify(elf, elf.len(), text.as_bytes()), Ok(()));
+    }
+
+    #[test]
+    fn a_wrong_sum_is_refused() {
+        // One byte changed: same size and magic, another SHA-256.
+        let mut changed = SPRX.to_vec();
+        *changed.last_mut().unwrap() ^= 1;
+        assert!(verify(&changed, changed.len(), &sums()).unwrap_err().contains("SHA-256"));
+        // The debug build's sum on the sprx's line: the debug build served under the sprx's name.
+        let swapped = line(DEBUG, "libSceAmpr.sprx");
+        assert!(verify(SPRX, SPRX.len(), swapped.as_bytes()).unwrap_err().contains("SHA-256"));
+        // The right sum, but the download is not what the release says (cut short, an HTML page).
+        assert!(verify(&SPRX[..SPRX.len() - 1], SPRX.len(), &sums()).is_err());
+        let html = vec![b'<'; SPRX.len()];
+        assert!(verify(&html, html.len(), line(&html, "libSceAmpr.sprx").as_bytes()).is_err());
+    }
+
+    #[test]
+    fn a_missing_line_is_refused() {
+        // Only the debug build, a name that only starts or ends the same, another file, nothing.
+        for text in [
+            line(SPRX, "libSceAmpr-debug.sprx"),
+            format!("{}{}", line(SPRX, "libSceAmpr.sprx.sig"), line(SPRX, "old-libSceAmpr.sprx")),
+            line(SPRX, "maxpack.elf"),
+            line(SPRX, "ampr/libSceAmpr.sprx"),
+            String::new(),
+        ] {
+            let e = verify(SPRX, SPRX.len(), text.as_bytes()).unwrap_err();
+            assert!(e.contains("libSceAmpr.sprx"), "{text:?}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_sha256sums_is_refused() {
+        let h = sha256::hex(&sha256::digest(SPRX));
+        for text in [
+            // Listed twice (even with the same sum), a short or a long hash, a non-hex digit, one space.
+            format!("{h}  libSceAmpr.sprx\n{h}  libSceAmpr.sprx\n"),
+            format!("{}  libSceAmpr.sprx\n", &h[..62]),
+            format!("{h}00  libSceAmpr.sprx\n"),
+            format!("{}zz  libSceAmpr.sprx\n", &h[..62]),
+            format!("{h} libSceAmpr.sprx\n"),
+            // An HTML error page instead of the file.
+            "<!DOCTYPE html><html><body>404</body></html>".to_string(),
+        ] {
+            assert!(verify(SPRX, SPRX.len(), text.as_bytes()).is_err(), "{text:?}");
+        }
+        // Not text.
+        assert!(verify(SPRX, SPRX.len(), b"\xff\xfe\x00").is_err());
+    }
+
+    #[test]
+    fn the_gate_is_the_self_updates() {
+        assert_eq!(gate(true), Ok(()));
+        // Closed: refused with the self-update's 409 and code, so the page shows the same text.
+        let f = gate(false).unwrap_err();
+        assert_eq!(f, Fail::TlsUnchecked);
+        let own = update::Fail::TlsUnchecked;
+        assert_eq!((f.status(), f.code(), f.detail()), (own.status(), own.code(), own.detail()));
+        assert_eq!(update::tls_gate(false), Err(update::Fail::TlsUnchecked));
+        assert_eq!(update::tls_gate(true), Ok(()));
+    }
+
+    #[test]
+    fn fail_codes() {
+        let all = [
+            (Fail::TlsUnchecked, 409, "tls_unchecked"),
+            (Fail::UpdateRunning, 409, "update_running"),
+            (Fail::Download("HTTP status 503".into()), 502, "download"),
+            (Fail::Release("no libSceAmpr.sprx".into()), 502, "release"),
+            (Fail::Checksum("SHA256SUMS lists no libSceAmpr.sprx".into()), 502, "checksum"),
+            (Fail::Install("No space left on device".into()), 500, "install"),
+        ];
+        for (f, status, code) in all {
+            assert_eq!((f.status(), f.code()), (status, code), "{f:?}");
+            assert!(!f.detail().is_empty(), "{f:?}");
+        }
+        assert!(Fail::Checksum("SHA256SUMS lists no libSceAmpr.sprx".into()).detail().contains("SHA256SUMS lists no libSceAmpr.sprx"));
+        assert!(Fail::Download("HTTP status 503".into()).detail().contains("HTTP status 503"));
+    }
+}

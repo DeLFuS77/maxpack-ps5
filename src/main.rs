@@ -457,8 +457,7 @@ const BUNDLED_AMPR_VERSION: &str = include_str!("../vendor/ampr-emu-ng/VERSION")
 /// `<version> <len> <crc32>` of the copy we last wrote (bundled or downloaded); v0.4.0 wrote
 /// `<len> <crc32>` (version unknown). Outside AMPR_DIR: every file there goes into fakelib/.
 const BUNDLED_MARK: &str = "/data/maxpack/ampr.bundled";
-const AMPR_RELEASE_URL: &str = "https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest";
-const AMPR_ASSET: &str = "libSceAmpr.sprx";
+const AMPR_ASSET: &str = ampr_logic::SPRX_ASSET;
 
 fn mark_format(version: &str, len: usize, crc: u32) -> String {
     format!("{} {len} {crc:08x}", version.trim())
@@ -476,6 +475,7 @@ fn mark_version(mark: &str, len: usize, crc: u32) -> Option<Option<&str>> {
 }
 
 pub(crate) use maxpack_logic::version::{newer, parse_version};
+use maxpack_logic::ampr::{self as ampr_logic, Fail as AmprFail};
 
 #[derive(Debug, PartialEq)]
 enum Installed<'a> {
@@ -505,29 +505,6 @@ fn should_update(inst: &Installed, tag: &str) -> bool {
         Installed::Hand => false,
         Installed::Ours(v) => newer(Some(tag), *v),
     }
-}
-
-#[derive(Debug, PartialEq)]
-struct Release {
-    tag: String,
-    url: String,
-    size: usize,
-}
-
-/// tag_name and the libSceAmpr.sprx asset of a GitHub releases/latest answer.
-fn parse_release(body: &[u8]) -> Result<Release, String> {
-    let j: serde_json::Value = serde_json::from_slice(body).map_err(|e| format!("bad JSON: {e}"))?;
-    let tag = j["tag_name"].as_str().ok_or("no tag_name")?.to_string();
-    let assets = j["assets"].as_array().ok_or("no assets")?;
-    let a = assets.iter().find(|a| a["name"].as_str() == Some(AMPR_ASSET)).ok_or(format!("{tag}: no {AMPR_ASSET} asset"))?;
-    let url = a["browser_download_url"].as_str().ok_or("no browser_download_url")?.to_string();
-    let size = a["size"].as_u64().and_then(|n| usize::try_from(n).ok()).ok_or("no asset size")?;
-    Ok(Release { tag, url, size })
-}
-
-/// ELF or SELF (the signed form the PS5 loader also takes).
-fn is_module(b: &[u8]) -> bool {
-    b.starts_with(&[0x7f, 0x45, 0x4c, 0x46]) || b.starts_with(&[0x4f, 0x15, 0x3d, 0x1d])
 }
 
 /// Writes `b` to AMPR_DIR/libSceAmpr.sprx (0777) and records it in BUNDLED_MARK as `version`.
@@ -621,7 +598,6 @@ fn get_retry(url: &str, max: usize, attempts: u32) -> Result<Vec<u8>, String> {
 /// A hand-placed libSceAmpr.sprx moved aside by a forced update (outside AMPR_DIR: never copied).
 /// ponytail: one backup; a second forced update over another hand-placed file replaces it.
 const HAND_BACKUP: &str = "/data/maxpack/libSceAmpr.sprx.hand";
-const AMPR_MAX: usize = 16 << 20;
 /// One update at a time: the start-up check and the web UI's "Update now" share it.
 static AMPR_UPDATING: AtomicBool = AtomicBool::new(false);
 
@@ -631,29 +607,37 @@ fn hand_placed(path: &str) -> Result<bool, String> {
     Ok(inst == Installed::Hand)
 }
 
-/// Installs the latest stable ampr-emu-ng release from GitHub. Without `force` (start-up check):
-/// only when the installed file is ours (or missing) and older; a hand-placed file is kept. With
-/// `force` (web UI): whatever is installed, a hand-placed file moved to HAND_BACKUP first. Returns a
-/// one-line result for the UI (also logged); an install wakes the scan loop to refresh fakelibs.
-fn ampr_update(state: &State, force: bool, attempts: u32) -> Result<String, String> {
-    if AMPR_UPDATING.swap(true, Ordering::SeqCst) {
-        return Err("an update is already running".into());
-    }
-    let r = ampr_update_inner(state, force, attempts);
-    AMPR_UPDATING.store(false, Ordering::SeqCst);
+/// Installs the latest stable ampr-emu-ng release from GitHub (maxpack_logic::ampr): every game
+/// loads it, so, as the self-update's maxpack.elf, only once the secure-connection self-test has
+/// passed on this console (refused with tls_unchecked before anything is downloaded) and only when
+/// its SHA-256 is the one the release's SHA256SUMS lists for libSceAmpr.sprx. Without `force`
+/// (start-up check): only when the installed file is ours (or missing) and older; a hand-placed file
+/// is kept. With `force` (web UI): whatever is installed, a hand-placed file moved to HAND_BACKUP
+/// first. Returns a one-line result for the UI, or why nothing was installed (both logged); an
+/// install wakes the scan loop to refresh fakelibs.
+fn ampr_update(state: &State, force: bool, attempts: u32) -> Result<String, AmprFail> {
+    let r = ampr_logic::gate(tls::passed()).and_then(|()| {
+        if AMPR_UPDATING.swap(true, Ordering::SeqCst) {
+            return Err(AmprFail::UpdateRunning);
+        }
+        let r = ampr_update_inner(state, force, attempts);
+        AMPR_UPDATING.store(false, Ordering::SeqCst);
+        r
+    });
     match &r {
         Ok(m) => log!("ampr: update: {m}"),
-        Err(e) => log!("ampr: update: {e}"),
+        Err(f) => log!("ampr: update: nothing installed ({}): {}", f.code(), f.detail()),
     }
     r
 }
 
-fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String, String> {
+fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String, AmprFail> {
     let path = format!("{}/{AMPR_ASSET}", cache::AMPR_DIR);
-    let body = get_retry(AMPR_RELEASE_URL, 1 << 20, attempts).map_err(|e| format!("GET {AMPR_RELEASE_URL}: {e}"))?;
-    let rel = parse_release(&body).map_err(|e| format!("{AMPR_RELEASE_URL}: {e}"))?;
+    let url = ampr_logic::LATEST_URL;
+    let body = get_retry(url, ampr_logic::LATEST_MAX, attempts).map_err(|e| AmprFail::Download(format!("GET {url}: {e}")))?;
+    let rel = ampr_logic::release(&body).map_err(|e| AmprFail::Release(format!("{url}: {e}")))?;
     let mark = std::fs::read_to_string(BUNDLED_MARK).ok();
-    let (inst, _) = read_installed(&path, mark.as_deref()).map_err(|e| format!("read {path}: {e}"))?;
+    let (inst, _) = read_installed(&path, mark.as_deref()).map_err(|e| AmprFail::Install(format!("read {path}: {e}")))?;
     if !force && !should_update(&inst, &rel.tag) {
         let why = match inst {
             Installed::Hand => "hand-placed, kept".to_string(),
@@ -662,30 +646,31 @@ fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String
         };
         return Ok(format!("latest {} skipped ({path}: {why})", rel.tag));
     }
-    if rel.size > AMPR_MAX {
-        return Err(format!("{} asset is {} bytes, over {AMPR_MAX}", rel.tag, rel.size));
-    }
-    let b = get_retry(&rel.url, AMPR_MAX, attempts).map_err(|e| format!("GET {}: {e}", rel.url))?;
-    if b.len() != rel.size || !is_module(&b) {
-        let magic = &b[..b.len().min(4)];
-        return Err(format!(
-            "{} from {}: {} bytes (asset size {}), magic {magic:02x?}: not installed",
-            rel.tag, rel.url, b.len(), rel.size
-        ));
-    }
+    // Not the release's file, or nothing to check it with: refused, logged (ampr_update) and toasted.
+    let refuse = |why: String| {
+        let s = state.settings.lock().unwrap().clone();
+        toast(&s, &i18n::ampr_refused(i18n::lang(), &rel.tag));
+        AmprFail::Checksum(format!("{}: {why}", rel.tag))
+    };
+    let sums_asset = rel.sums.clone().map_err(&refuse)?;
+    let sums = get_retry(&sums_asset.url, ampr_logic::SUMS_MAX, attempts)
+        .map_err(|e| AmprFail::Download(format!("GET {}: {e}", sums_asset.url)))?;
+    let b = get_retry(&rel.sprx.url, ampr_logic::SPRX_MAX, attempts)
+        .map_err(|e| AmprFail::Download(format!("GET {}: {e}", rel.sprx.url)))?;
+    ampr_logic::verify(&b, rel.sprx.size, &sums).map_err(|e| refuse(format!("{}: {e}", rel.sprx.url)))?;
     // Checked again: a file put there by hand during the download is kept (forced: moved aside).
-    if hand_placed(&path)? {
+    if hand_placed(&path).map_err(AmprFail::Install)? {
         if !force {
             return Ok(format!("latest {} skipped ({path}: hand-placed meanwhile, kept)", rel.tag));
         }
-        std::fs::rename(&path, HAND_BACKUP).map_err(|e| format!("move {path} -> {HAND_BACKUP}: {e}"))?;
+        std::fs::rename(&path, HAND_BACKUP).map_err(|e| AmprFail::Install(format!("move {path} -> {HAND_BACKUP}: {e}")))?;
         log!("ampr: update: hand-placed {path} moved to {HAND_BACKUP}");
     }
-    write_ampr(&path, &b, &rel.tag).map_err(|e| format!("install {} to {path}: {e}", rel.tag))?;
+    write_ampr(&path, &b, &rel.tag).map_err(|e| AmprFail::Install(format!("{} to {path}: {e}", rel.tag)))?;
     let s = state.settings.lock().unwrap().clone();
     toast(&s, &i18n::ampr_updated(i18n::lang(), &rel.tag));
     state.wake();
-    Ok(format!("installed ampr-emu-ng {} ({} bytes)", rel.tag, b.len()))
+    Ok(format!("installed ampr-emu-ng {} ({} bytes, matches {})", rel.tag, b.len(), maxpack_logic::update::SUMS_ASSET))
 }
 
 /// GET /api/ampr: what AMPR_DIR/libSceAmpr.sprx is now, and whether an update runs.

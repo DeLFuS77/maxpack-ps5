@@ -86,7 +86,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
 | `fakelib_emulators` | [] | array of title ids whose fakelib mode is `emulators`: their cache's `fakelib/` gets nothing from the game's or the backport's lib dir, only the bundled emulators they need (`add_emulators`, `playgo_off` as usual) and ampr-emu-ng (see Cache). For a game that shows a black screen with the libraries its dump or backport ships. Per game from the game sheet (`POST /api/fakelib/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/` |
 | `fakelib_off` | [] | array of title ids whose fakelib mode is `off`: their `fakelib/` gets only ampr-emu-ng, and that only for a pkg, a `.p5z` or a zstd or LZ4 folder (a plain folder gets an empty `fakelib/`, so MaxPack mounts nothing at its launch, as with `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in its sandbox). For a game that still stalls with the emulators. A title is in one of the two lists at most (`maxpack_logic::fakelib::set_mode`); one listed in both by hand is `off` and the next save drops it from `fakelib_emulators` (`fakelib::exclusive`, logged). In neither: `full`, the composition as it always was. Like `fakelib_emulators` otherwise |
-| `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
+| `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub, installed only when it matches the release's `SHA256SUMS` and once the secure-connection self-test has passed (a hand-placed `libSceAmpr.sprx` is kept; see Auto-update in Flow) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
 | `stability_wait_seconds` | 10 | skip a source changed less than this many seconds ago (still being copied) (0..3600, 0 = off) |
@@ -321,20 +321,34 @@ Installed games: a source whose title id has such an installed copy is never reg
 gets no overlay (`main::process`, checked every pass before anything else; status `error` with `installed_copy`, logged
 once until the install goes; also left out of `titles`). A dumped folder of a retail game that is also installed stays as
 it is, and so does the installed game.
-Auto-update (ampr-emu-ng): at start, when `ampr_auto_update` is on (whatever `inject_ampr` says: pkg games always use the ampr dir), a background thread asks
-`https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest` (stable releases only; betas are
-pre-releases and skipped). When its `tag_name` is newer than the installed version, it downloads the
-asset `libSceAmpr.sprx` (size must equal the asset size, max 16 MiB, ELF or SELF magic), writes a temp
-file in `/data/maxpack`, chmod 0777, renames it to `/data/maxpack/ampr/libSceAmpr.sprx`, records
-it in `ampr.bundled` as `<tag> <len> <crc32>` and toasts `i18n::ampr_updated`. A copy we wrote (bundled
-or downloaded) is ours: the bundled copy replaces ours only when the bundled version is newer; a
-hand-placed file is kept by both, and ownership is checked again after the download. Network errors are
-logged and retried up to 3 times 20 s apart, then nothing until the next start. An install wakes the scan
-loop (fakelib refresh); one update runs at a time. Settings has "Update ampr-emu-ng now"
-(`POST /api/ampr/update`): forced, one attempt, installs the latest stable release whatever is
-installed; a hand-placed file is first moved to `/data/maxpack/libSceAmpr.sprx.hand` (one backup,
-outside `ampr/`). HTTPS goes through the console's sceHttp/sceSsl with 4 built-in root CAs
-(from SMP).
+Auto-update (ampr-emu-ng, `main::ampr_update`, `maxpack_logic::ampr`): every game loads the
+`libSceAmpr.sprx` it installs, so it is checked as the self-update checks `maxpack.elf` (Self-update, below:
+the same `SHA256SUMS` parsing, checksum check and gate). At start, when `ampr_auto_update` is on (whatever
+`inject_ampr` says: pkg games always use the ampr dir), a background thread first asks the secure-connection
+self-test's record: until it has passed on this console (`update::tls_gate`, `ampr::gate`) nothing is asked
+or downloaded, and one line is logged (`ampr: update: nothing installed (tls_unchecked): ...`). Then it asks
+`https://api.github.com/repos/DeLFuS77/ampr-emu-ng/releases/latest` (stable releases only: betas are
+pre-releases, and a draft or pre-release answer is refused). The release must have exactly one
+`libSceAmpr.sprx` at `https://github.com/DeLFuS77/ampr-emu-ng/releases/download/<tag>/libSceAmpr.sprx`
+(1 byte to 16 MiB; `libSceAmpr-debug.sprx` is never taken), else it is logged and nothing is installed.
+When its `tag_name` is newer than the installed version, it needs the release's `SHA256SUMS` asset too
+(exactly one, at the same download URL, up to 64 KiB): without it nothing is downloaded. It downloads
+`SHA256SUMS`, then `libSceAmpr.sprx`, and installs it only when its size is the asset's, it starts with the
+ELF or SELF magic and its SHA-256 is the one `SHA256SUMS` lists for `libSceAmpr.sprx` (that exact name, 64 hex
+digits, listed once: `update::listed_sha256`). A missing, malformed or mismatching `SHA256SUMS` (or another
+size or magic) installs nothing, is logged with why (`ampr: update: nothing installed (checksum): ...`) and
+toasted (`i18n::ampr_refused`). A checked file is written to a temp file in `/data/maxpack`, chmod 0777,
+renamed to `/data/maxpack/ampr/libSceAmpr.sprx`, recorded in `ampr.bundled` as `<tag> <len> <crc32>` and
+toasted (`i18n::ampr_updated`). A copy we wrote (bundled or downloaded) is ours: the bundled copy replaces
+ours only when the bundled version is newer; a hand-placed file is kept by both, and ownership is checked
+again after the download. Network errors are logged and retried up to 3 times 20 s apart, then nothing
+until the next start. An install wakes the scan loop (fakelib refresh); one update runs at a time.
+Settings has "Update ampr-emu-ng now" (`POST /api/ampr/update`): forced, one attempt, installs the latest
+stable release whatever is installed, with the same gate and checks; a hand-placed file is first moved to
+`/data/maxpack/libSceAmpr.sprx.hand` (one backup, outside `ampr/`). Until the secure-connection self-test
+has passed, Settings says under the ampr-emu-ng row that its updates stay off (`amprNeedsTls`), and the
+button's refusal shows the self-update's text (`updFail_tls_unchecked`). HTTPS goes through the console's
+sceHttp/sceSsl with 4 built-in root CAs (from SMP).
 Running game: while `launch::watch` reports a live session (`running`), the loop does no
 scan/build/register/purge (a game starting mid-scan stops the scan before the next title);
 rescan/rebuild/purge requests stay queued and run after the game exits (2 s poll).
@@ -634,8 +648,12 @@ minute):
   a space), and the last 40 lines of the log tail (64 KiB) that contain the title id; 404 for an invalid or absent library
   title. The game sheet's "Copy report" copies it.
 - `GET /api/ampr` -> `{kind: "bundled"|"downloaded"|"hand"|"missing"|"error", version, updating}` of
-  `ampr/libSceAmpr.sprx`; `POST /api/ampr/update` -> forced update, answered when done: 200 + result text,
-  409 while one runs, 502 + error text.
+  `ampr/libSceAmpr.sprx`; `POST /api/ampr/update` -> forced update (Flow, Auto-update), answered when done:
+  200 + result text, else `{code, detail}` (`maxpack_logic::ampr::Fail`): 409 `tls_unchecked` until the
+  secure-connection self-test has passed (the self-update's code and page text), 409 `update_running`, 502
+  `download`, `release` or `checksum` (`SHA256SUMS` missing, malformed or not matching: nothing installed;
+  the page's `amprFail_checksum`), 500 `install`. The page shows its own text for `tls_unchecked`,
+  `update_running`, `download` and `checksum`, the detail for the rest.
 - `POST /api/rescan`, `POST /api/rebuild/<TID>`, `POST /api/rebuild-all`, `POST /api/purge` -> 204.
 - `GET /api/sizes/<TID>` -> `{game: u64, dlc: u64, save: u64|null, cache: u64}` in bytes,
   measured on request; 404 for an invalid or absent library title. Game is the pkg file or folder,
@@ -738,7 +756,8 @@ minute):
   `broken`; everything as expected is `passed`; anything else is `inconclusive`. `passed` and `broken` are kept in
   `/data/maxpack/tls_check.json` (`{passed, at, version}`); `inconclusive` leaves it as it was. Until the last
   conclusive run passed, `update.tls_passed` is false in `/api/state`, the notice asks for the check (its button runs
-  it) instead of offering Update, and `update::install` refuses with `tls_unchecked` before anything is downloaded.
+  it) instead of offering Update, and `update::install` refuses with `tls_unchecked` before anything is downloaded
+  (`update::tls_gate`; the ampr-emu-ng update, which installs code every game loads, waits for the same gate).
   `/api/state` `tls_check` is `{passed, at, version}` of that record (empty without one) and `running`.
 - While an update runs, and for 90 s after its ELF was sent (`HOLD_MS`), the scan loop starts no pass
   (`update::holding`), so the new copy finds none to wait for. The new copy takes the port as any newer copy
@@ -791,7 +810,9 @@ opens at `http://<console IP>:8095`. `state.images` is listed under the library 
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
-and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says).
+and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
+ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
+refuses).
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -843,7 +864,7 @@ an extra one, changes a `{placeholder}` or keeps the English text.
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
 | `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update) and the self-test's HEAD probe |
-| `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update waits for |
+| `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update and the ampr-emu-ng update wait for |
 | `src/update.rs` | self-update: the latest release looked at once per start, `POST /api/self_update` |
 | `src/i18n.rs` | toast texts in the console language (the UI's 11 languages) |
 | `crates/maxpack-logic` | pure logic tested on the host (`cargo test -p maxpack-logic`) |

@@ -239,6 +239,24 @@ pub fn ampr_updated(l: Lang, version: &str) -> String {
     }
 }
 
+/// An ampr-emu-ng release (`version`, its tag) was downloaded but not installed: its SHA256SUMS is
+/// missing or malformed, or the download is not the libSceAmpr.sprx it lists (maxpack_logic::ampr).
+pub fn ampr_refused(l: Lang, version: &str) -> String {
+    match l {
+        Lang::En => format!("ampr-emu-ng {version} not installed: it does not match the release's SHA256SUMS"),
+        Lang::Ru => format!("ampr-emu-ng {version} не установлен: не совпадает с SHA256SUMS релиза"),
+        Lang::Zh => format!("未安装 ampr-emu-ng {version}：与该版本的 SHA256SUMS 不符"),
+        Lang::De => format!("ampr-emu-ng {version} nicht installiert: passt nicht zu den SHA256SUMS des Releases"),
+        Lang::Es => format!("ampr-emu-ng {version} no instalado: no coincide con el SHA256SUMS de la versión"),
+        Lang::Fr => format!("ampr-emu-ng {version} non installé : ne correspond pas au SHA256SUMS de la version"),
+        Lang::Ja => format!("ampr-emu-ng {version} はインストールしませんでした：リリースの SHA256SUMS と一致しません"),
+        Lang::Pt => format!("ampr-emu-ng {version} não instalado: não confere com o SHA256SUMS da versão"),
+        Lang::It => format!("ampr-emu-ng {version} non installato: non corrisponde allo SHA256SUMS della release"),
+        Lang::Ko => format!("ampr-emu-ng {version} 설치 안 됨: 릴리스의 SHA256SUMS와 일치하지 않음"),
+        Lang::Ar => format!("لم يُثبَّت ampr-emu-ng {version}: لا يطابق SHA256SUMS الخاص بالإصدار"),
+    }
+}
+
 /// A game moved to another drive or folder (`path`, the new source) was relinked, no rebuild.
 pub fn moved(l: Lang, name: &str, path: &str) -> String {
     match l {

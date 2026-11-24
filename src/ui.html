@@ -769,7 +769,7 @@ button.inst-item[aria-checked="true"] {
     <label class="row"><span class="lbl" data-i18n="addEmulators">Add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators when a game needs them and has none</span><input type="checkbox" id="f_add_emulators"></label>
     <label class="row"><span class="lbl" data-i18n="injectAmpr">Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)</span><input type="checkbox" id="f_inject_ampr"></label>
     <label class="row"><span><span class="lbl" data-i18n="amprAutoUpdate">Auto-update ampr-emu-ng (checked once at start)</span><span class="hint" data-i18n="amprAutoUpdateHint">Off until MaxPack is published. It only ever downloads MaxPack's own ampr-emu-ng build.</span></span><input type="checkbox" id="f_ampr_auto_update"></label>
-    <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
+    <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprtls" data-i18n="amprNeedsTls" hidden>ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
     <div class="row"><span><span class="lbl" data-i18n="tlsTitle">Secure connections</span><span class="hint" data-i18n="tlsHint">MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.</span><span class="hint" id="tlsmsg" role="status"></span></span><button id="tlscheck" type="button" data-i18n="tlsCheck">Check secure connections</button></div>
     <ul class="tls-list" id="tlslist" hidden></ul>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
@@ -1004,6 +1004,8 @@ var MSG = {
     amprReplaceTitle: "Replace the hand-placed ampr-emu-ng?",
     amprReplaceText: "The latest release replaces it. Your file is moved to {backup}.",
     amprReplaceYes: "Replace",
+    amprNeedsTls: "ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.",
+    amprFail_checksum: "the download does not match the release's SHA256SUMS: nothing was installed.",
     backports: 'Apply backports',
     scanInterval: 'Scan interval, seconds (1-3600)',
     stabilityWait: 'Wait for a copy to finish, seconds (0-3600, 0 = off)',
@@ -1143,6 +1145,8 @@ var MSG = {
     amprReplaceTitle: "Заменить ampr-emu-ng, положенный вручную?",
     amprReplaceText: "Его заменит последний релиз. Ваш файл будет перемещён в {backup}.",
     amprReplaceYes: "Заменить",
+    amprNeedsTls: "Обновления ampr-emu-ng (при запуске или этой кнопкой) отключены, пока на этой консоли не пройдена проверка защищённых соединений ниже.",
+    amprFail_checksum: "загрузка не совпадает с SHA256SUMS релиза: ничего не установлено.",
     backports: 'Применять бэкпорты',
     scanInterval: 'Интервал сканирования, секунды (1-3600)',
     stabilityWait: 'Ждать окончания копирования, секунды (0-3600, 0 = выкл.)',
@@ -1389,6 +1393,8 @@ var MSG = {
     amprReplaceTitle: "替换手动放置的 ampr-emu-ng？",
     amprReplaceText: "将由最新版本替换。你的文件会移动到 {backup}。",
     amprReplaceYes: "替换",
+    amprNeedsTls: "在这台主机通过下方的安全连接检查之前，ampr-emu-ng 的更新（启动时或用此按钮）保持关闭。",
+    amprFail_checksum: "下载内容与该版本的 SHA256SUMS 不符：未安装任何内容。",
     backports: '应用向下移植',
     scanInterval: '扫描间隔，秒 (1-3600)',
     stabilityWait: '等待复制完成，秒 (0-3600，0 = 关闭)',
@@ -1635,6 +1641,8 @@ var MSG = {
     amprReplaceTitle: "Von Hand abgelegtes ampr-emu-ng ersetzen?",
     amprReplaceText: "Die neueste Version ersetzt es. Deine Datei wird nach {backup} verschoben.",
     amprReplaceYes: "Ersetzen",
+    amprNeedsTls: "Updates von ampr-emu-ng (beim Start oder mit dieser Schaltfläche) bleiben aus, bis die Prüfung sicherer Verbindungen unten auf dieser Konsole bestanden ist.",
+    amprFail_checksum: "der Download passt nicht zu den SHA256SUMS des Releases: nichts wurde installiert.",
     backports: 'Backports anwenden',
     scanInterval: 'Scan-Intervall, Sekunden (1-3600)',
     stabilityWait: 'Auf Ende des Kopierens warten, Sekunden (0-3600, 0 = aus)',
@@ -1938,6 +1946,8 @@ var MSG = {
     amprReplaceTitle: "¿Reemplazar el ampr-emu-ng colocado a mano?",
     amprReplaceText: "La última versión lo reemplaza. Tu archivo se mueve a {backup}.",
     amprReplaceYes: "Reemplazar",
+    amprNeedsTls: "Las actualizaciones de ampr-emu-ng (al arrancar o con este botón) siguen desactivadas hasta que esta consola pase la comprobación de conexiones seguras de abajo.",
+    amprFail_checksum: "lo descargado no coincide con el SHA256SUMS de la versión: no se ha instalado nada.",
     backports: 'Aplicar backports',
     scanInterval: 'Intervalo de escaneo, segundos (1-3600)',
     stabilityWait: 'Esperar a que termine la copia, segundos (0-3600, 0 = desactivado)',
@@ -2072,6 +2082,8 @@ var MSG = {
     amprReplaceTitle: "Remplacer l'ampr-emu-ng placé à la main ?",
     amprReplaceText: "La dernière version le remplace. Votre fichier est déplacé vers {backup}.",
     amprReplaceYes: "Remplacer",
+    amprNeedsTls: "Les mises à jour d'ampr-emu-ng (au démarrage ou avec ce bouton) restent désactivées tant que le test des connexions sécurisées ci-dessous n'a pas réussi sur cette console.",
+    amprFail_checksum: "le téléchargement ne correspond pas au SHA256SUMS de la version : rien n'a été installé.",
     backports: 'Appliquer les backports',
     scanInterval: "Intervalle d'analyse, secondes (1-3600)",
     stabilityWait: "Attendre la fin d'une copie, secondes (0-3600, 0 = désactivé)",
@@ -2318,6 +2330,8 @@ var MSG = {
     amprReplaceTitle: "手動で配置した ampr-emu-ng を置き換えますか？",
     amprReplaceText: "最新リリースで置き換えます。元のファイルは {backup} に移動されます。",
     amprReplaceYes: "置き換える",
+    amprNeedsTls: "この本体が下の安全な接続のチェックに合格するまで、ampr-emu-ng のアップデート（起動時またはこのボタン）はオフのままです。",
+    amprFail_checksum: "ダウンロードがリリースの SHA256SUMS と一致しません。何もインストールしていません。",
     backports: 'バックポートを適用',
     scanInterval: 'スキャン間隔、秒 (1-3600)',
     stabilityWait: 'コピー完了を待つ、秒 (0-3600、0 = オフ)',
@@ -2564,6 +2578,8 @@ var MSG = {
     amprReplaceTitle: "Substituir o ampr-emu-ng colocado manualmente?",
     amprReplaceText: "A versão mais recente o substitui. Seu arquivo é movido para {backup}.",
     amprReplaceYes: "Substituir",
+    amprNeedsTls: "As atualizações do ampr-emu-ng (ao iniciar ou com este botão) ficam desativadas até a verificação de conexões seguras abaixo passar neste console.",
+    amprFail_checksum: "o download não confere com o SHA256SUMS da versão: nada foi instalado.",
     backports: 'Aplicar backports',
     scanInterval: 'Intervalo de varredura, segundos (1-3600)',
     stabilityWait: 'Aguardar o fim da cópia, segundos (0-3600, 0 = desligado)',
@@ -2810,6 +2826,8 @@ var MSG = {
     amprReplaceTitle: "Sostituire l'ampr-emu-ng messo a mano?",
     amprReplaceText: "L'ultima versione lo sostituisce. Il tuo file viene spostato in {backup}.",
     amprReplaceYes: "Sostituisci",
+    amprNeedsTls: "Gli aggiornamenti di ampr-emu-ng (all'avvio o con questo pulsante) restano disattivati finché il controllo delle connessioni sicure qui sotto non viene superato su questa console.",
+    amprFail_checksum: "il download non corrisponde allo SHA256SUMS della release: non è stato installato nulla.",
     backports: 'Applica i backport',
     scanInterval: 'Intervallo di scansione, secondi (1-3600)',
     stabilityWait: 'Attendi la fine della copia, secondi (0-3600, 0 = disattivato)',
@@ -3056,6 +3074,8 @@ var MSG = {
     amprReplaceTitle: "수동으로 넣은 ampr-emu-ng을 바꿀까요?",
     amprReplaceText: "최신 릴리스로 바꿉니다. 기존 파일은 {backup}(으)로 옮겨집니다.",
     amprReplaceYes: "바꾸기",
+    amprNeedsTls: "이 콘솔이 아래의 보안 연결 검사를 통과할 때까지 ampr-emu-ng 업데이트(시작 시 또는 이 버튼)는 꺼진 상태로 유지됩니다.",
+    amprFail_checksum: "다운로드한 파일이 릴리스의 SHA256SUMS와 일치하지 않습니다. 아무것도 설치하지 않았습니다.",
     backports: '백포트 적용',
     scanInterval: '스캔 간격, 초 (1-3600)',
     stabilityWait: '복사가 끝날 때까지 대기, 초 (0-3600, 0 = 끔)',
@@ -3302,6 +3322,8 @@ var MSG = {
     amprReplaceTitle: "استبدال ampr-emu-ng الموضوع يدويًا؟",
     amprReplaceText: "سيستبدله أحدث إصدار. يُنقل ملفك إلى {backup}.",
     amprReplaceYes: "استبدال",
+    amprNeedsTls: "تبقى تحديثات ampr-emu-ng (عند البدء أو بهذا الزر) متوقفة حتى ينجح فحص الاتصالات الآمنة أدناه على هذا الجهاز.",
+    amprFail_checksum: "التنزيل لا يطابق SHA256SUMS الخاص بالإصدار: لم يُثبَّت شيء.",
     backports: 'تطبيق الباكبورت',
     scanInterval: 'فاصل المسح، بالثواني (1-3600)',
     stabilityWait: 'انتظار انتهاء النسخ، بالثواني (0-3600، 0 = إيقاف)',
@@ -4723,6 +4745,9 @@ function readSettings() {
 }
 function renderSettingsInfo() {
   renderTls();
+  // The ampr-emu-ng update waits for the secure-connection check, as the self-update does.
+  var tc = state && state.tls_check;
+  $('amprtls').hidden = !tc || tc.passed === true;
   var c = (state && state.cache) || {};
   setText($('scache'), t('cacheInfo', { size: fmtSize(c.size), path: c.path || '/data/maxpack/caches', free: gb(c.free) }));
   var drives = (state && Array.isArray(state.drives)) ? state.drives : [];
@@ -4746,16 +4771,28 @@ async function loadAmpr() {
     if (r.ok) { amprInfo = await r.json(); renderAmpr(); }
   } catch (e) { /* Offline: the banner says so; the line keeps its last value. */ }
 }
+// error: {code, detail} from POST /api/ampr/update (maxpack_logic::ampr::Fail), or {text}. The
+// self-update's texts where they fit (tls_unchecked, update_running, download), its own for checksum.
+function amprErrorText(e) {
+  var key = e.code === 'checksum' ? 'amprFail_checksum' : 'updFail_' + e.code;
+  var own = e.code && t(key);
+  return t('updFailed', { error: own && own !== key ? own : (e.detail || e.text || '?') });
+}
 async function runAmprUpdate() {
   amprBusy = true;
   renderAmpr();
   live($('amprmsg'), function () { return t('amprUpdating'); });
-  var msg;
+  var msg, err = null;
   try {
     var r = await fetch('/api/ampr/update', { method: 'POST' });
-    msg = (await r.text()) || 'HTTP ' + r.status;
-  } catch (e) { msg = e.message; }
-  live($('amprmsg'), function () { return msg; });
+    var txt = await r.text();
+    if (r.ok) msg = txt || 'HTTP ' + r.status;
+    else {
+      try { err = JSON.parse(txt); } catch (e) { /* plain text */ }
+      if (!err || !err.code) err = { text: txt || 'HTTP ' + r.status };
+    }
+  } catch (e) { err = { text: (e && e.message) || '?' }; }
+  live($('amprmsg'), function () { return err ? amprErrorText(err) : msg; });
   amprBusy = false;
   loadAmpr();
   schedule(300);

@@ -444,11 +444,15 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         }
         ("POST", "/api/settings") => post_settings(state, body),
         ("GET", "/api/ampr") => reply(200, "application/json", crate::ampr_status().to_string()),
-        // The UI's "Update now": forced, one attempt, answered when done (one thread per request).
+        // The UI's "Update now": forced, one attempt, answered when done (one thread per request):
+        // 200 + the result line, else `{code, detail}` (maxpack_logic::ampr::Fail), 409
+        // tls_unchecked until the secure-connection self-test has passed, as /api/self_update.
         ("POST", "/api/ampr/update") => match crate::ampr_update(state, true, 1) {
             Ok(m) => reply(200, "text/plain", m),
-            Err(e) if e.contains("already running") => reply(409, "text/plain", e),
-            Err(e) => reply(502, "text/plain", e),
+            Err(f) => {
+                let body = serde_json::json!({"code": f.code(), "detail": f.detail()}).to_string();
+                reply(f.status(), "application/json", body)
+            }
         },
         // A newer copy taking over the port (loopback, empty body) or the UI's Shut down (body
         // "shutdown", as Dump Forge's Stop: from any IP, but only from the page itself, as every POST).

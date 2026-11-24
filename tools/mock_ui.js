@@ -7,6 +7,7 @@
 //                         [--last done|failed|needs_confirm|none] [--empty]
 //                         [--update v1.0.1|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
+//                         [--ampr-fail checksum|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -23,8 +24,11 @@
 // "Check secure connections" (POST /api/selftest/tls, 2 s) answers: passed (the record becomes
 // passed), broken (it becomes broken) or inconclusive (no internet: the record stays). Defaults:
 // --tls never, --tls-result passed.
+// "Update ampr-emu-ng now" (POST /api/ampr/update, 1 s) answers 409 tls_unchecked until --tls is
+// passed, as the payload (maxpack_logic::ampr); then it installs, or, with --ampr-fail checksum, refuses
+// the download as one that does not match the release's SHA256SUMS. Default: none.
 // The same switches at run time, without a restart (the page picks them up on its next poll):
-//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.1&update_fail=checksum&tls=never&tls_result=broken
+//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.1&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
@@ -63,6 +67,7 @@ const mock = {
   update_fail: arg('update-fail', 'none'),
   tls: arg('tls', 'never'),
   tls_result: arg('tls-result', 'passed'),
+  ampr_fail: arg('ampr-fail', 'none'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.0';
@@ -378,7 +383,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
     if (p === '/mock') {
-      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
+      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
@@ -434,6 +439,13 @@ http.createServer((req, res) => {
       // Sent: the "new copy" answers with its version a little later, as a real take-over does.
       setTimeout(() => { version = v.replace(/^v/, ''); }, 3000);
       return json(res, 200, {});
+    }
+    if (req.method === 'POST' && p === '/api/ampr/update') {
+      // maxpack_logic::ampr::Fail: the self-update's gate first, then the SHA256SUMS check.
+      if (mock.tls !== 'passed') return json(res, 409, { code: 'tls_unchecked', detail: UPDATE_FAILS.tls_unchecked[1] });
+      return setTimeout(() => mock.ampr_fail === 'checksum'
+        ? json(res, 502, { code: 'checksum', detail: 'not the released libSceAmpr.sprx, not installed: v0.5.1-maxpack.1: SHA256SUMS lists no libSceAmpr.sprx' })
+        : send(res, 200, 'text/plain', 'installed ampr-emu-ng v0.5.1-maxpack.1 (716176 bytes, matches SHA256SUMS)'), 1000);
     }
     if (req.method === 'POST' && p === '/api/selftest/tls') {
       if (tlsRunning) return send(res, 409, 'text/plain', 'a secure-connection check is already running');
@@ -504,7 +516,7 @@ http.createServer((req, res) => {
     return send(res, 404, 'text/plain', 'not found');
   });
 }).listen(port, () => {
-  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''}, update=${mock.update}, update_fail=${mock.update_fail}, tls=${mock.tls}, tls_result=${mock.tls_result})`);
+  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''}, update=${mock.update}, update_fail=${mock.update_fail}, tls=${mock.tls}, tls_result=${mock.tls_result}, ampr_fail=${mock.ampr_fail})`);
   console.log(`switch at run time: http://localhost:${port}/mock?waiting=none&job=paused&last=needs_confirm`);
   // The addresses to try the banner's URL with (see the top of the file).
   const lan = Object.values(require('os').networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
