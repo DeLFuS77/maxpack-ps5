@@ -619,6 +619,13 @@ en [`compatibilidad.md`](compatibilidad.md) (el informe de 7.3 trae la fila hech
     «Rutas excluidas» y guarda. Esperado: en `config.toml`, `exclude = ["/data/homebrew/<carpeta>"]`;
     en la siguiente pasada el juego deja de salir en la biblioteca (ni como duplicado ni con error),
     pero sigue en la pantalla de inicio y arranca desde su icono; no hay `building cache` para él.
+  - Reinicia la consola con la ruta aún excluida. Esperado: el icono sigue en la pantalla de inicio,
+    pero el juego ya no arranca (MaxPack no vuelve a montar `/system_ex/app/<TID>` de un juego que no
+    explora; con un USB pasa lo mismo al desenchufarlo y enchufarlo). Al quitar la ruta de las excluidas,
+    la pasada siguiente lo monta y vuelve a arrancar.
+  - Con la ruta excluida, pulsa «Purgar caché» en Ajustes. Esperado: su caché se borra y
+    `/system_ex/app/<TID>` se desmonta (no está entre los juegos que se exploran); si era un `.pkg` o un
+    `.p5z`, su icono ya no arranca hasta que quites la ruta de las excluidas y se reconstruya.
   - Excluye una carpeta que tenga dentro una subcarpeta ilegible o un `.p5z` dañado. Esperado: ningún
     error ni aviso de lo que hay dentro (no se abre).
   - Escribe una ruta relativa (`homebrew/x`) y guarda. Esperado: «No se pudo guardar» con
