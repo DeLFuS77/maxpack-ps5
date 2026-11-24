@@ -70,11 +70,15 @@ img { display: block; }
   content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0;
   background: linear-gradient(180deg, rgba(7, 16, 31, 0.2), rgba(7, 16, 31, 0.72) 55%, #07101f 92%);
 }
-/* One surface recipe for every panel. */
+/* One surface recipe for every panel: navy, not white, so text on it reads over the brightest light
+   a game can give (white glass over yellow fell to 2.6:1). */
 .glass {
-  background: var(--glass);
+  background: rgba(7, 16, 31, 0.55);
   box-shadow: var(--glass-edge), var(--glass-drop);
 }
+/* The controls of the top rows sit on the ambient light too. */
+.topbar button, .topbar a.button { background: rgba(7, 16, 31, 0.55); }
+.topbar button:hover, .topbar a.button:hover { background: rgba(40, 54, 84, 0.8); }
 /* D-pad focus: a ring on every control. Old WebKit drops the :not() rule and keeps it always. */
 :focus { outline: 0.19rem solid var(--focus); outline-offset: 0.19rem; }
 :focus:not(:focus-visible) { outline: none; }
@@ -150,10 +154,10 @@ button.danger:hover { background: rgba(255, 92, 115, 0.5); }
 /* Type filter: each type is its own chip, with a gap between them. */
 .chips { display: flex; align-items: center; gap: 0.6rem; }
 .chips .seg-opt {
-  height: 2.6rem; color: var(--fg); background: var(--glass);
+  height: 2.6rem; color: var(--fg); background: rgba(7, 16, 31, 0.55);
   box-shadow: var(--glass-edge), 0 0.4rem 1.2rem rgba(0, 0, 0, 0.25);
 }
-.chips .seg-opt:hover { background: var(--glass-hi); }
+.chips .seg-opt:hover { background: rgba(40, 54, 84, 0.8); }
 .chips .seg-opt[aria-pressed="true"] { background: rgba(255, 255, 255, 0.94); color: #0b1220; }
 .gh-link {
   display: inline-flex; align-items: center; justify-content: center;
@@ -224,15 +228,18 @@ button.shoulder:hover { color: var(--fg); }
 .card:before { content: ""; display: block; padding-bottom: 100%; }
 /* The card in focus (the D-pad's focus, or the cursor the PS5 moves: focusGame) grows, with a white
    ring and a halo in its game's hue (--h) under it; ring and halo only fade. The others dim a little. */
+/* Only the card in focus grows: one that keeps the D-pad's focus while the cursor went to another
+   shows a thin ring, so two cards never look chosen at once. */
 .card:focus { outline: none; }
-.card:focus, .card.focus { -webkit-transform: scale(1.08); transform: scale(1.08); z-index: 2; }
+.card:focus:not(.focus) { outline: 0.19rem solid var(--focus); outline-offset: 0.3rem; }
+.card.focus { -webkit-transform: scale(1.08); transform: scale(1.08); z-index: 2; }
 .card .ring, .card .glow {
   position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: inherit; opacity: 0;
   -webkit-transition: opacity 0.35s; transition: opacity 0.35s; pointer-events: none;
 }
 .card .ring { z-index: 3; box-shadow: 0 0 0 0.19rem #fff, 0 0 0 0.5rem rgba(255, 255, 255, 0.18); }
 .card .glow { z-index: -1; box-shadow: 0 1.2rem 3.6rem 0.4rem hsla(var(--h, 214), 90%, 55%, 0.55); }
-.card:focus .ring, .card.focus .ring, .card:focus .glow, .card.focus .glow { opacity: 1; }
+.card.focus .ring, .card.focus .glow { opacity: 1; }
 .grid.dim .card:not(.focus) { opacity: 0.85; }
 .cover { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; border-radius: inherit; }
 /* No art yet: coverStyle() in the script paints a gradient in the game's hue; its initials sit on top. */
@@ -2067,20 +2074,30 @@ function learnHue(tid, img) {
 
 // ---- The ambient light: the page in the colour of the game in focus ----
 // Two layers (.ambient i): the hidden one gets the new colour and fades in over the other.
-var ambientLayer = 0, ambientHue = 214;
+var ambientLayer = 0, ambientHue = 214, ambientWant = 214, ambientTimer = null, ambientFree = 0;
 function ambientBg(h) {
   return 'radial-gradient(70% 90% at 30% 0%, hsla(' + h + ', 85%, 55%, 0.55), transparent 70%), ' +
     'radial-gradient(50% 60% at 85% 10%, hsla(' + (h + 40) + ', 90%, 50%, 0.35), transparent 70%)';
 }
-// hue: degrees, or null for MaxPack blue.
+// hue: degrees, or null for MaxPack blue. The newest wish wins, drawn once the light has been asked
+// nothing new for 150 ms and the last fade (1.1 s) is over: a layer is never repainted while it shows,
+// and a sweep of the cursor across the grid, or blue then a game in one go, makes one fade.
 function setAmbient(hue) {
-  var h = hue == null ? 214 : hue, layers = document.querySelectorAll('.ambient i');
-  if (h === ambientHue || layers.length < 2) return;
-  ambientHue = h;
+  ambientWant = hue == null ? 214 : hue;
+  clearTimeout(ambientTimer);
+  ambientTimer = setTimeout(drawAmbient, Math.max(150, ambientFree - Date.now()));
+}
+function drawAmbient() {
+  ambientTimer = null;
+  var layers = document.querySelectorAll('.ambient i'), wait = ambientFree - Date.now();
+  if (ambientWant === ambientHue || layers.length < 2) return;
+  if (wait > 0) { ambientTimer = setTimeout(drawAmbient, wait); return; }
+  ambientHue = ambientWant;
   ambientLayer = 1 - ambientLayer;
-  layers[ambientLayer].style.background = ambientBg(h);
+  layers[ambientLayer].style.background = ambientBg(ambientHue);
   layers[ambientLayer].classList.add('on');
   layers[1 - ambientLayer].classList.remove('on');
+  ambientFree = Date.now() + 1150;
 }
 // The card in focus: the one with the D-pad's focus or under the cursor the PS5 moves (the page
 // leaves the arrows to the PS5 there), whichever came last. Its game lights the page and shows large.
