@@ -283,7 +283,7 @@ button.shoulder:hover { color: var(--fg); }
 .sheet-side button { width: 100%; height: 3rem; font-size: 1rem; }
 .sheet-side .badge { left: 1rem; top: 1rem; }
 .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.sheet-head h2 { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.55); }
+.sheet-head h2 { font: 800 2.4rem/1.12 var(--display); letter-spacing: -0.03em; text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.55); }
 .sheet-head p { margin-top: 0.4rem; font: 500 0.95rem var(--mono); color: var(--muted); }
 button.close { flex: none; width: 3rem; height: 3rem; padding: 0; }
 button.close .icon { width: 1.3rem; height: 1.3rem; }
@@ -293,7 +293,7 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 .fields dd { margin: 0; font-size: 1rem; word-wrap: break-word; overflow-wrap: break-word; min-width: 0; }
 .fields dd.mono { font-family: var(--mono); font-size: 0.9rem; }
 .tag { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.82rem; font-weight: 600; background: rgba(255, 255, 255, 0.14); }
-.tag.green { background: rgba(47, 210, 122, 0.22); color: #9ff0c4; }
+.tag.green { background: rgba(63, 227, 162, 0.2); color: var(--ok); }
 .storage-line { border-radius: 1.4rem; padding: 1.1rem 1.6rem; background: rgba(255, 255, 255, 0.07); }
 .storage-line h3 { font-size: 1.05rem; font-weight: 700; color: var(--fg); }
 .stack { display: flex; height: 0.7rem; margin: 0.7rem 0; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.12); }
@@ -307,7 +307,7 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 .settings h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1.2rem; }
 .row {
   display: flex; align-items: center; justify-content: space-between; gap: 1.4rem;
-  padding: 1rem 1.2rem; border-radius: 1.1rem; background: rgba(255, 255, 255, 0.08);
+  padding: 1rem 1.2rem; border-radius: 1.1rem; background: var(--surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); margin-bottom: 0.6rem;
 }
 .row.col { display: block; }
@@ -426,7 +426,12 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
   width: 100%; max-width: 34rem; max-height: 100%; overflow: auto; padding: 1.6rem;
   border-radius: 1.6rem; background: var(--panel);
 }
-.dialog h2 { margin-bottom: 0.7rem; font-size: 1.5rem; }
+.dialog h2 { margin-bottom: 0.7rem; font: 700 1.6rem/1.2 var(--display); letter-spacing: -0.02em; }
+/* The sheet and the dialogs: the scrim fades in, the panel grows into place. */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes sheet-in { from { opacity: 0; -webkit-transform: scale(0.96); transform: scale(0.96); } }
+.scrim:not([hidden]) { -webkit-animation: fade-in 0.25s ease-out; animation: fade-in 0.25s ease-out; }
+.scrim:not([hidden]) .sheet, .scrim:not([hidden]) .dialog { -webkit-animation: sheet-in 0.4s var(--ease); animation: sheet-in 0.4s var(--ease); }
 .dialog p { margin-bottom: 1.4rem; color: var(--fg-2); overflow-wrap: break-word; }
 .dialog .btns { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.6rem; }
 @media (max-width: 600px) {
@@ -458,7 +463,11 @@ button.inst-item {
   font-weight: 400;
 }
 button.inst-item:hover { background: rgba(255, 255, 255, 0.14); }
-button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 0 0.15rem rgba(255, 255, 255, 0.85); }
+/* The game chosen to install stands out: a little larger, with a white ring. */
+button.inst-item[aria-checked="true"] {
+  background: rgba(255, 255, 255, 0.16); -webkit-transform: scale(1.012); transform: scale(1.012);
+  box-shadow: inset 0 0 0 0.17rem rgba(255, 255, 255, 0.9), 0 0.6rem 1.8rem rgba(0, 0, 0, 0.3);
+}
 .inst-icon {
   display: flex; align-items: center; justify-content: center; flex: none; width: 4rem; height: 4rem;
   border-radius: 0.8rem; overflow: hidden; background: rgba(255, 255, 255, 0.12);
@@ -473,6 +482,7 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
 .inst-size { display: block; flex: none; width: 15rem; }
 .inst-size .pct { display: block; font-size: 1.6rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .inst-size .pct small { margin-left: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.inst-size .pct.saving { color: var(--ok); }
 .inst-size .meter { display: block; width: 100%; margin: 0.6rem 0 0.4rem; }
 .inst-size .nums { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.78rem; color: var(--muted); }
 .inst-size .nums b { color: var(--fg); font-weight: 600; }
@@ -494,12 +504,29 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
 .inst-go { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
 .inst-go .row { flex: 1 1 24rem; margin: 0; }
 .inst-go .primary { height: 3rem; padding: 0 2.4rem; font-size: 1.05rem; }
-.inst-job { margin-bottom: 1.2rem; padding: 1.2rem 1.4rem; border-radius: 1.2rem; background: rgba(255, 255, 255, 0.1); }
+/* The install at work: its art, the share in large figures and a thick bar with a sheen running
+   along it (the sheen stops while the install pauses). */
+.inst-job {
+  display: flex; align-items: center; gap: 1.4rem; margin-bottom: 1.2rem; padding: 1.2rem 1.4rem;
+  border-radius: 1.2rem; background: var(--surface-hi); box-shadow: var(--glass-edge);
+}
+.inst-job-body { flex: 1 1 0%; min-width: 0; }
+.job-pic .inst-icon { width: 5.6rem; height: 5.6rem; border-radius: 1.1rem; font-size: 1.8rem; box-shadow: var(--glass-drop); }
 .inst-job .line { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
-.inst-job .what { font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
-.inst-job .pct { font-size: 2.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-.inst-job .meter { width: 100%; height: 0.7rem; margin: 0.9rem 0 0.7rem; }
-.inst-job .meter i { -webkit-transition: width 0.8s linear; transition: width 0.8s linear; }
+.inst-job .what { font-size: 1.2rem; font-weight: 700; overflow-wrap: anywhere; }
+.inst-job .pct { font: 800 2.8rem/1 var(--display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.inst-job .meter { width: 100%; height: 0.8rem; margin: 0.9rem 0 0.7rem; }
+.inst-job .meter i {
+  position: relative; overflow: hidden;
+  -webkit-transition: -webkit-transform 0.8s linear; transition: transform 0.8s linear;
+}
+@keyframes sheen { from { -webkit-transform: translateX(0); transform: translateX(0); } to { -webkit-transform: translateX(350%); transform: translateX(350%); } }
+.inst-job .meter i:after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+  -webkit-animation: sheen 1.8s ease-in-out infinite; animation: sheen 1.8s ease-in-out infinite;
+}
+.inst-job.paused .meter i:after { -webkit-animation: none; animation: none; opacity: 0; }
 .inst-job .nums { font-size: 0.9rem; color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .inst .empty { padding: 0.4rem 0; text-align: left; }
 /* A confirmation that lists paths (replace) keeps its lines. */
@@ -514,6 +541,9 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
   .inst-item { flex-wrap: wrap; }
   .inst-size, .inst-actions { width: 100%; }
   .inst-actions button { flex: 1; }
+  .inst-job { align-items: flex-start; gap: 0.9rem; }
+  .job-pic .inst-icon { width: 3.6rem; height: 3.6rem; font-size: 1.2rem; }
+  .inst-job .pct { font-size: 2.2rem; }
 }
 /* Less motion asked for: nothing moves, everything still works. */
 @media (prefers-reduced-motion: reduce) {
@@ -610,9 +640,12 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
     </div>
     <div class="banner" id="i-msg" role="status"></div>
     <div class="inst-job" id="i-job" hidden aria-live="polite">
-      <div class="line"><span class="what" id="i-job-what"></span><span class="pct" id="i-job-pct"></span></div>
-      <div class="meter"><i id="i-job-bar"></i></div>
-      <div class="line"><span class="nums" id="i-job-nums"></span><button type="button" id="i-pause" data-i18n="iPause">Pause</button></div>
+      <span class="job-pic" id="i-job-pic" aria-hidden="true"></span>
+      <div class="inst-job-body">
+        <div class="line"><span class="what" id="i-job-what"></span><span class="pct" id="i-job-pct"></span></div>
+        <div class="meter"><i id="i-job-bar"></i></div>
+        <div class="line"><span class="nums" id="i-job-nums"></span><button type="button" id="i-pause" data-i18n="iPause">Pause</button></div>
+      </div>
     </div>
     <div id="i-pending-box" hidden>
       <h3 data-i18n="iPendingTitle">Unfinished installs</h3>
@@ -2881,11 +2914,13 @@ function instSize(item) {
   }
   var orig = item.original_size || item.install_size, ratio = orig ? item.install_size / orig : 1;
   var saved = Math.floor((1 - ratio) * 100);
-  var pct = el('span', 'pct', saved > 0 ? '\u2212' + saved + ' %' : '0 %');
+  var pct = el('span', saved > 0 ? 'pct saving' : 'pct', saved > 0 ? '\u2212' + saved + ' %' : '0 %');
   pct.appendChild(el('small', null, t('iSmaller')));
   box.appendChild(pct);
   var meter = el('span', 'meter'), fillBar = el('i');
-  fillBar.style.width = Math.max(2, Math.min(100, ratio * 100)).toFixed(1) + '%';
+  var share = 'scaleX(' + Math.max(0.02, Math.min(1, ratio)).toFixed(3) + ')';
+  fillBar.style.webkitTransform = share;
+  fillBar.style.transform = share;
   meter.appendChild(fillBar);
   box.appendChild(meter);
   var nums = el('span', 'nums');
@@ -3027,9 +3062,19 @@ function renderInstJob() {
   var name = j.name || instName(j.title_id);
   var label = j.kind === 'verify' ? 'iVerifying' : j.kind === 'uninstall' ? 'iUninstalling' : INST_STAGES[j.stage] || 'iCopying';
   setText($('i-job-what'), t(label, { name: name }));
+  // The game's art (the library's, once MaxPack has it), else its initials; drawn again only for another game.
+  var pic = $('i-job-pic');
+  if (pic._tid !== j.title_id) {
+    pic._tid = j.title_id;
+    pic.textContent = '';
+    pic.appendChild(instIcon(name, j.title_id ? '/icon/' + encodeURIComponent(j.title_id) : null));
+  }
+  $('i-job').classList.toggle('paused', !!j.paused);
   var frac = j.total ? Math.min(1, j.done / j.total) : 0;
   setText($('i-job-pct'), Math.floor(frac * 100) + ' %');
-  $('i-job-bar').style.width = (frac * 100).toFixed(1) + '%';
+  var share = 'scaleX(' + frac.toFixed(4) + ')';
+  $('i-job-bar').style.webkitTransform = share;
+  $('i-job-bar').style.transform = share;
   // Speed: a smoothed bytes/s over the polls of one stage.
   var now = Date.now(), id = j.title_id + '|' + j.stage;
   if (instSpeed.id !== id) instSpeed = { id: id, t: now, done: j.done, v: 0 };
