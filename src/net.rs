@@ -98,8 +98,30 @@ fn ok(op: &str, url: &str, rc: c_int) -> io::Result<()> {
     }
 }
 
-/// GETs url (https:// or http://) and returns the body: Err on a non-200 status, a sce error
-/// (hex code in the message) or a body over max bytes.
+/// A non-200 answer, kept inside the io::Error so a caller can tell a 404 (`status_of`).
+#[derive(Debug)]
+struct HttpStatus {
+    url: String,
+    status: c_int,
+}
+
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "GET {}: HTTP status {}", self.url, self.status)
+    }
+}
+
+impl std::error::Error for HttpStatus {}
+
+/// The HTTP status of an https_get error that got an answer; None when none came (a sce error,
+/// no network, a body over max bytes).
+pub fn status_of(e: &io::Error) -> Option<u16> {
+    let s = e.get_ref()?.downcast_ref::<HttpStatus>()?;
+    u16::try_from(s.status).ok()
+}
+
+/// GETs url (https:// or http://) and returns the body: Err on a non-200 status (`status_of`), a
+/// sce error (hex code in the message) or a body over max bytes.
 pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
     static NET_INIT: Once = Once::new();
     // ponytail: the result is ignored (it is non-zero when the net library is already up); a
@@ -146,7 +168,7 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
         let mut status: c_int = 0;
         ok("sceHttpGetStatusCode", url, sceHttpGetStatusCode(req, &mut status))?;
         if status != 200 {
-            return Err(io::Error::other(format!("GET {url}: HTTP status {status}")));
+            return Err(io::Error::other(HttpStatus { url: url.to_string(), status }));
         }
         let mut body = Vec::new();
         let mut buf = vec![0u8; IO_BUFFER_SIZE];

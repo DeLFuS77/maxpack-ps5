@@ -19,6 +19,7 @@ mod p5z;
 mod register;
 mod scan;
 mod storage;
+mod update;
 mod web;
 
 use cache::Fresh;
@@ -951,6 +952,8 @@ fn main() {
     install_bundled_ampr();
     prepare_ampr();
     std::thread::spawn(save_self_copy);
+    // The latest release of MaxPack, once per start; a 404 (none, or a private repository) offers nothing.
+    update::spawn_check();
     // ponytail: debug turned on later takes effect at the next start.
     if s.debug {
         std::thread::spawn(klog_capture);
@@ -1012,6 +1015,14 @@ fn main() {
         }
         // Held to the end of the pass (dropped at `continue` and before the wait): /api/delete waits on it.
         let work = state.work.lock().unwrap();
+        // A self-update is under way: the new copy quits this one soon, so no build starts that it
+        // would have to wait for (its quit waits for a pass that runs).
+        if update::holding() {
+            drop(work);
+            state.busy.store(false, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        }
         let pass = std::time::Instant::now();
         // Loaded under the settings lock: web.rs loads, changes and saves the file under it too, so
         // this pass never puts an older copy over a newer one in state.settings.

@@ -191,15 +191,17 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
 
 /// Single instance: binds PORT, asking an older copy on it to quit first (POST /api/quit),
 /// retrying for 5 s. None: the port stays taken (the phase-2 maxpack.elf, whose server refuses that
-/// quit, an older build without /api/quit, or another app), so this copy must not run.
+/// quit, an older build without /api/quit, an older copy in the middle of a scan pass, or another
+/// app), so this copy must not run.
 pub fn take_port() -> Option<TcpListener> {
     if let Ok(l) = TcpListener::bind(("0.0.0.0", PORT)) {
         return Some(l);
     }
-    if let Ok(mut s) = TcpStream::connect(("127.0.0.1", PORT)) {
-        let _ = s.write_all(b"POST /api/quit HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n");
-    }
     for _ in 0..20 {
+        // Asked again each try: the older copy refuses while a scan pass (a build) runs.
+        if let Ok(mut s) = TcpStream::connect(("127.0.0.1", PORT)) {
+            let _ = s.write_all(b"POST /api/quit HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n");
+        }
         std::thread::sleep(Duration::from_millis(250));
         if let Ok(l) = TcpListener::bind(("0.0.0.0", PORT)) {
             return Some(l);
@@ -434,8 +436,18 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             log!("quit refused: a game is running (its overlay would stay mounted)");
             reply(409, "text/plain", "a game is running")
         }
+        ("POST", "/api/self_update") => self_update(state, body),
         ("POST", "/api/quit") if loopback || body == b"shutdown" => {
             let user = body == b"shutdown";
+            // A newer copy waits for the scan pass: quitting mid-build would leave a cache without
+            // `.built`, which the next start empties (game-written files included). Held until the
+            // exit, so no pass starts meanwhile.
+            if !user {
+                let Ok(work) = state.work.try_lock() else {
+                    return reply(409, "text/plain", "a scan or build is in progress");
+                };
+                std::mem::forget(work);
+            }
             let toast = user && state.settings.lock().unwrap().notify;
             log!("{}", if user { "shut down from the web UI" } else { "quit requested by a newer copy" });
             std::thread::spawn(move || {
@@ -589,6 +601,26 @@ pub fn uninstalled(state: &State, tid: &str, source: Option<&Path>, deadline: st
     }
     log!("{tid}: uninstalled by the installer ({}): unmounted and removed from the home screen", src.display());
     state.wake();
+}
+
+/// POST /api/self_update, body `{"version":"<tag>"}`: downloads the newer release found at start,
+/// checks it against its SHA256SUMS and sends it to elfldr; the new copy then takes over the port.
+/// 200 `{}`, else `{code, detail}` with update::install's status (maxpack_logic::update::Fail).
+/// Behind the same Host and Origin checks as every POST (`handle`).
+fn self_update(state: &State, body: &[u8]) -> Reply {
+    let v: Option<serde_json::Value> = serde_json::from_slice(body).ok();
+    let Some(version) = v.as_ref().and_then(|v| v["version"].as_str()) else {
+        return reply(400, "text/plain", "expected {\"version\":\"<tag>\"}");
+    };
+    // The new copy's quit waits for a pass and take_port gives up after 5 s: install holds new
+    // passes off (update::holding) and checks that none runs.
+    match crate::update::install(version, &|| state.paused(), &|| state.work.try_lock().is_ok(), &crate::installer::idle) {
+        Ok(()) => reply(200, "application/json", "{}"),
+        Err(f) => {
+            let body = serde_json::json!({"code": f.code(), "detail": f.detail()}).to_string();
+            reply(f.status(), "application/json", body)
+        }
+    }
 }
 
 fn post_settings(state: &State, body: &[u8]) -> Reply {
@@ -787,6 +819,8 @@ fn api_state(state: &State) -> Vec<u8> {
     }).collect();
     let v = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
+        // {version, size} of a newer release found at start (the page offers Update), else null.
+        "update": crate::update::available(),
         "busy": state.busy.load(Ordering::SeqCst),
         "paused": !running.is_empty(),
         // null | "kstuff" | "other:<process>"

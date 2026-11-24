@@ -219,6 +219,14 @@ pub fn after_uninstall(tid: String, source: Option<PathBuf>) {
     });
 }
 
+/// The installer runs no job now (install, verify or uninstall), or is not up: the self-update
+/// (update::install) sends no new copy while one runs, since quitting would pause it.
+pub fn idle() -> bool {
+    let Some(Ok(api)) = INSTALLER.get() else { return true };
+    // SAFETY: as in stop().
+    unsafe { mp_api_wait_idle(api.ptr, 0) == 0 }
+}
+
 /// Before the payload quits (POST /api/quit, or another copy took the port): the running install
 /// is paused as the page's Pause does (it saves its state: the next start lists it under Install,
 /// unfinished, to resume), and the queue is waited for up to STOP_WAIT. Each pause stops the job

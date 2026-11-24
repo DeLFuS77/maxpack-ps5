@@ -149,4 +149,15 @@ mod tests {
         assert_eq!(check(&req("GET /api/state HTTP/1.1", "Host: 192.168.1.20\r\nOrigin: http://evil.example")), Ok(()));
         assert_eq!(check(&req("HEAD / HTTP/1.1", "Host: 192.168.1.20\r\nSec-Fetch-Site: cross-site")), Ok(()));
     }
+
+    /// The self-update's POST (it makes the console fetch and run a new payload) is checked as every
+    /// other: only the page itself, at an IP, gets through.
+    #[test]
+    fn self_update_only_from_the_page() {
+        let req = |headers: &str| format!("POST /api/self_update HTTP/1.1\r\n{headers}\r\nContent-Type: text/plain");
+        assert_eq!(check(&req("Host: 192.168.1.20:8095\r\nOrigin: http://192.168.1.20:8095")), Ok(()));
+        assert_eq!(check(&req("Host: 192.168.1.20:8095\r\nOrigin: http://evil.example")), Err(Refusal::CrossSite));
+        assert_eq!(check(&req("Host: 192.168.1.20:8095\r\nSec-Fetch-Site: cross-site")), Err(Refusal::CrossSite));
+        assert_eq!(check(&req("Host: rebind.evil.example:8095\r\nOrigin: http://rebind.evil.example:8095")), Err(Refusal::Host));
+    }
 }
