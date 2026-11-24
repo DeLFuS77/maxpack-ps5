@@ -25,8 +25,15 @@ pub fn excluded(path: &str, exclude: &[String]) -> bool {
 /// (compared as text with `//`, `.` and `..` resolved), and none that is `excluded`, so the scan never
 /// opens an excluded one.
 pub fn backport_dirs(owner: &str, roots: &[String], exclude: &[String]) -> Vec<String> {
-    let _ = (owner, roots, exclude);
-    Vec::new()
+    let mut out: Vec<String> = Vec::new();
+    for root in std::iter::once(owner).chain(roots.iter().map(String::as_str)).chain(["/data/homebrew"]) {
+        let p = parts(root);
+        let dir = if p.is_empty() { "/backports".to_string() } else { format!("/{}/backports", p.join("/")) };
+        if !out.contains(&dir) && !excluded(&dir, exclude) {
+            out.push(dir);
+        }
+    }
+    out
 }
 
 /// The components of `path` with `//`, `.` and `..` resolved as text (as `roots`).
