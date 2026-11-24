@@ -722,5 +722,77 @@ over): then the switch shows off with a note that this copy keeps the libraries,
 under "Scan paths", one path per line (`exclude`).
 New texts are in English and Spanish; the other languages show the English ones.
 
+## Layout
+| Path | What |
+|---|---|
+| `src/main.rs` | start-up, scan loop (pauses while a game runs), self copy, the bundled ampr-emu-ng and its updater |
+| `src/config.rs` | `/data/maxpack/config.toml` settings |
+| `src/storage.rs` | drives and default scan roots |
+| `src/scan.rs` | game discovery, backports, duplicates |
+| `src/cache.rs` | per-game cache `/data/maxpack/caches/<TID>`, freshness, `.built`, purge |
+| `src/ampr_index.rs` | writes `ampr_emu.index` + `ampr_assets.index` for pkg caches |
+| `src/register.rs` | home-screen registration, `/system_ex/app/<TID>` mounts, the tile |
+| `src/launch.rs` | launch watcher: the fakelib overlay, writable `/app0`, `/app0/kraken` or `/app0/p5z`, the console fonts |
+| `src/crash.rs` | a game's crash dump at its exit, the last crash per title in `/data/maxpack/crashes.json` |
+| `src/p5z.rs` | the engine's `mp_play_*` (describe a `.p5z`, extract its loose files) |
+| `src/web.rs`, `src/ui.html` | HTTP server and the single-file UI |
+| `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
+| `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
+| `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl (ampr-emu-ng updater, self-update) |
+| `src/i18n.rs` | toast texts in the console language (the UI's 11 languages) |
+| `crates/maxpack-logic` | pure logic tested on the host (`cargo test -p maxpack-logic`) |
+| `crates/kraken-mount-pkg` | FPKG reader and its Kraken decoder (`decoder` module) |
+| `vendor/maxpack` | copy of the MaxPack engine sources (with zstd and zlib) the payload links |
+| `vendor/ampr-emu-ng`, `vendor/dlc_emu`, `vendor/pgo_stub` | the bundled sprx files, each with `VERSION` and `SHA256SUMS` |
+| `ps5/` | Docker build, linker, C shims (`compat.c` holds PS5 libc adapters, `appdb.c` writes app.db through the SQLite amalgamation the Dockerfile fetches) |
+| `tools/` | `check_identity.sh` (CI), `sync_maxpack.sh`, `mock_ui.js` (the page without a console) |
+
+## Vendored components
+- ampr-emu-ng is its own project (DeLFuS77/ampr-emu-ng) and is not built here. To update the bundled copy, replace
+  `vendor/ampr-emu-ng/libSceAmpr.sprx`, `SHA256SUMS` and `VERSION` (ending in `-maxpack.N`) from its build, and
+  `SOURCE` (repository, commit, CI run) and the Corresponding Source link in `THIRD_PARTY_NOTICES`. A file put into
+  `/data/maxpack/ampr/` by hand overrides it on the console. Changes to ampr-emu-ng itself go to its repository.
+- `vendor/dlc_emu/` and `vendor/pgo_stub/` are drakmor's released binaries (DLC and PlayGo emulators, added to a
+  fakelib only when missing); to update, replace the sprx files, `SHA256SUMS` and `VERSION` from the new GitHub
+  release.
+- `vendor/maxpack` is a copy of the MaxPack engine (C, its own repository), not a submodule: the build needs nothing
+  but this repository, and the copy pins the exact sources. Refresh it with
+  `tools/sync_maxpack.sh <maxpack checkout> <commit>`: it writes `vendor/maxpack/COMMIT`, and `COMMIT.tag` from the
+  tag on that commit (tag it first, `motor-consola-N`, so a rebase there cannot orphan it). It is never edited here.
+- References, read only: ShadowMountPlus (SMP, the C original of the register, fakelib and backport logic) and
+  ps5-dump-forge (toolchain, self copy, tile, toasts, UI patterns).
+
 ## Build and check
-`cargo check --target x86_64-unknown-freebsd` (fast, host). Full payload: `ps5/build.sh` (Docker).
+- Fast check on the host, no Docker: `cargo check --workspace --locked --target x86_64-unknown-freebsd`, with
+  0 errors and 0 warnings (CI sets `RUSTFLAGS=-Dwarnings`).
+- Payload: `ps5/build.sh` (Docker, two stages: stage 1 is the saved copy, stage 2 embeds it) ->
+  `target/ps5/maxpack.elf`. A link error like `undefined symbol: X@FBSD_1.0` means the PS5 libc lacks that
+  versioned symbol: add an adapter in `ps5/compat.c` (see `statfs`, `getmntinfo`).
+- The payload crate builds only for the PS5/FreeBSD target, so it has no `cargo test`. Pure logic goes in
+  `crates/maxpack-logic` (`cargo test -p maxpack-logic`, any host), tests first. Logic that cannot move there is
+  checked by copying its pure functions into a scratch file, compiled with `rustc` on the host and asserted on a fake
+  directory (done for the cache rebuild logic).
+- UI script: CI extracts the `<script>` of `src/ui.html` and runs `node --check` on it.
+- `tools/check_identity.sh` (CI) fails if the old name or paths come back.
+- The page by eye, without a console: `node tools/mock_ui.js` (fixed data; switches at the top of the file).
+
+## Rules for changes
+- Naming: "MaxPack" in anything the user sees (UI, toasts, tile); `maxpack` for identifiers and paths. The MaxPack
+  paths on the PS5 are fixed (`/data/maxpack/...`, `/user/data/maxpack/...`, tile `MXPK00001`, port 8095, ELF
+  `maxpack.elf`): never rename them. What keeps the old name is the ampr-emu-ng contract (`kraken.image`,
+  `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`, the `ampr-emu-ng X.Y.Z` search) and the internal crate
+  `kraken-mount-pkg` (kept so merges from upstream stay easy).
+- Version: MaxPack's own, in `Cargo.toml` (0.1.x stage 1, mount; 0.2.x stage 2, play from the `.p5z`). The
+  upstream project's numbers (0.3.1 is the base) are never taken when merging from it.
+- This file is the contract. Change it together with the code, and keep the module interface names.
+- Mount safety: never `MNT_FORCE` from register or purge; a busy mount means a running game. The scan loop must not
+  build, register or purge while a game runs (`running`, from the launch watcher).
+- `/app0` is writable. Game-written files in a cache survive Rebuild (`.built`); only Purge deletes them.
+- Old-layout caches (`/data/maxpack/<TID>`) are deleted by hand: there is no cleanup code for them.
+- Pkg-specific behaviour in ampr-emu-ng goes behind `pkg_mode()`; zstd and LZ4 behaviour stays unchanged. A pkg
+  performance change needs an A/B launch of at least two pkg games, with the numbers.
+- Licenses: a dependency added or bumped in `Cargo.lock` gets its license text in `THIRD_PARTY_NOTICES`.
+- Style: the smallest correct diff, no new dependencies, a `ponytail:` comment on each deliberate shortcut and its
+  limits, errors logged with the title id and the path.
+- UI: plain JS and CSS in one file that works in the PS5 browser (old WebKit, D-pad, 1920x1080) and on phones, with
+  no external requests.
