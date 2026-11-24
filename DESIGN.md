@@ -402,9 +402,11 @@ When an app crashes, the console writes `/user/devlog/system/sce_coredumps.0/<TI
 its own: the launch watcher's NOTE_EXIT for a game it mounted (an exit-spawned ELF included) logs the exit status
 from the event's data (a wait(2) status) on the `exit pid=...` line (`exited with N`, `killed by signal N`), then,
 once the sandbox's nullfs mounts are gone (they must go first, see Launch), reads that folder once for `<TID>_*`
-folders holding a dump with that pid. A launch it did not overlay (another mounter ran it, or its `fakelib/` is
-empty: `overlay_off`) gets the exit line only: no crash is recorded for it, since the page would blame our dump, ng or
-PlayGo stub. If no dump is there yet, it looks once more when that session's cleanup ends (0.4 to 3 s later, or when a
+folders holding a dump with that pid. Only for a launch with our overlay on its `common/lib` at exit (the session's
+`layers`, which only the cleanup's unmount takes, after this; an adopted session or an exit-spawned ELF in the same
+sandbox has them too): a launch another mounter ran (even a unionfs of its own there), one with an empty `fakelib/`
+(`overlay_off`), or one whose overlay failed to mount gets the exit line only, since the page would blame our dump, ng
+or PlayGo stub. If no dump is there yet, it looks once more when that session's cleanup ends (0.4 to 3 s later, or when a
 stale session is replaced, after its unmount), and logs
 `pid=... killed by signal N; no crash dump in ...` when a killed game left none. A match logs `<TID>: crashed
 (<process>, <status>), dump found at exit|<ms> ms after exit; the console's crash dump: <folder path>` and is kept as

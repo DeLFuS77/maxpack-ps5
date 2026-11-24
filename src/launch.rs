@@ -948,8 +948,10 @@ impl Watcher {
                 }
             };
             // A crash is ours to record only for a launch we overlaid (DESIGN "Crash report": a game it
-            // mounted): not one another mounter ran, nor one with an empty fakelib (overlay_off).
-            if !s.srcs.is_empty() && !crate::crash::check(&s.tid, pid, &status, "at exit") {
+            // mounted): our unionfs is still on its common/lib (`layers`: only unmount_pass, after this,
+            // takes them; an adopted session or an exit-spawned ELF has them too). Not a launch another
+            // mounter ran, one with an empty fakelib (overlay_off), or one whose overlay failed.
+            if !s.layers.is_empty() && !crate::crash::check(&s.tid, pid, &status, "at exit") {
                 s.exits.push((pid, status.clone(), now));
             }
             s.grace = (wait > 0).then_some(now + wait);
