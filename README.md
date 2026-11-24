@@ -1,120 +1,159 @@
 <p align="center"><img src="ps5/icon0.png" width="128" alt="MaxPack"></p>
 
-# MaxPack para la consola
+# MaxPack for the console
 
-MaxPack es la herramienta de juegos de PS5 de DeLFuS77, en su versión para la consola: un payload
-(ELF) en Rust que busca juegos en el SSD interno, en la unidad M.2 y en unidades USB, los registra en
-la pantalla de inicio y los monta al lanzarlos, y que además los instala. Está basado en
-[Kraken Mount](https://github.com/quer3q/kraken-mount), de quer3q, y conserva su historial y su licencia.
+MaxPack is a PS5 game tool by DeLFuS77. This repository is its console part: a payload (an ELF
+written in Rust) for a PS5 with a jailbreak that finds games on the internal SSD, the M.2 drive and
+USB drives, registers them on the home screen and mounts them when they start, and also installs
+them. It is based on [Kraken Mount](https://github.com/quer3q/kraken-mount) by quer3q, and keeps its
+history and its licence.
 
-**Formatos admitidos**: FPKG de depuración (`.pkg`), carpetas de juego (sin comprimir, o empaquetadas
-con zstd o LZ4) y `.p5z` de MaxPack, que se juegan tal cual, sin instalarlos; el instalador también instala
-`.p5z` e imágenes de ShadowMountPlus.
+- **On the PC**: [MaxPack](https://github.com/DeLFuS77/maxpack) packs a game into a `.p5z` or a zstd
+  folder, and has the full user guide (in Spanish).
+- **ampr-emu-ng**: MaxPack bundles its own build,
+  [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (quer3q's ampr-emu-ng plus the
+  mode that reads a game from inside its `.p5z`).
 
-## Estado
+**Supported formats**: debug FPKG (`.pkg`), game folders (unpacked, or packed with zstd or LZ4) and
+MaxPack `.p5z` files, which are played as they are, without installing them. The installer also
+installs `.p5z` files and ShadowMountPlus images.
 
-**Sin probar en consola.** Nada de esto se ha ejecutado todavía en una PS5: el payload se compila en
-GitHub Actions y la lógica que no necesita la consola se prueba en el PC. Lo que hay que comprobar en
-la consola está en [`docs/pruebas-consola.md`](docs/pruebas-consola.md). Lo que ya se ha probado,
-juego a juego, está en la [lista de compatibilidad](docs/compatibilidad.md) (`docs/compatibilidad.md`).
+MaxPack ships no games and touches no keys, encryption or DRM: it is meant for dumps of your own
+games. It is not affiliated with or endorsed by Sony.
 
-Lo que hace Kraken Mount 0.3.1, su base, lo hace igual: buscar juegos en las raíces de siempre, la
-caché de cada juego, el registro en la pantalla de inicio y el montaje al lanzar, ampr-emu-ng, los
-emuladores de DLC y PlayGo, los backports, los juegos movidos, quitar los que desaparecen, expulsar
-un USB, los avisos y los ajustes. De lo que Kraken Mount añadió después trae: los juegos que lanzan
-un `*.elf` al salir, la página que vuelve sola tras el modo reposo, el icono en FW 12+, el botón
-Jugar, los cierres inesperados con su informe, el buscador, el filtro por unidad y «Recrear caché»
-apagado hasta que termina. De su 0.3.2: las fuentes de la consola dentro del juego, las «Rutas
-excluidas» (en Ajustes: el escaneo nunca las abre) y, en la ficha de un juego en carpeta sin
-empaquetar, «Librerías de MaxPack al lanzar», que se puede apagar para un juego que deba ir tal cual
-(un `.pkg`, un `.p5z` o una carpeta zstd o LZ4 no pueden ir sin ellas).
+## Download and start
 
-Lo que añade MaxPack:
-- **El instalador** (pestaña Instalar), el de la fase 2 de MaxPack con su motor en C dentro del
-  payload: instala `.p5z`, carpetas e imágenes, con espacio, reanudar, verificar, reemplazar con
-  confirmación y desinstalar. No desinstala ni reemplaza con un juego abierto, y al desinstalar un
-  juego que monta MaxPack lo quita también de la pantalla de inicio.
-- **El modo «solo instalador»**: mientras corren ShadowMountPlus o Kraken Mount, MaxPack no monta
-  nada, pero la página y el instalador siguen (lo instalado se registra en ShadowMountPlus, como en la
-  fase 2). Al cerrarse el otro, MaxPack vuelve a montar.
-- **La adopción**: los juegos que registraron ShadowMountPlus o Kraken Mount se adoptan sin
-  duplicarlos, y la primera vez se importan las rutas que se añadieron a mano en ellos. MaxPack no
-  escribe nada en `/data/krakenmount` ni en `/data/shadowmount`, así que se puede volver a ellos.
-- **Jugar desde el `.p5z`**: un `.p5z` en una raíz de escaneo (o una carpeta más abajo) sale como un
-  juego más, sin instalarlo. En el SSD interno solo se extraen sus archivos sueltos
-  (`/data/maxpack/caches/<TID>`); los volúmenes se leen del propio `.p5z`, que se monta en solo lectura
-  en `/app0/p5z` al lanzar, así que el archivo tiene que seguir donde está. Hace falta espacio para los
-  sueltos más 256 MiB: si no cabe, el aviso dice cuánto falta y el juego se monta solo al liberarlo. Un
-  `.p5z` dañado o con más de 256 volúmenes no es un juego: sale en «Archivos .p5z que no se pueden
-  jugar». Para eso, el motor tiene que decir «dañado» dos pasadas seguidas sobre el mismo archivo: un
-  fallo de lectura de un momento (un USB que se reinicia) solo se reintenta, también al construir su
-  caché. Si el mismo juego está también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como
-  duplicado. El nombre del archivo
-  puede llevar tildes, ™, ’ o japonés, como los que pone MaxPack en el PC; solo no valen los caracteres
-  de control. Siempre va con nuestra ampr-emu-ng, la única que conoce este modo.
-- **La caché y el reloj**: cada caché apunta el tamaño y la fecha de los archivos de los que sale
-  (el `.pkg`, el `.p5z`, el backport, los de la carpeta) y se rehace solo si alguno cambia. No los
-  compara con el reloj de la consola, que en una consola sin conexión suele ir años atrasado.
-- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.1-maxpack.1`: la v0.5.1 de quer3q con el modo `.p5z`), de
-  [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
-  actualización automática está apagada hasta que se publique.
-- **La biblioteca de la página**: «Jugar» arranca un juego listo desde la ficha (también desde el
-  móvil), «Copiar informe» da un texto para una incidencia con el firmware, el último cierre
-  inesperado y la fila para la [lista de compatibilidad](docs/compatibilidad.md), y un juego se puede
-  ocultar de la biblioteca (sigue montado y en la pantalla de inicio; «Mostrar ocultos» lo enseña).
-  Antes de instalar, cada unidad dice si el juego cabe, y si no cabe no empieza la copia.
-- **Protecciones**: nunca registra ni monta un título que esté instalado en la consola, nunca explora
-  carpetas del sistema ni de datos, y el puerto 8095 solo atiende a la página abierta con la IP de la
-  consola (o `localhost`), no a otras webs.
+1. Download `maxpack.elf` and `SHA256SUMS` from
+   [Releases](https://github.com/DeLFuS77/maxpack-ps5/releases) and check the file
+   (`sha256sum -c SHA256SUMS`).
+2. With kstuff loaded, send it to the ELF loader (elfldr, port 9021), for example
+   `nc -w 3 <ps5-ip> 9021 < maxpack.elf`, or with your payload loader.
+3. MaxPack saves a copy of itself in `/data/maxpack/maxpack.elf` and adds a **MaxPack** tile to the
+   home screen, which opens its page (and starts that copy when it is not running). The page also
+   opens from a phone or a PC at `http://<ps5-ip>:8095`.
+4. Put games in `/data/homebrew` (or `homebrew/` on a USB drive), or add scan paths in Settings.
+   Each game shows up in the page and on the home screen once it is registered.
 
-> **El `maxpack.elf` de la fase 2.** Se llama igual y usa el mismo puerto, pero no sabe dejarle el
-> sitio a una copia nueva. Si sigue en alguna lista de carga automática, arranca antes que este, y
-> este se cierra con el aviso «puerto 8095 ocupado». Quítalo de esas listas y reinicia la consola
-> antes de probar este.
+If ShadowMountPlus or Kraken Mount is running, MaxPack only installs until it is closed (see below).
 
-## Identidad
+## Updates
 
-- Binario: `maxpack.elf`; copia propia en `/data/maxpack/maxpack.elf`.
-- Datos en `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, `crashes.json`, y los del
-  instalador (`state/`, `installed/`, `tmp/`).
-- Icono de la pantalla de inicio: `MXPK00001`. Interfaz web en el puerto **8095**.
-- Versión propia, la de `Cargo.toml` (de ahí la toman la página y `/api/state`): la 1.0.0 es la primera
-  publicada, con las dos etapas (montar y jugar desde el `.p5z`); las 0.1.x y 0.2.x fueron las de prueba.
-  No sigue la numeración de Kraken Mount, cuya 0.3.1 es la base.
-- La parte que habla con [ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) no cambia de nombre
-  (`kraken.image`, `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`), y el crate interno sigue
-  llamándose `kraken-mount-pkg` para facilitar las mezclas con el original.
+At start MaxPack looks at the latest release in this repository. When a newer one is out, the page
+shows "MaxPack <version> is available"; **Update** downloads its `maxpack.elf`, checks it against
+that release's `SHA256SUMS` (nothing is sent when it does not match) and sends it to elfldr, and the
+new copy takes over. Close the running game first. While the repository has no published release,
+nothing is offered.
 
-## Cómo compilar
+To keep it updated with [ps5-payload-manager](https://github.com/itsPLK/ps5-payload-manager), add
+`https://github.com/DeLFuS77/maxpack-ps5/releases/latest/download/payloads.json` as a custom
+repository. Each published release carries that catalog (the `.elf` and its SHA-256, which the
+manager checks on every download). The page's **Update** does not change the manager's copy: if
+the manager starts MaxPack at boot, update it there too.
+
+## Status
+
+Early versions. MaxPack has run on a PS5 (firmware 13.60); what has been tried, game by game, and
+with what result is in the [compatibility list](docs/compatibilidad.md). The full checklist for a
+console is [`docs/pruebas-consola.md`](docs/pruebas-consola.md) (in Spanish); not every item of it
+has been checked yet. Logic that needs no console is tested on the PC.
+
+What Kraken Mount 0.3.1, its base, does, MaxPack does the same way: finding games in the usual
+roots, a cache per game, registering on the home screen and mounting at launch, ampr-emu-ng, the
+DLC and PlayGo emulators, backports, moved games, removing the ones that are gone, ejecting a USB
+drive, the notifications and the settings. From what Kraken Mount added later it brings: games that
+start an `*.elf` on exit, the page coming back by itself after rest mode, the icon on FW 12+, the
+Play button, unexpected closes with their report, search, the drive filter and "Rebuild cache"
+disabled until it ends. From its 0.3.2: the console fonts inside the game, "Excluded paths" (in
+Settings: the scan never opens them), the self-update with `payloads.json`, and, in the sheet of an
+unpacked folder game, "MaxPack libraries at launch", which can be turned off for a game that must
+run as it is (a `.pkg`, a `.p5z` or a zstd or LZ4 folder cannot run without them).
+
+What MaxPack adds:
+- **The installer** (Install tab), MaxPack's phase-2 installer with its C engine inside the payload:
+  it installs `.p5z` files, folders and images, with a space check, resume, verify, replace with
+  confirmation, and uninstall. It does not uninstall or replace while a game is open, and
+  uninstalling a game MaxPack mounts also takes it off the home screen.
+- **"Installer only" mode**: while ShadowMountPlus or Kraken Mount runs, MaxPack mounts nothing, but
+  the page and the installer stay up (what it installs is registered in ShadowMountPlus, as in phase
+  2). When the other one closes, MaxPack mounts again.
+- **Adoption**: games that ShadowMountPlus or Kraken Mount registered are adopted without
+  duplicates, and the first time the paths added by hand in them are imported. MaxPack writes
+  nothing in `/data/krakenmount` or `/data/shadowmount`, so you can go back to them.
+- **Playing from the `.p5z`**: a `.p5z` in a scan root (or one folder below) shows up as one more
+  game, without installing it. Only its loose files are extracted to the internal SSD
+  (`/data/maxpack/caches/<TID>`); the volumes are read from the `.p5z` itself, which is mounted
+  read-only at `/app0/p5z` at launch, so the file has to stay where it is. It needs space for the
+  loose files plus 256 MiB: if they do not fit, the notification says how much is missing, and the
+  game mounts by itself once that is freed. A damaged `.p5z`, or one with more than 256 volumes, is
+  not a game: it is listed under ".p5z files that cannot be played". The engine has to say "damaged"
+  on two passes in a row over the same file for that: a short read failure (a USB drive that resets)
+  is only retried, also while building its cache. If the same game is also there as a folder or a
+  `.pkg`, that copy wins and the `.p5z` is listed as a duplicate. The file name may have accents, ™,
+  ’ or Japanese, as MaxPack on the PC writes them; only control characters are refused. It always
+  runs with our ampr-emu-ng, the only one that knows this mode.
+- **The cache and the clock**: each cache records the size and date of the files it comes from (the
+  `.pkg`, the `.p5z`, the backport, the folder's files) and is rebuilt only when one of them changes.
+  They are not compared with the console's clock, which on an offline console is often years behind.
+- **Our ampr-emu-ng**: the bundled one is our own build (`v0.5.1-maxpack.1`: quer3q's v0.5.1 with
+  the `.p5z` mode), from [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng)
+  (`vendor/ampr-emu-ng/SOURCE`). Its automatic update is off until MaxPack is published.
+- **The library page**: "Play" starts a ready game from its sheet (from a phone too), "Copy report"
+  gives a text for an issue with the firmware, the last unexpected close and the row for the
+  [compatibility list](docs/compatibilidad.md), and a game can be hidden from the library (it stays
+  mounted and on the home screen; "Show hidden" shows it). Before installing, each drive says
+  whether the game fits, and when it does not, the copy does not start.
+- **Protections**: it never registers or mounts a title installed on the console, never scans
+  system or data folders, and port 8095 answers only the page opened at the console's IP (or
+  `localhost`), not other websites.
+
+> **The phase-2 `maxpack.elf`.** It has the same name and port, but it cannot hand the port over to
+> a new copy. If it is still in an autoload list it starts first, and this one closes with the
+> notification "port 8095 busy". Remove it from those lists and restart the console first.
+
+## Identity
+
+- Binary: `maxpack.elf`; its own copy in `/data/maxpack/maxpack.elf`.
+- Data in `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, `crashes.json`,
+  and the installer's (`state/`, `installed/`, `tmp/`).
+- Home-screen tile: `MXPK00001`. Web page on port **8095**.
+- Its own version, the one in `Cargo.toml` (the page and `/api/state` take it from there): 1.0.0 is
+  the first published one, with both stages (mounting, and playing from the `.p5z`); 0.1.x and 0.2.x
+  were the test builds. It does not follow Kraken Mount's numbering, whose 0.3.1 is the base.
+- The part that talks to [ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) keeps its names
+  (`kraken.image`, `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`), and the internal crate is
+  still called `kraken-mount-pkg`, to keep merges from the original easy.
+
+## Building
 
 ```
 ps5/build.sh
 ```
 
-Necesita Docker. Compila en dos etapas (la primera es la copia que arranca el icono, la segunda la
-incluye) y deja `target/ps5/maxpack.elf`. La imagen de Docker es `maxpack-ps5` y usa el SDK de PS5
-v0.45. Las comprobaciones rápidas en el PC, sin Docker:
-`cargo check --workspace --locked --target x86_64-unknown-freebsd` y
-`cargo test -p maxpack-logic`. En CI, el trabajo `check` también ejecuta `tools/check_identity.sh`,
-que falla si reaparece el nombre o una ruta antiguos.
+It needs Docker. It builds in two stages (the first is the copy the tile starts, the second embeds
+it) and leaves `target/ps5/maxpack.elf`. The Docker image is `maxpack-ps5` and uses the PS5 payload
+SDK v0.45. Quick checks on the PC, without Docker:
+`cargo check --workspace --locked --target x86_64-unknown-freebsd` and
+`cargo test -p maxpack-logic`. In CI the `check` job also runs `tools/check_identity.sh`, which
+fails if an old name or path comes back. How it is built, the rules for a change and the contract
+between modules are in [DESIGN.md](DESIGN.md).
 
-Para enviarlo a una PS5 con el cargador de ELF (elfldr, puerto 9021):
-`nc -w 3 <ip-de-la-ps5> 9021 < maxpack.elf`. kstuff debe estar cargado. Si ShadowMount+ o Kraken
-Mount están en marcha, MaxPack solo instala hasta que se cierren.
+## Credits
 
-## Créditos
+- [quer3q/kraken-mount](https://github.com/quer3q/kraken-mount): Kraken Mount, the base of this
+  project.
+- [quer3q/ampr-emu-ng](https://github.com/quer3q/ampr-emu-ng), by the same author: MaxPack bundles
+  its own build of it, [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng).
+- [quer3q/ps5-dump-forge](https://github.com/quer3q/ps5-dump-forge): the Kraken decoder of
+  `crates/kraken-mount-pkg` is ported from it.
+- [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus): the ideas and code behind
+  the home-screen registration, the `fakelib` overlay and the backports are ported from it.
+- [drakmor/dlc_emu](https://github.com/drakmor/dlc_emu): the bundled DLC emulator.
+- [drakmor/pgo_stub](https://github.com/drakmor/pgo_stub): the bundled PlayGo stub.
+- [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk): the PS5 toolchain and libraries.
+- [zstd](https://github.com/facebook/zstd) and [zlib](https://zlib.net), in the installer's engine,
+  and [SQLite](https://www.sqlite.org).
 
-- [quer3q/kraken-mount](https://github.com/quer3q/kraken-mount): Kraken Mount, la base de este
-  proyecto, y [ampr-emu-ng](https://github.com/quer3q/ampr-emu-ng), del mismo autor, de la que
-  MaxPack incluye una compilación propia.
-- [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus): el registro en la pantalla de
-  inicio, la superposición de `fakelib` y los backports están portados de ahí.
-- [drakmor/dlc_emu](https://github.com/drakmor/dlc_emu): el emulador de DLC incluido.
-- [drakmor/pgo_stub](https://github.com/drakmor/pgo_stub): el stub de PlayGo incluido.
-- [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk): la cadena de herramientas de PS5.
-- [zstd](https://github.com/facebook/zstd) y [zlib](https://zlib.net), en el motor del instalador, y
-  [SQLite](https://www.sqlite.org).
+## Licence
 
-## Licencia
-
-GPL-3.0-or-later (`LICENSE`), sin garantía. Los avisos de terceros están en `THIRD_PARTY_NOTICES`.
+GPL-3.0-or-later (`LICENSE`), with no warranty. The third-party notices are in
+`THIRD_PARTY_NOTICES`.

@@ -245,7 +245,8 @@ is ignored as a whole). The web UI edits the same file.
 Start: `umask(0)` first, so every dir/file the payload creates is 0777/0666 (as SMP, which mkdirs
 0777) whatever elfldr passes; then create dirs, load config, take port 8095 (asks an older copy to quit), install the bundled
 `libSceAmpr.sprx` when `ampr/libSceAmpr.sprx` is missing or matches `ampr.bundled` (an older bundled
-copy; a file put there by hand is kept; see Auto-update below), ampr chmod, web thread, klog thread when `debug`, then wait
+copy; a file put there by hand is kept; see Auto-update below), ampr chmod, the self copy and the self-update look
+(Self-update below) on their own threads, web thread, klog thread when `debug`, then wait
 (2 s poll, one toast, `waiting` in `/api/state` for the UI banner) until kstuff answers its KEKCALL_CHECK probe (`sys::kstuff_loaded`,
 SMP `sm_kstuff_is_loaded`), then the mounter thread and the launch watcher thread.
 The installer (`src/installer.rs`) starts on its own thread right after the port is taken, whatever the
@@ -553,7 +554,7 @@ minute):
   `GET /maxpack.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
   the rest `no-store`.
 - `GET /api/state`:
-  `{version, busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
+  `{version, update:{version, size}|null (a newer release found at start, see Self-update), busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
   shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off),
@@ -635,7 +636,14 @@ minute):
   `/user/appmeta/<TID>/`, then (pkg) from the .pkg itself via `cache::pkg_file`; 404 when none. Keyed by title id; the UI must re-request when the title id appears.
 - `GET /file/data/...` only with `debug=1`. `POST /api/quit`: loopback with an empty body (a newer copy
   taking over) or body `shutdown` from any host (the UI's Shut down, toast "MaxPack stopped"); 409 while a game runs.
+  A newer copy's quit is also 409 while a scan pass runs (try-lock of `State::work`, then held until the exit so no
+  pass starts): quitting mid-build would leave a cache without `.built`, which the next start empties.
+  `web::take_port` asks again on each of its 20 tries (5 s).
   Before exiting, the installer is stopped in order (`installer::stop`); the same when another copy took the port.
+- `POST /api/self_update`, body `{"version":"<tag>"}` -> see Self-update: 200 `{}` once the checked ELF went to
+  elfldr, else `{code, detail}` (`maxpack_logic::update::Fail`): 400 `not_offered`, 409 `game_running`,
+  `update_running`, `scan_running` or `install_running`, 503 `no_elfldr`, 502 `download`, `checksum` or `send`;
+  400 text for a body without a string `version`. Behind the same Host and Origin checks as every POST.
 - `/api/inst/<x>`: the installer's own API as `/api/<x>` (`maxpack_logic::inst::installer_path`): GET `state`,
   `icon?p5z=`; POST `scan`, `probe`, `install`, `pause`, `verify`, `uninstall`, `discard` (JSON bodies, see the
   engine's `src/web/mp_api.h`); anything else 404. Method, Host, Content-Type and body go as sent, `loopback`
@@ -652,12 +660,41 @@ minute):
   title id installed on the console, and after a running game exits; anything else is logged and left to
   auto-remove.
   Never gated on the mounter state: that is the "installer only" mode.
-- Not ported from the upstream project's 0.3.2: its ShadowMountPlus-shaped `POST /api/v1/*` routes (for Playden),
-  its self-update (`POST /api/self_update`, `update` in `/api/state`) and the release's `payloads.json`. The routes
-  would pass the checks above (Playden is a native app on the console: libcurl to `127.0.0.1`, no Origin), but Playden
-  calls ShadowMountPlus only, at `127.0.0.1:10101`, and the upstream project serves them on its own port, which
-  MaxPack never takes; on 8095 nothing would call them. Self-update and `payloads.json` wait until MaxPack's
-  repositories are public.
+- Not ported from the upstream project's 0.3.2: its ShadowMountPlus-shaped `POST /api/v1/*` routes (for Playden).
+  They would pass the checks above (Playden is a native app on the console: libcurl to `127.0.0.1`, no Origin), but
+  Playden calls ShadowMountPlus only, at `127.0.0.1:10101`, and the upstream project serves them on its own port,
+  which MaxPack never takes; on 8095 nothing would call them. Its self-update and the release's `payloads.json` are
+  ported (Self-update, below), with a checksum check the upstream project does not make.
+
+## Self-update (`src/update.rs`, `maxpack_logic::update`)
+- At start (`update::spawn_check`, its own thread) MaxPack asks GitHub for the latest published release of
+  DeLFuS77/maxpack-ps5 (`https://api.github.com/repos/DeLFuS77/maxpack-ps5/releases/latest`, no token, through
+  `net::https_get`). A 404 means none is published, or the repository is private: one log line
+  (`update: no published release ...`), nothing offered, no retry. No answer, or a 5xx, is tried again 20 s later,
+  3 tries in all; any other status (a 403 rate limit) is logged once. Only one log line says how the look ended.
+- A release is offered (`maxpack_logic::update::latest`) when its tag is `vX.Y.Z` (no pre-release suffix), newer
+  than `Cargo.toml`'s version by numbers, not a draft or a pre-release, and it has exactly one `maxpack.elf` and one
+  `SHA256SUMS` asset, each at `https://github.com/DeLFuS77/maxpack-ps5/releases/download/<tag>/<name>` and within the
+  read limits (32 MiB, 64 KiB). Anything else is logged and not offered. The offer is `update` in `/api/state`.
+- `POST /api/self_update` (`update::install`): refused when the version is not the offer, while a game runs, while
+  another update runs or one was sent less than 90 s ago, while a scan pass holds `State::work`, or while the
+  installer runs a job (`installer::idle`: quitting would pause it). Otherwise it probes elfldr
+  (`127.0.0.1:9021`), downloads `SHA256SUMS` and `maxpack.elf` (one try each), and sends the ELF to elfldr only
+  when its size is the asset's, it starts with the ELF (or SELF) magic and its SHA-256
+  (`maxpack_logic::sha256`, FIPS 180-4, tested on the host) is the one `SHA256SUMS` lists for `maxpack.elf`
+  (`update::verify`). A game started during the download refuses the send. Every outcome is logged.
+- While an update runs, and for 90 s after its ELF was sent (`HOLD_MS`), the scan loop starts no pass
+  (`update::holding`), so the new copy finds none to wait for. The new copy takes the port as any newer copy
+  (`web::take_port`, above) and saves its own self copy; the hold runs out by itself if it never starts.
+- The page shows the offer above the library ("MaxPack <version> is available", Update and Later; Later hides it
+  until the page reloads). While it runs the notice says the ELF is downloaded and checked; the saved copy is not
+  started from the console's browser meanwhile; once `/api/state` answers with another version the page reloads,
+  and after 2 minutes without that it says the new version did not start. Each error code has its own text.
+- Releases carry `payloads.json` for ps5-payload-manager (`ps5/make-payloads-json.sh`, run by the release job and
+  tried by the payload job on every push): one payload, `maxpack.elf` of that release with its SHA-256. The address
+  to add to the manager is `https://github.com/DeLFuS77/maxpack-ps5/releases/latest/download/payloads.json`. The
+  release job refuses a tag that is not `v` plus `Cargo.toml`'s version, so the tag the page compares is the
+  version the ELF reports.
 
 ## Self copy and start on open (as Dump Forge)
 `ps5/build.sh` builds twice: stage 1, then stage 2 (`--features self-copy`, env `MAXPACK_SELF_ELF`) embedding
@@ -697,7 +734,8 @@ back to English). While `waiting` is `other:<process>` the banner says MaxPack o
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
-rebuild, a plain folder game with its overlay off, the Excluded paths, and an install that does not fit on the internal SSD).
+rebuild, a plain folder game with its overlay off, the Excluded paths, an install that does not fit on the internal SSD,
+and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says).
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -739,12 +777,13 @@ New texts are in English and Spanish; the other languages show the English ones.
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
 | `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl (ampr-emu-ng updater, self-update) |
+| `src/update.rs` | self-update: the latest release looked at once per start, `POST /api/self_update` |
 | `src/i18n.rs` | toast texts in the console language (the UI's 11 languages) |
 | `crates/maxpack-logic` | pure logic tested on the host (`cargo test -p maxpack-logic`) |
 | `crates/kraken-mount-pkg` | FPKG reader and its Kraken decoder (`decoder` module) |
 | `vendor/maxpack` | copy of the MaxPack engine sources (with zstd and zlib) the payload links |
 | `vendor/ampr-emu-ng`, `vendor/dlc_emu`, `vendor/pgo_stub` | the bundled sprx files, each with `VERSION` and `SHA256SUMS` |
-| `ps5/` | Docker build, linker, C shims (`compat.c` holds PS5 libc adapters, `appdb.c` writes app.db through the SQLite amalgamation the Dockerfile fetches) |
+| `ps5/` | Docker build, linker, C shims (`compat.c` holds PS5 libc adapters, `appdb.c` writes app.db through the SQLite amalgamation the Dockerfile fetches), `make-payloads-json.sh` (the release's catalog for ps5-payload-manager) |
 | `tools/` | `check_identity.sh` (CI), `sync_maxpack.sh`, `mock_ui.js` (the page without a console) |
 
 ## Vendored components
