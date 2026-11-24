@@ -8,16 +8,20 @@
 
 /// Why the overlay of this source cannot be turned off; None when it can (a plain folder).
 pub fn needed(kind: &str, packing: Option<&str>) -> Option<&'static str> {
-    let _ = (kind, packing);
-    None
+    match (kind, packing) {
+        ("folder", Some("plain")) => None,
+        ("pkg", _) => Some("a pkg game is read through ampr-emu-ng's pkg mode, which comes in MaxPack's overlay"),
+        ("p5z", _) => Some("a .p5z game is played only through our ampr-emu-ng's p5z mode, which comes in MaxPack's overlay"),
+        ("folder", Some("zstd" | "lz4")) => Some("a packed folder game's packs are read only through ampr-emu-ng, which comes in MaxPack's overlay"),
+        _ => Some("not a plain folder game"),
+    }
 }
 
 /// Whether the title's cache gets an empty `fakelib/`: `listed` in `overlay_off` and its source can
 /// do without the overlay. A listed title whose source needs it (its folder was packed since, or the
 /// library copy is now a pkg or a .p5z) keeps its fakelib.
 pub fn off(kind: &str, packing: Option<&str>, listed: bool) -> bool {
-    let _ = (kind, packing, listed);
-    false
+    listed && needed(kind, packing).is_none()
 }
 
 #[cfg(test)]

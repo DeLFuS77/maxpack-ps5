@@ -5,14 +5,36 @@
 /// `register::is_registered` searches it; no SELECT, so a deleted row still in a free page counts).
 /// One pass over `db` for all of them.
 pub fn in_app_db(db: &[u8], tids: &[&str]) -> Vec<bool> {
-    let _ = (db, tids);
-    Vec::new()
+    let mut found = vec![false; tids.len()];
+    // By length: every title id is 9 bytes, so this is one pass in practice.
+    let mut lens: Vec<usize> = tids.iter().map(|t| t.len()).filter(|&n| n > 0).collect();
+    lens.sort_unstable();
+    lens.dedup();
+    for n in lens {
+        let wanted: std::collections::HashSet<&[u8]> = tids.iter().filter(|t| t.len() == n).map(|t| t.as_bytes()).collect();
+        // Most windows of app.db start with a byte no wanted title starts with: skipped unhashed.
+        let mut first = [false; 256];
+        for t in &wanted {
+            first[t[0] as usize] = true;
+        }
+        let mut seen = std::collections::HashSet::new();
+        for w in db.windows(n) {
+            if first[w[0] as usize] && wanted.contains(w) {
+                seen.insert(w);
+            }
+        }
+        for (i, t) in tids.iter().enumerate() {
+            if t.len() == n && seen.contains(t.as_bytes()) {
+                found[i] = true;
+            }
+        }
+    }
+    found
 }
 
 /// The mount point of a title's `app0` stack, which `mounted` looks for in the mount table.
 pub fn title_mount(tid: &str) -> String {
-    let _ = tid;
-    String::new()
+    format!("/system_ex/app/{tid}")
 }
 
 #[cfg(test)]

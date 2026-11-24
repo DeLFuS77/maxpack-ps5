@@ -5,16 +5,33 @@
 /// or a tab does not survive the file's string syntax), `//`, `.` and `..` resolved as text, no
 /// trailing `/` (`/` itself stays `/`). None when it cannot be one.
 pub fn entry(path: &str) -> Option<String> {
-    let _ = path;
-    None
+    if !path.starts_with('/') || path.chars().any(char::is_control) {
+        return None;
+    }
+    Some(format!("/{}", parts(path).join("/")))
 }
 
 /// `path` is an `exclude` entry or lies under one, by whole components (`/data/homebrew/A` does not
 /// cover `/data/homebrew/AB`); both are resolved as text first, so a hand-written entry with a
 /// trailing `/` or a `.` still matches.
 pub fn excluded(path: &str, exclude: &[String]) -> bool {
-    let _ = (path, exclude);
-    false
+    let p = parts(path);
+    exclude.iter().filter(|e| e.starts_with('/')).any(|e| p.starts_with(&parts(e)))
+}
+
+/// The components of `path` with `//`, `.` and `..` resolved as text (as `roots`).
+fn parts(path: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for c in path.split('/') {
+        match c {
+            "" | "." => {}
+            ".." => {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
