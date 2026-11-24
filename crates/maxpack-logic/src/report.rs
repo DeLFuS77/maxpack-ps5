@@ -26,6 +26,8 @@ pub struct Report<'a> {
     pub error: Option<&'a str>,
     /// Hidden in the page's library (`hidden`).
     pub hidden: bool,
+    /// No MaxPack overlay at launch (`overlay_off`, a plain folder game): no fakelib, ampr-emu-ng or sandbox mounts.
+    pub overlay_off: bool,
     pub backport: Option<&'a str>,
     /// /api/ampr kind and version ("bundled v0.5.0-maxpack.3").
     pub ampr: &'a str,
@@ -134,7 +136,7 @@ mod tests {
             version: "0.2.0", firmware: Some("13.60"), waiting: None,
             title_id: "PPSA12544", title_name: "Hollow Knight: Silksong", game_version: "01.000.010",
             path: "/data/homebrew/Hollow Knight Silksong", kind: "folder", packing: Some("zstd"), drive: "/data",
-            status: "ready", error: None, hidden: false, backport: None,
+            status: "ready", error: None, hidden: false, overlay_off: false, backport: None,
             ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
         }
     }
@@ -224,6 +226,17 @@ maxpack.log, last 40 lines with PPSA12544:\n\
         let t = text(&Report { waiting: Some("kstuff"), ..silksong("", None) });
         assert!(t.contains("Mounting: waiting for kstuff (MaxPack mounts nothing yet)\n"), "{t}");
         assert!(!t.contains("Hidden"), "{t}");
+        assert!(!t.contains("overlay"), "{t}");
+    }
+
+    #[test]
+    fn a_game_without_the_overlay_says_so() {
+        let r = Report { kind: "folder", packing: Some("plain"), overlay_off: true, ..silksong("", None) };
+        let t = text(&r);
+        let line = "MaxPack overlay: off (overlay_off: the game runs as registered, without MaxPack's fakelib, ampr-emu-ng, emulators or sandbox mounts)\n";
+        assert!(t.contains(line), "{t}");
+        // Right after the status, before the libraries it does not get.
+        assert!(t.find(line).unwrap() < t.find("ampr-emu-ng: bundled").unwrap(), "{t}");
     }
 
     #[test]

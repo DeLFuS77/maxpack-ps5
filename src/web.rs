@@ -928,7 +928,7 @@ fn report(state: &State, tid: &str) -> Reply {
     let text = maxpack_logic::report::text(&maxpack_logic::report::Report {
         version: env!("CARGO_PKG_VERSION"), firmware: firmware.as_deref(), waiting: waiting.as_deref(),
         title_id: tid, title_name: &g.src.title_name, game_version: &g.src.version, path: &path, kind, packing,
-        drive: &g.src.drive, status: g.status, error: g.error.as_deref(), hidden: s.hidden.iter().any(|t| t == tid),
+        drive: &g.src.drive, status: g.status, error: g.error.as_deref(), hidden: s.hidden.iter().any(|t| t == tid), overlay_off: crate::cache::overlay_off(&g.src, &s),
         backport: backport.as_deref(), ampr: &ampr, playgo, crash: crash.as_ref(), log: &log,
     });
     reply(200, "text/plain; charset=utf-8", text)
