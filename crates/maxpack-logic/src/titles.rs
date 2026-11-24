@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn title_ids() {
-        for ok in ["PPSA01234", "CUSA00001", "PPSA12544"] {
+        for ok in ["PPSA01234", "CUSA00001", "PPSA10001"] {
             assert!(valid_tid(ok), "{ok}");
         }
         for bad in ["", "PPSA0123", "PPSA012345", "ppsa01234", "PPS101234", "PPSA0123A", "NPXS20001", "PPSA 1234", "ＰPSA01234"] {

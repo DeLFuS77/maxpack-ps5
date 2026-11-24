@@ -439,7 +439,7 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 }
 
 /* ---------- Live state and actions ---------- */
-button:disabled { opacity: 0.5; cursor: default; }
+button:disabled, .m-row input:disabled, .m-row select:disabled { opacity: 0.5; cursor: default; }
 /* A screen comes in from slightly below when its tab opens. */
 @keyframes view-in { from { opacity: 0; -webkit-transform: translateY(0.75rem); transform: translateY(0.75rem); } }
 main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animation: view-in 0.35s ease-out; }
@@ -828,10 +828,13 @@ button.inst-item[aria-checked="true"] {
     <div class="panel">
       <dl class="fields" id="m-fields"></dl>
       <label class="row m-row" id="m-playgo-row" hidden><span><span class="lbl" data-i18n="playgoStub">PlayGo stub</span>
-        <span class="hint" data-i18n="playgoHint">Turn off if the game stays on a black screen; turn on if it asks to finish the download.</span></span>
+        <span class="hint" data-i18n="playgoHint">Turn off if the game stays on a black screen; turn on if it asks to finish the download.</span>
+        <span class="hint" id="m-playgo-fl" data-i18n="playgoFakelibOff" hidden>No effect while Fakelib is Off.</span></span>
         <input type="checkbox" id="m-playgo"></label>
       <label class="row m-row" id="m-fakelib-row" hidden><span><span class="lbl" data-i18n="fakelibLbl">Fakelib</span>
-        <span class="hint" data-i18n="fakelibHint">If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".</span></span>
+        <span class="hint" data-i18n="fakelibHint">If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".</span>
+        <span class="hint" id="m-fakelib-plain" data-i18n="fakelibPlainOff" hidden>For an unpacked folder game, Off mounts nothing at launch: no /data, USB, fonts or writable /app0 in its sandbox.</span>
+        <span class="hint" id="m-fakelib-ov" data-i18n="fakelibOverlayOff" hidden>No effect while "MaxPack libraries at launch" is off.</span></span>
         <select id="m-fakelib">
           <option value="full" data-i18n="fakelibFull">Full</option>
           <option value="emulators" data-i18n="fakelibEmulators">Emulators only</option>
@@ -957,6 +960,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".',
     fakelibFull: 'Full', fakelibEmulators: 'Emulators only', fakelibOff: 'Off',
+    playgoFakelibOff: 'No effect while Fakelib is Off.',
+    fakelibOverlayOff: 'No effect while "MaxPack libraries at launch" is off.',
+    fakelibPlainOff: 'For an unpacked folder game, Off mounts nothing at launch: no /data, USB, fonts or writable /app0 in its sandbox.',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
     sizesNone: 'Sizes unavailable', sizesLoading: 'Loading sizes...',
@@ -1218,6 +1224,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'Если игра показывает чёрный экран или зависает на проверке дополнений, попробуйте «Только эмуляторы», затем «Выкл.».',
     fakelibFull: 'Полностью', fakelibEmulators: 'Только эмуляторы', fakelibOff: 'Выкл.',
+    playgoFakelibOff: 'Не действует, пока Fakelib в режиме «Выкл.».',
+    fakelibOverlayOff: 'Не действует, пока «Библиотеки MaxPack при запуске» выключены.',
+    fakelibPlainOff: 'Для игры в распакованной папке «Выкл.» значит, что при запуске MaxPack ничего не монтирует: в песочнице нет /data, USB, шрифтов и записываемого /app0.',
     deleteP5z: "Файл .p5z и его кеш будут удалены с накопителя: {path}. Это нельзя отменить.",
     excludePaths: "Исключённые пути",
     excludePathsHint: "По одному в строке. Сканирование их не открывает: игра там не отображается и не регистрируется (уже добавленная на главный экран остаётся).",
@@ -1461,6 +1470,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: '如果游戏黑屏，或在检查附加内容时卡住，请先试“仅模拟器”，再试“关闭”。',
     fakelibFull: '完整', fakelibEmulators: '仅模拟器', fakelibOff: '关闭',
+    playgoFakelibOff: 'Fakelib 为“关闭”时无效。',
+    fakelibOverlayOff: '“启动时加载 MaxPack 库”关闭时无效。',
+    fakelibPlainOff: '对于未打包的文件夹游戏，“关闭”表示启动时 MaxPack 不挂载任何内容：沙盒中没有 /data、USB、字体，也没有可写的 /app0。',
     deleteP5z: "将从驱动器删除 .p5z 文件及其缓存：{path}。此操作无法撤销。",
     excludePaths: "排除的路径",
     excludePathsHint: "每行一个。扫描不会打开这些路径：其中的游戏不会被列出或注册（已在主屏幕上的会保留）。",
@@ -1704,6 +1716,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'Zeigt das Spiel einen schwarzen Bildschirm oder hängt es bei der Prüfung der Erweiterungen, versuche „Nur Emulatoren“, dann „Aus“.',
     fakelibFull: 'Vollständig', fakelibEmulators: 'Nur Emulatoren', fakelibOff: 'Aus',
+    playgoFakelibOff: 'Ohne Wirkung, solange Fakelib auf „Aus“ steht.',
+    fakelibOverlayOff: 'Ohne Wirkung, solange „MaxPack-Bibliotheken beim Start“ ausgeschaltet ist.',
+    fakelibPlainOff: 'Bei einem entpackten Ordnerspiel bindet „Aus“ beim Start nichts ein: kein /data, kein USB, keine Schriften und kein beschreibbares /app0 in seiner Sandbox.',
     deleteP5z: "Die .p5z-Datei und ihr Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.",
     excludePaths: "Ausgeschlossene Pfade",
     excludePathsHint: "Einer pro Zeile. Der Scan öffnet sie nie: Ein Spiel dort wird weder aufgelistet noch registriert (eines, das schon auf dem Startbildschirm ist, bleibt).",
@@ -1881,6 +1896,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'Si el juego se queda en pantalla negra o se atasca al comprobar el contenido adicional, prueba «Solo emuladores» y luego «Desactivado».',
     fakelibFull: 'Completo', fakelibEmulators: 'Solo emuladores', fakelibOff: 'Desactivado',
+    playgoFakelibOff: 'No tiene efecto mientras Fakelib está en «Desactivado».',
+    fakelibOverlayOff: 'No tiene efecto mientras «Librerías de MaxPack al lanzar» está apagado.',
+    fakelibPlainOff: 'En un juego en carpeta sin empaquetar, «Desactivado» hace que MaxPack no monte nada al lanzarlo: ni /data, ni USB, ni fuentes, ni /app0 escribible en su sandbox.',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
     sizesNone: 'Tamaños no disponibles', sizesLoading: 'Cargando tamaños...',
@@ -2135,6 +2153,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: "Si le jeu reste sur un écran noir ou se bloque pendant la vérification des contenus additionnels, essayez « Émulateurs seulement », puis « Désactivé ».",
     fakelibFull: 'Complet', fakelibEmulators: 'Émulateurs seulement', fakelibOff: 'Désactivé',
+    playgoFakelibOff: "Sans effet tant que Fakelib est sur « Désactivé ».",
+    fakelibOverlayOff: "Sans effet tant que « Bibliothèques MaxPack au lancement » est désactivé.",
+    fakelibPlainOff: "Pour un jeu en dossier non empaqueté, « Désactivé » signifie que MaxPack ne monte rien au lancement : ni /data, ni USB, ni polices, ni /app0 inscriptible dans son bac à sable.",
     deleteP5z: "Le fichier .p5z et son cache seront supprimés du disque : {path}. Action irréversible.",
     excludePaths: "Chemins exclus",
     excludePathsHint: "Un par ligne. L'analyse ne les ouvre jamais : un jeu qui s'y trouve n'est ni listé ni enregistré (celui déjà sur l'écran d'accueil y reste).",
@@ -2378,6 +2399,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'ゲームが黒い画面のままになる、または追加コンテンツの確認で止まる場合は、「エミュレーターのみ」、次に「オフ」を試してください。',
     fakelibFull: 'フル', fakelibEmulators: 'エミュレーターのみ', fakelibOff: 'オフ',
+    playgoFakelibOff: 'Fakelib が「オフ」の間は効果がありません。',
+    fakelibOverlayOff: '「起動時に MaxPack のライブラリを使う」がオフの間は効果がありません。',
+    fakelibPlainOff: '展開済みフォルダーのゲームでは、「オフ」にすると起動時に MaxPack は何もマウントしません。サンドボックスに /data、USB、フォント、書き込み可能な /app0 はありません。',
     deleteP5z: ".p5z ファイルとそのキャッシュをドライブから削除します: {path}。元に戻せません。",
     excludePaths: "除外するパス",
     excludePathsHint: "1 行に 1 つ。スキャンはこれらを開きません。そこにあるゲームは一覧にも登録にも表示されません（すでにホーム画面にあるものは残ります）。",
@@ -2621,6 +2645,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'Se o jogo ficar na tela preta ou travar ao verificar os conteúdos adicionais, tente “Só emuladores” e depois “Desligado”.',
     fakelibFull: 'Completo', fakelibEmulators: 'Só emuladores', fakelibOff: 'Desligado',
+    playgoFakelibOff: 'Sem efeito enquanto o Fakelib estiver em “Desligado”.',
+    fakelibOverlayOff: 'Sem efeito enquanto “Bibliotecas do MaxPack ao iniciar” estiver desligado.',
+    fakelibPlainOff: 'Em um jogo em pasta não empacotada, “Desligado” faz o MaxPack não montar nada ao iniciar: sem /data, USB, fontes ou /app0 gravável no sandbox.',
     deleteP5z: "O arquivo .p5z e o cache dele serão excluídos do drive: {path}. Não é possível desfazer.",
     excludePaths: "Caminhos excluídos",
     excludePathsHint: "Um por linha. A varredura nunca os abre: um jogo ali não é listado nem registrado (um que já esteja na tela inicial continua).",
@@ -2864,6 +2891,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: "Se il gioco resta su schermo nero o si blocca durante il controllo dei contenuti aggiuntivi, prova «Solo emulatori», poi «Disattivato».",
     fakelibFull: 'Completo', fakelibEmulators: 'Solo emulatori', fakelibOff: 'Disattivato',
+    playgoFakelibOff: "Nessun effetto finché Fakelib è su «Disattivato».",
+    fakelibOverlayOff: "Nessun effetto finché «Librerie di MaxPack all'avvio» è disattivato.",
+    fakelibPlainOff: "Per un gioco in cartella non impacchettata, «Disattivato» significa che MaxPack non monta nulla all'avvio: niente /data, USB, font o /app0 scrivibile nella sandbox.",
     deleteP5z: "Il file .p5z e la sua cache verranno eliminati dall'unità: {path}. L'operazione non è reversibile.",
     excludePaths: "Percorsi esclusi",
     excludePathsHint: "Uno per riga. La scansione non li apre mai: un gioco lì dentro non viene elencato né registrato (uno già nella schermata iniziale resta).",
@@ -3107,6 +3137,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: '게임이 검은 화면에서 멈추거나 추가 콘텐츠를 확인하다가 멈추면 “에뮬레이터만”을, 그다음 “끄기”를 시도하세요.',
     fakelibFull: '전체', fakelibEmulators: '에뮬레이터만', fakelibOff: '끄기',
+    playgoFakelibOff: 'Fakelib이 “끄기”인 동안에는 효과가 없습니다.',
+    fakelibOverlayOff: '“실행 시 MaxPack 라이브러리 사용”이 꺼져 있는 동안에는 효과가 없습니다.',
+    fakelibPlainOff: '압축되지 않은 폴더 게임에서 “끄기”는 실행 시 MaxPack이 아무것도 마운트하지 않는다는 뜻입니다. 샌드박스에 /data, USB, 글꼴, 쓰기 가능한 /app0이 없습니다.',
     deleteP5z: ".p5z 파일과 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.",
     excludePaths: "제외할 경로",
     excludePathsHint: "한 줄에 하나씩. 스캔은 이 경로를 열지 않으므로 그 안의 게임은 목록에 표시되거나 등록되지 않습니다(이미 홈 화면에 있는 게임은 유지됩니다).",
@@ -3350,6 +3383,9 @@ var MSG = {
     fakelibLbl: 'Fakelib',
     fakelibHint: 'إذا بقيت اللعبة على شاشة سوداء أو توقفت أثناء التحقق من المحتوى الإضافي، فجرّب «المحاكيات فقط» ثم «إيقاف».',
     fakelibFull: 'كامل', fakelibEmulators: 'المحاكيات فقط', fakelibOff: 'إيقاف',
+    playgoFakelibOff: 'لا أثر له ما دام Fakelib على «إيقاف».',
+    fakelibOverlayOff: 'لا أثر له ما دام «مكتبات MaxPack عند التشغيل» معطّلًا.',
+    fakelibPlainOff: 'في لعبة مجلد غير معبّأ، يعني «إيقاف» أن MaxPack لا يركّب شيئًا عند التشغيل: لا /data ولا USB ولا خطوط ولا /app0 قابل للكتابة في بيئتها المعزولة.',
     deleteP5z: "سيُحذف ملف .p5z وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.",
     excludePaths: "المسارات المستثناة",
     excludePathsHint: "مسار واحد في كل سطر. لا يفتحها المسح أبدًا: لا تُعرض اللعبة الموجودة فيها ولا تُسجَّل (وتبقى التي على الشاشة الرئيسية).",
@@ -3631,7 +3667,7 @@ function gameKind(g) {
 }
 function badgeText(g) { return { pkg: 'PKG', p5z: 'P5Z', folder: t('badgeFolder'), lz4: 'LZ4', zstd: 'ZSTD' }[gameKind(g)]; }
 function gameName(g) { return g.title_name || g.title_id; }
-// Lower case without accents, so "pokemon" finds "Pokémon" (old WebKit without normalize: case only).
+// Lower case without accents, so "cafe" finds "Café" (old WebKit without normalize: case only).
 function fold(s) {
   s = String(s || '').toLowerCase();
   return s.normalize ? s.normalize('NFD').replace(/[̀-ͯ]/g, '') : s;
@@ -4139,15 +4175,21 @@ function renderModal() {
     '|' + !!g.overlay_off + '|' + (g.fakelib_mode || 'full') + '|' + isRunning(g);
   if (rsig && rsig !== reportSig) { reportSig = rsig; loadReport(g.title_id, ++reportRequest); }
   // The PlayGo switch: only for a game whose eboot imports PlayGo, or one turned off already.
-  var pg = $('m-playgo');
+  // In the fakelib mode Off no stub is ever added: the switch keeps its value, greyed, with a note.
+  var pg = $('m-playgo'), fakelibOff = g.fakelib_mode === 'off';
   $('m-playgo-row').hidden = !(g.playgo === true || g.playgo_off);
   if (!pg._busy) pg.checked = !g.playgo_off;
-  pg.disabled = !!pg._busy || g.status === 'duplicate' || g.status === 'building';
+  pg.disabled = !!pg._busy || g.status === 'duplicate' || g.status === 'building' || fakelibOff;
+  $('m-playgo-fl').hidden = !fakelibOff;
   // The fakelib mode (maxpack_logic::fakelib): what the cache's fakelib/ is made of, for every library copy.
   var fl = $('m-fakelib');
   $('m-fakelib-row').hidden = dup;
   if (!fl._busy) fl.value = g.fakelib_mode === 'emulators' || g.fakelib_mode === 'off' ? g.fakelib_mode : 'full';
-  fl.disabled = !!fl._busy || g.status === 'building';
+  // overlay_off wins (an empty fakelib/ whatever the mode): greyed, with a note, while it is on. On a plain
+  // folder, Off leaves fakelib/ empty too, so the launch mounts nothing: one more line says so.
+  fl.disabled = !!fl._busy || g.status === 'building' || !!g.overlay_off;
+  $('m-fakelib-ov').hidden = !g.overlay_off;
+  $('m-fakelib-plain').hidden = !overlayOptional(g) || !!g.overlay_off;
   // MaxPack's overlay: only a plain folder game can run without it (a pkg, a .p5z or a packed folder
   // is read through ampr-emu-ng, which comes in it; the payload refuses those, maxpack_logic::overlay).
   // A title still listed whose copy now needs it (packed since, or a pkg or .p5z took over) shows the

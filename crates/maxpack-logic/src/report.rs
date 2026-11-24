@@ -148,11 +148,11 @@ pub fn text(r: &Report) -> String {
 mod tests {
     use super::*;
 
-    fn silksong<'a>(log: &'a str, crash: Option<&'a Crash>) -> Report<'a> {
+    fn starfall<'a>(log: &'a str, crash: Option<&'a Crash>) -> Report<'a> {
         Report {
             version: "1.0.0", firmware: Some("13.60"), waiting: None,
-            title_id: "PPSA12544", title_name: "Hollow Knight: Silksong", game_version: "01.000.010",
-            path: "/data/homebrew/Hollow Knight Silksong", kind: "folder", packing: Some("zstd"), drive: "/data",
+            title_id: "PPSA10001", title_name: "Starfall Odyssey", game_version: "01.000.010",
+            path: "/data/homebrew/Starfall Odyssey", kind: "folder", packing: Some("zstd"), drive: "/data",
             status: "ready", error: None, hidden: false, overlay_off: false, fakelib: Mode::Full, backport: None,
             ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
         }
@@ -189,20 +189,20 @@ mod tests {
 
     #[test]
     fn the_compatibility_row() {
-        let r = silksong("", None);
-        assert_eq!(compat_row(&r), "| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
+        let r = starfall("", None);
+        assert_eq!(compat_row(&r), "| PPSA10001 | Starfall Odyssey | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
         // A | in a name would split the cell; no firmware and no version show as ?.
-        let r = Report { title_name: "A | B", firmware: None, game_version: "", kind: "p5z", packing: None, ..silksong("", None) };
-        assert_eq!(compat_row(&r), "| PPSA12544 | A \\| B | ? | p5z | ? | MaxPack 1.0.0 | ? | ? |");
+        let r = Report { title_name: "A | B", firmware: None, game_version: "", kind: "p5z", packing: None, ..starfall("", None) };
+        assert_eq!(compat_row(&r), "| PPSA10001 | A \\| B | ? | p5z | ? | MaxPack 1.0.0 | ? | ? |");
     }
 
     #[test]
     fn control_characters_never_break_the_row() {
         // A name from param.json may carry a line break, a tab or another control character: each is a
         // space, so the row stays one markdown line.
-        let r = Report { title_name: "Line one\r\nLine\ttwo\u{7}|x", game_version: "01.0\n00", ..silksong("", None) };
+        let r = Report { title_name: "Line one\r\nLine\ttwo\u{7}|x", game_version: "01.0\n00", ..starfall("", None) };
         let row = compat_row(&r);
-        assert_eq!(row, "| PPSA12544 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
+        assert_eq!(row, "| PPSA10001 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
         assert!(!row.chars().any(char::is_control), "{row:?}");
         // The whole report keeps the row on one line too.
         assert!(text(&r).contains(&format!("\n{row}\n")), "{}", text(&r));
@@ -210,49 +210,49 @@ mod tests {
 
     #[test]
     fn the_whole_report() {
-        let c = Crash { at: 1_767_225_600, process: "eboot.bin".into(), folder: "PPSA12544_1795166239".into(), status: "killed by signal 11".into() };
-        let log = "2026-01-01 00:00:00Z [1] PPSA12544: built\n2026-01-01 00:00:01Z [2] PPSA00001: other game\n2026-01-01 00:00:02Z [3] [launch] PPSA12544 exit pid=233\n";
+        let c = Crash { at: 1_767_225_600, process: "eboot.bin".into(), folder: "PPSA10001_1795166239".into(), status: "killed by signal 11".into() };
+        let log = "2026-01-01 00:00:00Z [1] PPSA10001: built\n2026-01-01 00:00:01Z [2] PPSA00001: other game\n2026-01-01 00:00:02Z [3] [launch] PPSA10001 exit pid=233\n";
         let want = "MaxPack 1.0.0: game report\n\
 Firmware: 13.60\n\
 Mounting: MaxPack mounts the games\n\
-Game: Hollow Knight: Silksong (PPSA12544), version 01.000.010\n\
-Source: /data/homebrew/Hollow Knight Silksong (folder (zstd), /data)\n\
+Game: Starfall Odyssey (PPSA10001), version 01.000.010\n\
+Source: /data/homebrew/Starfall Odyssey (folder (zstd), /data)\n\
 Status: ready\n\
 Backport: none\n\
 ampr-emu-ng: bundled v0.5.0-maxpack.3\n\
 PlayGo stub: on\n\
-Last crash: 2026-01-01 00:00:00Z in eboot.bin, killed by signal 11 (console dump folder PPSA12544_1795166239)\n\
+Last crash: 2026-01-01 00:00:00Z in eboot.bin, killed by signal 11 (console dump folder PPSA10001_1795166239)\n\
 \n\
 Row for docs/compatibility.md (fill in the result and the date):\n\
-| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |\n\
+| PPSA10001 | Starfall Odyssey | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |\n\
 \n\
-maxpack.log, last 40 lines with PPSA12544:\n\
-2026-01-01 00:00:00Z [1] PPSA12544: built\n\
-2026-01-01 00:00:02Z [3] [launch] PPSA12544 exit pid=233\n";
-        assert_eq!(text(&silksong(log, Some(&c))), want);
+maxpack.log, last 40 lines with PPSA10001:\n\
+2026-01-01 00:00:00Z [1] PPSA10001: built\n\
+2026-01-01 00:00:02Z [3] [launch] PPSA10001 exit pid=233\n";
+        assert_eq!(text(&starfall(log, Some(&c))), want);
     }
 
     #[test]
     fn report_variants() {
         let r = Report {
-            firmware: None, waiting: Some("other:shadowmountplus.elf"), status: "error", error: Some("PPSA12544 (/x): bad header"),
-            hidden: true, backport: Some("/data/homebrew/backports/PPSA12544"), playgo: "not added (add_emulators off)",
-            ..silksong("", None)
+            firmware: None, waiting: Some("other:shadowmountplus.elf"), status: "error", error: Some("PPSA10001 (/x): bad header"),
+            hidden: true, backport: Some("/data/homebrew/backports/PPSA10001"), playgo: "not added (add_emulators off)",
+            ..starfall("", None)
         };
         let t = text(&r);
         for line in [
             "Firmware: (unknown: please fill in)\n",
             "Mounting: another mounter is running (shadowmountplus.elf): MaxPack only installs\n",
-            "Status: error (PPSA12544 (/x): bad header)\n",
+            "Status: error (PPSA10001 (/x): bad header)\n",
             "Hidden in the library: yes\n",
-            "Backport: /data/homebrew/backports/PPSA12544\n",
+            "Backport: /data/homebrew/backports/PPSA10001\n",
             "PlayGo stub: not added (add_emulators off)\n",
             "Last crash: none recorded\n",
         ] {
             assert!(t.contains(line), "{line:?} not in:\n{t}");
         }
-        assert!(t.ends_with("maxpack.log, last 40 lines with PPSA12544:\n"), "{t}");
-        let t = text(&Report { waiting: Some("kstuff"), ..silksong("", None) });
+        assert!(t.ends_with("maxpack.log, last 40 lines with PPSA10001:\n"), "{t}");
+        let t = text(&Report { waiting: Some("kstuff"), ..starfall("", None) });
         assert!(t.contains("Mounting: waiting for kstuff (MaxPack mounts nothing yet)\n"), "{t}");
         assert!(!t.contains("Hidden"), "{t}");
         assert!(!t.contains("overlay"), "{t}");
@@ -260,7 +260,7 @@ maxpack.log, last 40 lines with PPSA12544:\n\
 
     #[test]
     fn a_game_without_the_overlay_says_so() {
-        let r = Report { kind: "folder", packing: Some("plain"), overlay_off: true, ..silksong("", None) };
+        let r = Report { kind: "folder", packing: Some("plain"), overlay_off: true, ..starfall("", None) };
         let t = text(&r);
         let line = "MaxPack overlay: off (overlay_off: the game runs as registered, without MaxPack's fakelib, ampr-emu-ng, emulators or sandbox mounts)\n";
         assert!(t.contains(line), "{t}");
@@ -271,8 +271,8 @@ maxpack.log, last 40 lines with PPSA12544:\n\
     #[test]
     fn a_fakelib_mode_other_than_full_says_so() {
         let line = |r: &Report| text(r).lines().find(|l| l.starts_with("Fakelib")).map(str::to_owned);
-        assert_eq!(line(&silksong("", None)), None);
-        let r = Report { title_name: "Starfall Odyssey", fakelib: Mode::Emulators, ..silksong("", None) };
+        assert_eq!(line(&starfall("", None)), None);
+        let r = Report { fakelib: Mode::Emulators, ..starfall("", None) };
         assert_eq!(line(&r).as_deref(), Some("Fakelib mode: emulators only (the game's and backport's fakelib not used)"));
         let r = Report { kind: "pkg", packing: None, fakelib: Mode::Off, ..r };
         assert_eq!(line(&r).as_deref(), Some("Fakelib mode: off (only ampr-emu-ng)"));
@@ -288,13 +288,13 @@ maxpack.log, last 40 lines with PPSA12544:\n\
     fn only_the_last_log_lines_with_the_title_are_kept() {
         let mut log = String::new();
         for i in 0..100 {
-            log += &format!("line {i} PPSA12544\nline {i} other\n");
+            log += &format!("line {i} PPSA10001\nline {i} other\n");
         }
-        let t = text(&silksong(&log, None));
-        let tail = t.split("lines with PPSA12544:\n").nth(1).unwrap();
+        let t = text(&starfall(&log, None));
+        let tail = t.split("lines with PPSA10001:\n").nth(1).unwrap();
         let lines: Vec<&str> = tail.lines().collect();
         assert_eq!(lines.len(), LOG_LINES);
-        assert_eq!(lines[0], "line 60 PPSA12544");
-        assert_eq!(lines[LOG_LINES - 1], "line 99 PPSA12544");
+        assert_eq!(lines[0], "line 60 PPSA10001");
+        assert_eq!(lines[LOG_LINES - 1], "line 99 PPSA10001");
     }
 }

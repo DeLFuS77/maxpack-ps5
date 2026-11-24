@@ -380,10 +380,10 @@ mod tests {
         let v = |id| Volume { id, offset: 1234, length: 5678 };
         assert_eq!(image_text("basic.p5z", &[v(0)]).unwrap(), "maxpack-image 1\np5z/basic.p5z\n0 1234 5678\n");
         assert_eq!(image_text("a.p5z", &[v(0), v(1)]).unwrap(), "maxpack-image 1\np5z/a.p5z\n0 1234 5678\n1 1234 5678\n");
-        assert!(image_text("Hollow Knight Silksong.p5z", &[v(0)]).is_ok());
+        assert!(image_text("Starfall Odyssey.p5z", &[v(0)]).is_ok());
         // UTF-8 names, as MaxPack's PC app writes them ("<Title> [<TITLE_ID>].p5z").
-        for n in ["Pokémon.p5z", "God of War Ragnarök [PPSA01411].p5z", "グランツーリスモ７ [PPSA01316].p5z",
-                  "Gran Turismo® 7.p5z", "...", " a.p5z "] {
+        for n in ["Café Quest.p5z", "Starfall Odyssey Nordström [PPSA10002].p5z", "スターフォール７ [PPSA10003].p5z",
+                  "Starfall Racing® 7.p5z", "...", " a.p5z "] {
             assert_eq!(image_text(n, &[v(0)]).unwrap(), format!("maxpack-image 1\np5z/{n}\n0 1234 5678\n"), "{n:?}");
         }
         for n in ["a/b.p5z", "a\nb", "a\\b", "..", ".", "", "a\rb", "a\0b", "a\tb.p5z", "a\u{7f}b.p5z", "a\u{1}b.p5z",

@@ -114,7 +114,7 @@ mod tests {
     }
 
     fn crash(at: u64) -> Crash {
-        Crash { at, process: "eboot.bin".into(), folder: "PPSA12544_1795166239".into(), status: "killed by signal 11".into() }
+        Crash { at, process: "eboot.bin".into(), folder: "PPSA10001_1795166239".into(), status: "killed by signal 11".into() }
     }
 
     #[test]
@@ -156,16 +156,16 @@ mod tests {
             std::fs::create_dir_all(d.join(folder)).unwrap();
             std::fs::write(d.join(folder).join(file), b"x").unwrap();
         };
-        mk("PPSA12544_100", "prosperocore-100-0x000000e9-eboot.bin.prosperodmp");
-        mk("PPSA12544_200", "prosperocore-200-0x000000ea-launcher.elf.prosperodmp");
+        mk("PPSA10001_100", "prosperocore-100-0x000000e9-eboot.bin.prosperodmp");
+        mk("PPSA10001_200", "prosperocore-200-0x000000ea-launcher.elf.prosperodmp");
         mk("PPSA99999_300", "prosperocore-300-0x000000eb-eboot.bin.prosperodmp");
-        std::fs::write(d.join("PPSA12544_400"), b"not a folder").unwrap();
-        assert_eq!(find_in(&d, "PPSA12544", 0xe9), Some(("PPSA12544_100".into(), "eboot.bin".into())));
-        assert_eq!(find_in(&d, "PPSA12544", 0xea), Some(("PPSA12544_200".into(), "launcher.elf".into())));
+        std::fs::write(d.join("PPSA10001_400"), b"not a folder").unwrap();
+        assert_eq!(find_in(&d, "PPSA10001", 0xe9), Some(("PPSA10001_100".into(), "eboot.bin".into())));
+        assert_eq!(find_in(&d, "PPSA10001", 0xea), Some(("PPSA10001_200".into(), "launcher.elf".into())));
         // Another title's dump, another pid, a missing folder: nothing.
-        assert_eq!(find_in(&d, "PPSA12544", 0xeb), None);
-        assert_eq!(find_in(&d, "PPSA12544", 0x1), None);
-        assert_eq!(find_in(&d.join("gone"), "PPSA12544", 0xe9), None);
+        assert_eq!(find_in(&d, "PPSA10001", 0xeb), None);
+        assert_eq!(find_in(&d, "PPSA10001", 0x1), None);
+        assert_eq!(find_in(&d.join("gone"), "PPSA10001", 0xe9), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -175,7 +175,7 @@ mod tests {
         let path = d.join("crashes.json");
         assert!(load_from(&path).is_empty());
         let mut all = HashMap::new();
-        all.insert("PPSA12544".to_string(), crash(1_767_225_600));
+        all.insert("PPSA10001".to_string(), crash(1_767_225_600));
         all.insert("CUSA00001".to_string(), Crash { process: "my \"tool\".elf".into(), ..crash(5) });
         save_to(&path, &all).unwrap();
         assert_eq!(load_from(&path), all);
@@ -184,7 +184,7 @@ mod tests {
         assert_eq!(names, ["crashes.json"]);
         // Keys sorted: the same crashes always give the same text.
         let text = to_json(&all);
-        assert!(text.find("CUSA00001").unwrap() < text.find("PPSA12544").unwrap(), "{text}");
+        assert!(text.find("CUSA00001").unwrap() < text.find("PPSA10001").unwrap(), "{text}");
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -194,8 +194,8 @@ mod tests {
         assert!(parse("not json").is_empty());
         assert!(parse("[1, 2]").is_empty());
         // A key that is not a title id is left out; missing fields read as empty.
-        let m = parse(r#"{"../x": {"at": 1}, "PPSA12544": {"at": 7, "process": "eboot.bin"}}"#);
+        let m = parse(r#"{"../x": {"at": 1}, "PPSA10001": {"at": 7, "process": "eboot.bin"}}"#);
         assert_eq!(m.len(), 1);
-        assert_eq!(m["PPSA12544"], Crash { at: 7, process: "eboot.bin".into(), folder: String::new(), status: String::new() });
+        assert_eq!(m["PPSA10001"], Crash { at: 7, process: "eboot.bin".into(), folder: String::new(), status: String::new() });
     }
 }

@@ -33,7 +33,8 @@
 // for 3 s), the overlay switch (POST /api/overlay: only "Plain Racer", a plain folder game, shows it;
 // "Shell Title" has it off; "Packed Example", a .p5z, is still listed from before, so its sheet shows
 // the switch to clear it; turning a non-plain game off answers 409 as the payload does), the Fakelib selector
-// (POST /api/fakelib: every game shows it; "Starfall Odyssey", a pkg, is set to Off), and the Excluded paths
+// (POST /api/fakelib: every game shows it; "Starfall Odyssey", a pkg, is set to Off, so its PlayGo switch is
+// greyed; "Shell Title" has it greyed by its overlay off; a plain folder adds the "mounts nothing" line), and the Excluded paths
 // of Settings. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name

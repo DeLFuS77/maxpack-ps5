@@ -661,7 +661,8 @@ note it in [`compatibility.md`](compatibility.md) (7.3's report has the row read
     `<TID>: fakelib: mode off (only ampr-emu-ng)` followed by no `fakelib: added` line;
     `/data/maxpack/caches/<TID>/fakelib/` holds only `libSceAmpr.sprx`; `config.toml` has the title id in
     `fakelib_off`; `/api/state` shows
-    `"fakelib_mode": "off"`; "Copy report" has `Fakelib mode: off (only ampr-emu-ng)`.
+    `"fakelib_mode": "off"`; "Copy report" has `Fakelib mode: off (only ampr-emu-ng)`; if the sheet shows "PlayGo
+    stub", it is greyed with a note that it has no effect while Fakelib is Off.
   - Launch it. Expected: `overlay MOUNTED` as usual, and the game reads its files (ampr-emu-ng's line on screen).
     Note whether it gets further than in "Full" (the main menu, past the add-on check).
   - Set it to "Emulators only". Expected: `fakelib: mode emulators (the game's and backport's fakelib not used)`, and

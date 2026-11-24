@@ -145,7 +145,8 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
         }
         "fakelib_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
         "ampr_auto_update" => s.ampr_auto_update = flag(v)?,
-        // Removed setting (the game's fakelib is always used in full): ignored, dropped on the next save.
+        // Removed global setting, now per title (fakelib_emulators, fakelib_off): ignored, dropped on the next
+        // save; every title is full until its sheet sets another mode.
         "game_fakelib" => {}
         "backports" => s.backports = flag(v)?,
         "scan_interval_seconds" => match num(v)? {

@@ -85,7 +85,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
 | `fakelib_emulators` | [] | array of title ids whose fakelib mode is `emulators`: their cache's `fakelib/` gets nothing from the game's or the backport's lib dir, only the bundled emulators they need (`add_emulators`, `playgo_off` as usual) and ampr-emu-ng (see Cache). For a game that shows a black screen with the libraries its dump or backport ships. Per game from the game sheet (`POST /api/fakelib/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/` |
-| `fakelib_off` | [] | array of title ids whose fakelib mode is `off`: their `fakelib/` gets only ampr-emu-ng, and that only for a pkg, a `.p5z` or a zstd or LZ4 folder (a plain folder gets an empty `fakelib/`, so its launch mounts nothing, as `overlay_off`). For a game that still stalls with the emulators. A title is in one of the two lists at most (`maxpack_logic::fakelib::set_mode`); one listed in both by hand is `off` and the next save drops it from `fakelib_emulators` (`fakelib::exclusive`, logged). In neither: `full`, the composition as it always was. Like `fakelib_emulators` otherwise |
+| `fakelib_off` | [] | array of title ids whose fakelib mode is `off`: their `fakelib/` gets only ampr-emu-ng, and that only for a pkg, a `.p5z` or a zstd or LZ4 folder (a plain folder gets an empty `fakelib/`, so MaxPack mounts nothing at its launch, as with `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in its sandbox). For a game that still stalls with the emulators. A title is in one of the two lists at most (`maxpack_logic::fakelib::set_mode`); one listed in both by hand is `off` and the next save drops it from `fakelib_emulators` (`fakelib::exclusive`, logged). In neither: `full`, the composition as it always was. Like `fakelib_emulators` otherwise |
 | `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
@@ -191,7 +191,7 @@ is ignored as a whole). The web UI edits the same file.
   or LZ4 folder, whose own `libSceAmpr.sprx` read its packs and is no longer there. `off` skips the base and the
   emulators and gets ampr-emu-ng only for a game that cannot run without it (`fakelib::needs_ng`: a pkg, a `.p5z`, a
   zstd or LZ4 folder), whatever `inject_ampr` says; a plain folder gets an empty `fakelib/` (launch then mounts
-  nothing, as for `overlay_off`). Each composition in a mode other than `full` logs one line:
+  nothing, as for `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in the sandbox). Each composition in a mode other than `full` logs one line:
   `<TID>: fakelib: mode emulators (the game's and backport's fakelib not used)`, `<TID>: fakelib: mode off (only
   ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`. `overlay_off` comes first: such a title stops at the empty
   `fakelib/` whatever its mode.
@@ -782,8 +782,7 @@ each destination drive says whether the chosen game fits, as the engine's plan c
 the engine's 256 MiB `space_margin` against the drive's free space, plus what an unfinished install of that title
 already copied there), "Does not fit: N more needed" when not, and Install then says so without asking the engine;
 the engine checks again when it plans the install (`no_space`). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
-the UI's words, its Spanish `detail` under them. Its texts are English and Spanish (the other languages fall
-back to English). While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
+the UI's words, its Spanish `detail` under them. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
@@ -807,7 +806,11 @@ library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last 
 Under the PlayGo switch, every library copy (not a duplicate) has "Fakelib", a select of Full, Emulators only and Off
 (`POST /api/fakelib`, `fakelib_mode`; off while the game builds or the change is sent; a failed change shows its error
 and the select goes back to the mode in the state), with one hint: if the game shows a black screen or stalls while
-checking add-ons, try "Emulators only", then "Off". A select keeps the row's look and the D-pad's list of the sheet's
+checking add-ons, try "Emulators only", then "Off". A plain folder game gets one more line: Off mounts nothing at
+its launch (no `/data`, USB, fonts or writable `/app0` in its sandbox). For an `overlay_off` game the select is
+greyed (disabled) with a note, since `overlay_off` wins. In Off, the PlayGo switch is greyed with a note that it has
+no effect (it keeps its value for when the mode changes). Disabled switches and selects in the sheet take the
+buttons' disabled look (opacity 0.5). A select keeps the row's look and the D-pad's list of the sheet's
 controls (arrows move between controls; the PS5 browser opens its own picker).
 Under it, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries
 at launch" (`POST /api/overlay`, `overlay_off`): on by default; off, the sheet notes that the game runs as registered.
@@ -816,7 +819,8 @@ title is still listed in `overlay_off` from an earlier copy (`overlay_off_listed
 over): then the switch shows off with a note that this copy keeps the libraries, so the stale entry can be cleared
 (turned on, the row goes). The entry is never dropped by itself: a plain folder copy coming back would use it again. Settings has "Excluded paths"
 under "Scan paths", one path per line (`exclude`).
-New texts are in English and Spanish; the other languages show the English ones.
+Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
+an extra one, changes a `{placeholder}` or keeps the English text.
 
 ## Layout
 | Path | What |
