@@ -782,8 +782,10 @@ New texts are in English and Spanish; the other languages show the English ones.
   `maxpack.elf`): never rename them. What keeps the old name is the ampr-emu-ng contract (`kraken.image`,
   `/app0/kraken/`, `kraken.pkg`, `kraken_zero.dat`, the `ampr-emu-ng X.Y.Z` search) and the internal crate
   `kraken-mount-pkg` (kept so merges from upstream stay easy).
-- Version: MaxPack's own, in `Cargo.toml` (0.1.x stage 1, mount; 0.2.x stage 2, play from the `.p5z`). The
-  upstream project's numbers (0.3.1 is the base) are never taken when merging from it.
+- Version: MaxPack's own, in `Cargo.toml`. 1.0.0 is the first published version (stage 1, mount, and stage 2, play
+  from the `.p5z`); 0.1.x and 0.2.x were the stage 1 and stage 2 test builds. A release is tagged `v<version>` (the
+  release job checks it against `Cargo.toml`). The upstream project's numbers (0.3.1 is the base) are never taken
+  when merging from it.
 - This file is the contract. Change it together with the code, and keep the module interface names.
 - Mount safety: never `MNT_FORCE` from register or purge; a busy mount means a running game. The scan loop must not
   build, register or purge while a game runs (`running`, from the launch watcher).

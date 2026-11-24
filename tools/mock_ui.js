@@ -100,7 +100,7 @@ function games() {
 
 function apiState() {
   return {
-    version: '0.2.0', busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
+    version: '1.0.0', busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
@@ -306,7 +306,7 @@ http.createServer((req, res) => {
       return send(res, 403, 'text/plain; charset=utf-8', REFUSED[why].join('\n') + '\n');
     }
     if (req.method === 'GET' && p === '/') {
-      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '0.2.0-mock');
+      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '1.0.0-mock');
       return send(res, 200, 'text/html; charset=utf-8', html);
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
@@ -327,13 +327,13 @@ http.createServer((req, res) => {
       // The shape of maxpack_logic::report::text, with fixed values.
       const kinds = { pkg: ['pkg', 'pkg'], p5z: ['p5z', 'p5z'], plain: ['folder', 'carpeta'], zstd: ['folder (zstd)', 'carpeta zstd'], lz4: ['folder (lz4)', 'carpeta lz4'] };
       const [en, es] = kinds[g.kind === 'folder' ? g.packing : g.kind];
-      const text = [`MaxPack 0.2.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
+      const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
         ['Backport: none', 'ampr-emu-ng: bundled v0.5.0-maxpack.3', 'PlayGo stub: on',
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibilidad.md (fill in the result and the date):',
-          `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 0.2.0 | ? | ? |`, '',
+          `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 1.0.0 | ? | ? |`, '',
           `maxpack.log, last 40 lines with ${g.title_id}:`, `2026-11-23 20:00:05Z [5000] ${g.title_id}: cache fresh`]).join('\n') + '\n';
       return send(res, 200, 'text/plain; charset=utf-8', text);
     }

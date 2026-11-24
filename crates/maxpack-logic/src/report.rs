@@ -141,7 +141,7 @@ mod tests {
 
     fn silksong<'a>(log: &'a str, crash: Option<&'a Crash>) -> Report<'a> {
         Report {
-            version: "0.2.0", firmware: Some("13.60"), waiting: None,
+            version: "1.0.0", firmware: Some("13.60"), waiting: None,
             title_id: "PPSA12544", title_name: "Hollow Knight: Silksong", game_version: "01.000.010",
             path: "/data/homebrew/Hollow Knight Silksong", kind: "folder", packing: Some("zstd"), drive: "/data",
             status: "ready", error: None, hidden: false, overlay_off: false, backport: None,
@@ -181,10 +181,10 @@ mod tests {
     #[test]
     fn the_compatibility_row() {
         let r = silksong("", None);
-        assert_eq!(compat_row(&r), "| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 0.2.0 | ? | ? |");
+        assert_eq!(compat_row(&r), "| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
         // A | in a name would split the cell; no firmware and no version show as ?.
         let r = Report { title_name: "A | B", firmware: None, game_version: "", kind: "p5z", packing: None, ..silksong("", None) };
-        assert_eq!(compat_row(&r), "| PPSA12544 | A \\| B | ? | p5z | ? | MaxPack 0.2.0 | ? | ? |");
+        assert_eq!(compat_row(&r), "| PPSA12544 | A \\| B | ? | p5z | ? | MaxPack 1.0.0 | ? | ? |");
     }
 
     #[test]
@@ -193,7 +193,7 @@ mod tests {
         // space, so the row stays one markdown line.
         let r = Report { title_name: "Line one\r\nLine\ttwo\u{7}|x", game_version: "01.0\n00", ..silksong("", None) };
         let row = compat_row(&r);
-        assert_eq!(row, "| PPSA12544 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 0.2.0 | ? | ? |");
+        assert_eq!(row, "| PPSA12544 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
         assert!(!row.chars().any(char::is_control), "{row:?}");
         // The whole report keeps the row on one line too.
         assert!(text(&r).contains(&format!("\n{row}\n")), "{}", text(&r));
@@ -203,7 +203,7 @@ mod tests {
     fn the_whole_report() {
         let c = Crash { at: 1_767_225_600, process: "eboot.bin".into(), folder: "PPSA12544_1795166239".into(), status: "killed by signal 11".into() };
         let log = "2026-01-01 00:00:00Z [1] PPSA12544: built\n2026-01-01 00:00:01Z [2] PPSA00001: other game\n2026-01-01 00:00:02Z [3] [launch] PPSA12544 exit pid=233\n";
-        let want = "MaxPack 0.2.0: game report\n\
+        let want = "MaxPack 1.0.0: game report\n\
 Firmware: 13.60\n\
 Mounting: MaxPack mounts the games\n\
 Game: Hollow Knight: Silksong (PPSA12544), version 01.000.010\n\
@@ -215,7 +215,7 @@ PlayGo stub: on\n\
 Last crash: 2026-01-01 00:00:00Z in eboot.bin, killed by signal 11 (console dump folder PPSA12544_1795166239)\n\
 \n\
 Row for docs/compatibilidad.md (fill in the result and the date):\n\
-| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 0.2.0 | ? | ? |\n\
+| PPSA12544 | Hollow Knight: Silksong | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |\n\
 \n\
 maxpack.log, last 40 lines with PPSA12544:\n\
 2026-01-01 00:00:00Z [1] PPSA12544: built\n\

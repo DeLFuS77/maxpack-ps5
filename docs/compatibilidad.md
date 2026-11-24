@@ -23,8 +23,9 @@ Columnas:
   (empaquetada) o `p5z` (archivo de MaxPack, jugado sin instalar). Entre paréntesis, con qué se
   empaquetó cuando importa.
 - **Firmware**: el de la consola (Ajustes > Sistema > Software del sistema).
-- **Montador**: el que montó el juego, con su versión (`MaxPack 0.2.0`, `ShadowMountPlus 1.7beta12`…).
-  MaxPack etapa 1 es la 0.1.x (montar) y etapa 2 la 0.2.x (jugar desde el `.p5z`).
+- **Montador**: el que montó el juego, con su versión (`MaxPack 1.0.0`, `ShadowMountPlus 1.7beta12`…).
+  MaxPack 1.0.0 es la primera versión publicada (montar y jugar desde el `.p5z`); las filas que dicen
+  «MaxPack etapa 1» o «etapa 2» son de las compilaciones de prueba anteriores (0.1.x y 0.2.x).
 - **Resultado**: lo que se comprobó (arranca, guarda, carga, se juega hasta tal punto) y lo que falla.
 - **Fecha**: la de la prueba, `AAAA-MM-DD`.
 
