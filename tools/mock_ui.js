@@ -163,11 +163,11 @@ function apiState() {
     version, update: updateValue(), tls_check: tlsCheckValue(), busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
     images: mock.empty ? [] : [
-      { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
-      { path: '/mnt/usb0/homebrew/varios/otro.ffpkg', kind: 'ffpkg' },
+      { path: '/data/homebrew/Sample Game [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
+      { path: '/mnt/usb0/homebrew/misc/another.ffpkg', kind: 'ffpkg' },
     ],
     unplayable: mock.empty ? [] : [
-      { path: '/mnt/usb0/homebrew/Broken Pack.p5z', code: 'damaged', detail: 'el volumen 2 está incompleto' },
+      { path: '/mnt/usb0/homebrew/Broken Pack.p5z', code: 'damaged', detail: 'volume 2 is incomplete' },
       { path: '/mnt/usb0/homebrew/Huge Pack.p5z', code: 'too_many_volumes', detail: '300' },
     ],
     drives: [
@@ -191,8 +191,8 @@ const found = [
     name: 'Astro Example', p5z_size: 21 * GB, install_size: 24 * GB, original_size: 41 * GB },
   { path: '/mnt/usb0/homebrew/PPSA08901', kind: 'folder', packed: false, title_id: 'PPSA08901', version: '',
     name: 'Folder Quest', p5z_size: 12 * GB, install_size: 12 * GB, original_size: 12 * GB },
-  { path: '/mnt/usb0/Juego [PPSA06789].exfat', kind: 'image', packed: false, title_id: 'PPSA06789',
-    version: '01.000.000', name: 'Imagen de ejemplo', p5z_size: 30 * GB, install_size: 30 * GB, original_size: 30 * GB },
+  { path: '/mnt/usb0/Sample Game [PPSA06789].exfat', kind: 'image', packed: false, title_id: 'PPSA06789',
+    version: '01.000.000', name: 'Example Image', p5z_size: 30 * GB, install_size: 30 * GB, original_size: 30 * GB },
   // Larger than the internal SSD's free space (311 GB): fits only on the USB drive.
   { path: '/mnt/usb0/Huge Example.p5z', kind: 'p5z', packed: true, title_id: 'PPSA08000', version: '01.000.000',
     name: 'Huge Example', p5z_size: 280 * GB, install_size: 330 * GB, original_size: 400 * GB },
@@ -300,7 +300,7 @@ function instPost(name, body) {
     }
     case 'uninstall': {
       const rec = installed.find((x) => x.title_id === body.title_id);
-      if (!rec) return err('not_found', 'ese juego no está instalado con MaxPack');
+      if (!rec) return err('not_found', 'that game is not installed with MaxPack');
       if (!body.confirm) return err('needs_confirm', rec.dir);
       installed = installed.filter((x) => x !== rec);
       lastExtra = { kind: 'uninstall', title_id: rec.title_id, code: 'done', detail: '' };
@@ -309,7 +309,7 @@ function instPost(name, body) {
     case 'discard': {
       const before = pending.length;
       pending = pending.filter((x) => x.title_id !== body.title_id);
-      return pending.length < before ? ok : err('not_found', 'no hay ninguna instalación a medias de ese juego');
+      return pending.length < before ? ok : err('not_found', 'there is no unfinished install of that game');
     }
     default: return null;
   }
@@ -379,7 +379,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/api/state') return json(res, 200, apiState());
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
-    if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.0', updating: false });
+    if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.1', updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
     if (req.method === 'GET' && p.startsWith('/api/report/')) {
       const g = games().find((x) => x.title_id === p.slice('/api/report/'.length));
@@ -390,7 +390,7 @@ http.createServer((req, res) => {
       const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
-        ['Backport: none', 'ampr-emu-ng: bundled v0.5.0-maxpack.3', 'PlayGo stub: on',
+        ['Backport: none', 'ampr-emu-ng: bundled v0.5.1-maxpack.1', 'PlayGo stub: on',
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in the result and the date):',
           `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 1.0.0 | ? | ? |`, '',
@@ -463,9 +463,9 @@ http.createServer((req, res) => {
     }
     if (req.method === 'POST' && p.startsWith('/api/inst/')) {
       let body = {};
-      try { body = chunks ? JSON.parse(chunks) : {}; } catch (e) { return json(res, 400, { ok: false, code: 'bad_json', detail: 'el cuerpo no es JSON válido' }); }
+      try { body = chunks ? JSON.parse(chunks) : {}; } catch (e) { return json(res, 400, { ok: false, code: 'bad_json', detail: 'the body is not valid JSON' }); }
       if (!/^application\/json/i.test(req.headers['content-type'] || ''))
-        return json(res, 403, { ok: false, code: 'forbidden', detail: 'petición rechazada: solo se acepta la página de MaxPack' });
+        return json(res, 403, { ok: false, code: 'forbidden', detail: 'request refused: only the MaxPack page is accepted' });
       const out = instPost(p.slice('/api/inst/'.length), body);
       return out ? json(res, 200, out) : send(res, 404, 'text/plain', 'not found');
     }
