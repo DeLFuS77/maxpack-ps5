@@ -24,6 +24,18 @@ pub enum Kind {
     P5z,
 }
 
+/// /api/state's `kind` and `packing` of a source ("pkg" | "folder" | "p5z"; "plain" | "zstd" | "lz4" for a
+/// folder), the names maxpack_logic takes them by.
+pub fn kind_names(kind: Kind) -> (&'static str, Option<&'static str>) {
+    match kind {
+        Kind::Pkg => ("pkg", None),
+        Kind::Folder(Packing::Plain) => ("folder", Some("plain")),
+        Kind::Folder(Packing::Zstd) => ("folder", Some("zstd")),
+        Kind::Folder(Packing::Lz4) => ("folder", Some("lz4")),
+        Kind::P5z => ("p5z", None),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Source {
     pub path: PathBuf,
@@ -263,16 +275,23 @@ fn is_backports(path: &Path) -> bool {
 
 /// Candidate sources of one root: (its own entries sorted, the nested ones). Nested = the
 /// entries, sorted, of each subfolder that is not a game folder, not `backports` and not itself a
-/// root (SMP scan_depth=2). A path already in `listed` (this pass) is left out.
+/// root (SMP scan_depth=2). A path already in `listed` (this pass) is left out, and so is an `exclude`d
+/// one (`excluded`), which is never opened: an excluded root is not listed, an excluded folder not
+/// descended into.
 /// ponytail: one level below a root only (SMP's default depth), and none below a drive root
 /// (/mnt/usbN, /mnt/extN): its homebrew and etaHEN/games are roots of their own, and walking
 /// every top folder of a drive (Movies/...) each pass costs too much on USB. A game two folders
 /// down, or in another folder at a drive's root, needs its own scanpath line.
-fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, result: &mut ScanResult) -> (Vec<PathBuf>, Vec<PathBuf>) {
+fn candidates(root: &Path, roots: &[String], exclude: &[String], listed: &mut HashSet<PathBuf>, result: &mut ScanResult)
+    -> (Vec<PathBuf>, Vec<PathBuf>) {
     let (mut top, mut nested) = (Vec::new(), Vec::new());
+    // Never opened: no listing, so no scan error for an unreadable one either.
+    if excluded(root, exclude) {
+        return (top, nested);
+    }
     let drive_root = root.parent() == Some(Path::new("/mnt"));
     for path in list(root, result).unwrap_or_default() {
-        if is_backports(&path) || !listed.insert(path.clone()) {
+        if is_backports(&path) || excluded(&path, exclude) || !listed.insert(path.clone()) {
             continue;
         }
         let descend = !drive_root && path.is_dir()
@@ -280,7 +299,7 @@ fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, resu
             && !roots.iter().any(|r| Path::new(r) == path);
         if descend {
             for child in list(&path, result).unwrap_or_default() {
-                if !is_backports(&child) && listed.insert(child.clone()) {
+                if !is_backports(&child) && !excluded(&child, exclude) && listed.insert(child.clone()) {
                     nested.push(child);
                 }
             }
@@ -290,9 +309,16 @@ fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, resu
     (top, nested)
 }
 
+/// `path` is an `exclude` entry or under one (whole components; maxpack_logic::exclude::excluded).
+/// ponytail: a path that is not UTF-8 is compared by its lossy text, which keeps the UTF-8 entry above it.
+pub fn excluded(path: &Path, exclude: &[String]) -> bool {
+    !exclude.is_empty() && maxpack_logic::exclude::excluded(&path.to_string_lossy(), exclude)
+}
+
 /// Finds the sources under `roots`: the .pkg and .p5z files and game folders (eboot.bin and
 /// sce_sys/param.json) directly in a root, and those one folder below it (see `candidates`).
-pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult {
+/// A source in `exclude` (see `excluded`) is skipped before it can claim its title id.
+pub fn scan(roots: &[String], exclude: &[String], backports: bool, stability_wait: u64) -> ScanResult {
     let mut result =
         ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new(), images: Vec::new(),
             unplayable: Vec::new() };
@@ -310,7 +336,7 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
     let (mut listed, mut order, mut later) = (HashSet::new(), Vec::new(), Vec::new());
     for root in roots {
         let root = Path::new(root);
-        let (top, nested) = candidates(root, roots, &mut listed, &mut result);
+        let (top, nested) = candidates(root, roots, exclude, &mut listed, &mut result);
         order.extend(top.into_iter().map(|p| (root, p, false)));
         later.extend(nested.into_iter().map(|p| (root, p, true)));
     }

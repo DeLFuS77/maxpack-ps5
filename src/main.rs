@@ -48,6 +48,7 @@ fn toast(s: &Settings, msg: &str) {
 fn inputs_key(src: &Source, s: &Settings) -> String {
     let mut k = cache::stamp(src, s).to_string();
     k += &format!("|playgo_off={}", s.playgo_off.contains(&src.title_id));
+    k += &format!("|overlay_off={}", cache::overlay_off(src, s));
     for p in cache::inputs(src, s) {
         let mtime = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
         k += &format!("|{}={mtime:?}", p.display());
@@ -1012,12 +1013,17 @@ fn main() {
         // Held to the end of the pass (dropped at `continue` and before the wait): /api/delete waits on it.
         let work = state.work.lock().unwrap();
         let pass = std::time::Instant::now();
-        let s = config::load();
+        // Loaded under the settings lock: web.rs loads, changes and saves the file under it too, so
+        // this pass never puts an older copy over a newer one in state.settings.
+        let s = {
+            let mut cur = state.settings.lock().unwrap();
+            *cur = config::load();
+            cur.clone()
+        };
         sys::LOG_FILE.store(s.log, Ordering::Relaxed);
-        *state.settings.lock().unwrap() = s.clone();
         state.busy.store(true, Ordering::SeqCst);
         let roots = usable_roots(if s.scan_paths.is_empty() { storage::default_scan_roots() } else { s.scan_paths.clone() });
-        let r = scan::scan(&roots, s.backports, s.stability_wait_secs);
+        let r = scan::scan(&roots, &s.exclude, s.backports, s.stability_wait_secs);
         let scan_ms = pass.elapsed().as_millis();
         if state.paused() || !state.mounts() {
             continue;
@@ -1074,6 +1080,10 @@ fn main() {
                 log!("pass stopped before {}: MaxPack does not mount now", src.title_id);
                 full = false;
                 break;
+            }
+            // Excluded since this pass loaded the settings (POST /api/settings): left alone now.
+            if scan::excluded(&src.path, &state.settings.lock().unwrap().exclude) {
+                continue;
             }
             process(&state, &s, src, &mut registered, &mut failed, &mut staged);
         }

@@ -78,10 +78,12 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | Key | Default | Meaning |
 |---|---|---|
 | `scanpath` | (defaults above) | array of paths; replaces the default scan roots. First start only (no `config.toml`): the roots added by hand in the other mounters are imported, read only: `scanpath` of `/data/krakenmount/config.toml` (the last line wins), `[scan] path` of `/data/shadowmount/config.ini`, and the parent folder of each `/data/shadowmount/manual.lst` entry (`maxpack_logic::roots`). With any, `scanpath` lists every default root first, for every drive whether present or not, then theirs; with none there is no `scanpath` line. A root that may never be one (Drives and scan roots: the system, Sony's user data, MaxPack's and the other mounters' data folders) is never imported nor scanned, and the web UI cannot save it |
+| `exclude` | [] | array of absolute paths the scan never opens (`maxpack_logic::exclude`: no control character; `//`, `.` and `..` resolved as text, trailing `/` trimmed, duplicates dropped): a source at an entry or under it (whole path components, `scan::excluded`) is skipped by the scan before duplicate detection, never listed or descended into (an excluded root is not even listed): not in games, duplicates, errors or unstable, never built or registered. A title still registered stays registered (as ShadowMountPlus removing a manual source) with its built cache, whose overlay its launch still gets; auto-remove leaves it too, since its source is still there. Edited in the settings form ("Excluded paths"); a source excluded while a pass runs is skipped before its build or register. Ported from the upstream project's 0.3.2 |
 | `inject_ampr` | true | copy `/data/maxpack/ampr/*` on top of a folder game's fakelib; pkg games always get it (pkg mode exists only in ampr-emu-ng) (a change only refreshes `fakelib/`) |
 | `add_emulators` | true | add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes `fakelib/`) |
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
 | `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
+| `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
 | `ampr_auto_update` | true | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
@@ -93,7 +95,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
-Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `playgo_off`, `hidden`) that is not
+Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `exclude`, `playgo_off`, `hidden`, `overlay_off`) that is not
 a valid value is logged and skipped, the other items stay (an array that does not parse, such as one with a number in it,
 is ignored as a whole). The web UI edits the same file.
 
@@ -176,6 +178,9 @@ is ignored as a whole). The web UI edits the same file.
   is added or upgraded (no mixed set), logged `<TID>: fakelib: kept the game's dlc_emu files (not a known release)`; pgo_stub goes per file.
   A title in `playgo_off` skips pgo_stub entirely (no add, no upgrade, the eboot is not searched), logged
   `<TID>: fakelib: PlayGo stub off (playgo_off)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
+  A plain folder title in `overlay_off` (`cache::overlay_off`) stops right after `fakelib/` is emptied (no base, no
+  emulators, no ampr), logged `<TID>: fakelib: overlay off (overlay_off)`; `.ampr` is written with `"overlay_off": true`
+  and the earlier "playgo" memo kept. Launch then mounts nothing (empty `fakelib/`).
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
   `.pkg` named in `kraken.image`) or a .p5z game (a game's own ng has no p5z mode, so `keep_game_ng` does not apply:
   ours is always on top), every file of `/data/maxpack/ampr/` (not `libkernel.sprx`) is copied on top,
@@ -188,7 +193,8 @@ is ignored as a whole). The web UI edits the same file.
   import search: `eboot.bin` is read again only when its (size, mtime) differs (a read error is not memoized), and
   `check` never compares it. An older `.ampr` without `emus` differs, so every cache refreshes `fakelib/` once; that
   one-time refresh also drops a `libSceSaveData.native.sprx` an older build copied (no separate check for such files).
-  When "ampr" or "emus" differ (the ampr dir, `inject_ampr` or the emulator inputs changed) or `.done` still has a
+  `"overlay_off": true` is in `.ampr` only for a title `cache::overlay_off` takes (an older `.ampr` stays fresh).
+  When "ampr", "emus" or "overlay_off" differ (the ampr dir, `inject_ampr`, the emulator inputs or `overlay_off` changed) or `.done` still has a
   `game_fakelib` other than `full` (a cache built before the setting was removed), `check` says `Fakelib` and only `fakelib/` is
   recomposed (`refresh_fakelib`, which then rewrites `.done` with its own mtime and its inputs record), no extraction or re-registration. `fakelib/` is not in the AMPR index.
 - A folder game's cache is only `fakelib/`, `.ampr`, `.built`, `.done`: nothing of the game is copied.
@@ -256,7 +262,9 @@ build, register, purge or auto-remove (both also stop before their next title), 
 nor mounted), the launch watcher mounts no new overlay (a launch first seen then never gets one; overlays already up still go on
 exit as always), one toast per change, `waiting` = `"other:<process>"`; the web UI stays up (`State::installer_only`). Back to Ready:
 every title is checked again (`registered` and `failed` cleared), so titles the other mounter remounted are adopted again. Loop every `scan_interval_seconds` or on
-wake: reload config, scan, then for each game: freshness check, build if stale or forced,
+wake: reload config (under the settings lock, which the web's setting changes hold too, so a pass never puts an older
+copy over a newer one), scan (sources in `exclude` skipped, see Settings; a source excluded while the pass runs is
+skipped before its build or register), then for each game: freshness check, build if stale or forced,
 register (once per run, and after every rebuild), status `ready`. Right before the register (or the
 mount-only path below), once per run per title, `cache::fix_access` opens up the cache and the
 source for the game and the system services (it only adds missing bits); a relinked moved game
@@ -316,7 +324,8 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
+only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its `playgo_off` membership and
+`cache::overlay_off`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
 `.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
 Duplicate title ids: a folder beats a pkg, which beats a .p5z
 (`maxpack_logic::dups::claim`; ranks `RANK_FOLDER` < `RANK_PKG` < `RANK_P5Z`), then the first scan root wins; the others
@@ -385,7 +394,7 @@ cancels that and mounts the nullfs mounts again (~10 ms after the exec: the fork
 only at the exec, so they cannot go back earlier). When the exec fallback cannot mount the overlay, they are
 still mounted. A later copy of the payload adopts the overlay, `/data`, USB, font and `/app0/kraken` or `/app0/p5z` mounts.
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
-No overlay when neither layer applies.
+No overlay when neither layer applies, and with an empty `fakelib/` (an `overlay_off` title) no sandbox mount at all.
 
 ## Crash report (`src/crash.rs`, `maxpack_logic::crash`)
 When an app crashes, the console writes `/user/devlog/system/sce_coredumps.0/<TID>_<n>/` with
@@ -407,8 +416,8 @@ and the report (`GET /api/report/<TID>`) names it. Ported from the upstream proj
 // config.rs
 pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
-pub struct Settings { pub scan_paths: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
-  pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub ampr_auto_update: bool,
+pub struct Settings { pub scan_paths: Vec<String>, pub exclude: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
+  pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub overlay_off: Vec<String>, pub ampr_auto_update: bool,
   pub backports: bool, pub scan_interval_secs: u64, pub stability_wait_secs: u64, pub low_space_gb: u64,
   pub auto_remove_missing: bool, pub auto_remove_delay_secs: u64, pub notify: bool, pub log: bool, pub debug: bool }
 impl Default for Settings
@@ -429,6 +438,7 @@ pub fn ejectable(mount: &str) -> bool;                      // /mnt/usb0..7, /mn
 // scan.rs
 #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Packing { Plain, Zstd, Lz4 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)] pub enum Kind { Pkg, Folder(Packing), P5z }
+pub fn kind_names(kind: Kind) -> (&'static str, Option<&'static str>); // /api/state kind and packing, maxpack_logic's names
 #[derive(Clone, Debug)]
 pub struct Source { pub path: std::path::PathBuf, pub kind: Kind, pub title_id: String, pub title_name: String,
   pub version: String, /* param.json contentVersion, or empty */
@@ -437,7 +447,8 @@ pub struct ScanResult { pub games: Vec<Source>, pub duplicates: Vec<Source>, pub
   pub unstable: Vec<(std::path::PathBuf, Option<String> /* title id when known */)>, // still being copied: skipped, not gone
   pub images: Vec<Image>,                                                  // ShadowMountPlus images: listed, never mounted
   pub unplayable: Vec<(std::path::PathBuf, maxpack_logic::p5z::Unplayable)> } // .p5z files the engine refuses: not games
-pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads and believed .p5z verdicts by (path, size, mtime)
+pub fn scan(roots: &[String], exclude: &[String], backports: bool, stability_wait: u64) -> ScanResult;  // memoizes pkg param reads and believed .p5z verdicts by (path, size, mtime)
+pub fn excluded(path: &std::path::Path, exclude: &[String]) -> bool; // path is an exclude entry or under one (whole components)
 pub fn still_written(paths: &[std::path::PathBuf], wait: u64) -> Option<u64>; // age in s of the youngest max(mtime, ctime) under wait; None = stable
 pub fn parse_param(json: &[u8]) -> std::io::Result<(String, String, String)>; // (title_id, title_name, version); name: see below
 pub fn valid_tid(t: &str) -> bool;
@@ -452,6 +463,7 @@ pub enum Fresh { Fresh, Missing, Stale(String), Fakelib(String), Moved(std::path
 pub fn relink(src: &Source, s: &Settings, from: &std::path::Path) -> std::io::Result<()>; // Moved: no rebuild
 pub fn pkg_id(pkg: &std::path::Path) -> std::io::Result<String>;   // sampled identity, see Cache
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fakelib: fakelib/ only
+pub fn overlay_off(src: &Source, s: &Settings) -> bool;                 // listed in overlay_off and a plain folder: empty fakelib/
 pub fn check(src: &Source, s: &Settings) -> Fresh;
 pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace

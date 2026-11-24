@@ -7,6 +7,9 @@ pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings {
     pub scan_paths: Vec<String>,
+    /// Absolute paths the scan never opens: a source at one of them or under it is skipped
+    /// (maxpack_logic::exclude).
+    pub exclude: Vec<String>,
     pub inject_ampr: bool,
     pub add_emulators: bool,
     /// Title ids that get no bundled PlayGo stub (pgo_stub): not added, not upgraded.
@@ -14,6 +17,9 @@ pub struct Settings {
     /// Title ids the page's library does not show unless "show hidden" is on. Page only: a hidden
     /// game stays built, registered and mounted.
     pub hidden: Vec<String>,
+    /// Title ids (plain folder games) whose cache gets an empty fakelib/: no overlay and no sandbox
+    /// mount at launch (maxpack_logic::overlay).
+    pub overlay_off: Vec<String>,
     pub ampr_auto_update: bool,
     pub backports: bool,
     pub scan_interval_secs: u64,
@@ -33,10 +39,12 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             scan_paths: Vec::new(),
+            exclude: Vec::new(),
             inject_ampr: true,
             add_emulators: true,
             playgo_off: Vec::new(),
             hidden: Vec::new(),
+            overlay_off: Vec::new(),
             ampr_auto_update: false,
             backports: true,
             scan_interval_secs: 10,
@@ -54,10 +62,12 @@ impl Default for Settings {
 
 const HELP: &[(&str, &str)] = &[
     ("scanpath", "replaces the default scan roots (/data/homebrew, /data/etaHEN/games, <drive>/homebrew, ...)"),
+    ("exclude", "absolute paths the scan never opens: a source at one of them or under it is not listed, built or registered (a title still registered stays registered)"),
     ("inject_ampr", "true = copy /data/maxpack/ampr/* on top of a folder game's fakelib (pkg games always get it; a change only refreshes fakelib/)"),
     ("add_emulators", "true = add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators to a game's fakelib when it needs them and ships none (a change only refreshes fakelib/)"),
     ("playgo_off", "title ids that get no bundled PlayGo stub (pgo_stub): not added, not upgraded; a libScePlayGo.sprx the game ships stays (a change only refreshes fakelib/)"),
     ("hidden", "title ids the web UI's library does not show unless its \"show hidden\" switch is on (set from the game's sheet; the game stays registered and mounted)"),
+    ("overlay_off", "title ids of plain folder games that get no MaxPack overlay at launch: not the game's fakelib/, not ampr-emu-ng, not the emulators, and no /data, USB or writable /app0 in its sandbox; a pkg, a .p5z or a packed folder always keeps it (a change only refreshes fakelib/)"),
     ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from MaxPack's own repository (DeLFuS77/ampr-emu-ng); off by default until MaxPack is published, and it only ever downloads MaxPack's own build (a hand-placed libSceAmpr.sprx is kept)"),
     ("backports", "true = apply backports/<TID>* from the game's scan root, then the other roots, then /data/homebrew"),
     ("scan_interval_seconds", "scan loop period, 1..3600"),
@@ -94,6 +104,12 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
             }
         }
         "scanpath" => return Err(format!("expected an absolute path, got {v:?}")),
+        "exclude" => match maxpack_logic::exclude::entry(v) {
+            Some(e) => {
+                maxpack_logic::titles::set_listed(&mut s.exclude, &e, true);
+            }
+            None => return Err(format!("expected an absolute path without control characters, got {v:?}")),
+        },
         "inject_ampr" => s.inject_ampr = flag(v)?,
         "add_emulators" => s.add_emulators = flag(v)?,
         "playgo_off" if crate::scan::valid_tid(v) => {
@@ -106,6 +122,10 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
             maxpack_logic::titles::set_listed(&mut s.hidden, v, true);
         }
         "hidden" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "overlay_off" if crate::scan::valid_tid(v) => {
+            maxpack_logic::titles::set_listed(&mut s.overlay_off, v, true);
+        }
+        "overlay_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
         "ampr_auto_update" => s.ampr_auto_update = flag(v)?,
         // Removed setting (the game's fakelib is always used in full): ignored, dropped on the next save.
         "game_fakelib" => {}
@@ -254,6 +274,10 @@ fn parse(text: &str) -> Settings {
                 s.playgo_off.clear(); // a later playgo_off line replaces an earlier one
             } else if k == "hidden" {
                 s.hidden.clear(); // the same for hidden
+            } else if k == "overlay_off" {
+                s.overlay_off.clear(); // and for overlay_off
+            } else if k == "exclude" {
+                s.exclude.clear(); // and for exclude
             } else if vals.len() != 1 {
                 return Err("expected one value, not an array".into());
             } else {
@@ -286,6 +310,10 @@ fn render(s: &Settings) -> String {
                 let items: Vec<String> = s.scan_paths.iter().map(|p| toml_quote(p)).collect();
                 out += &format!("scanpath = [{}]\n", items.join(", "));
             }
+            "exclude" => {
+                let items: Vec<String> = s.exclude.iter().map(|p| toml_quote(p)).collect();
+                out += &format!("exclude = [{}]\n", items.join(", "));
+            }
             "inject_ampr" => out += &format!("{k} = {}\n", s.inject_ampr),
             "add_emulators" => out += &format!("{k} = {}\n", s.add_emulators),
             "playgo_off" => {
@@ -295,6 +323,10 @@ fn render(s: &Settings) -> String {
             "hidden" => {
                 let items: Vec<String> = s.hidden.iter().map(|t| toml_quote(t)).collect();
                 out += &format!("hidden = [{}]\n", items.join(", "));
+            }
+            "overlay_off" => {
+                let items: Vec<String> = s.overlay_off.iter().map(|t| toml_quote(t)).collect();
+                out += &format!("overlay_off = [{}]\n", items.join(", "));
             }
             "ampr_auto_update" => out += &format!("{k} = {}\n", s.ampr_auto_update),
             "backports" => out += &format!("{k} = {}\n", s.backports),
@@ -391,10 +423,12 @@ pub fn save(s: &Settings) -> std::io::Result<()> {
 pub fn to_json(s: &Settings) -> Value {
     json!({
         "scanpath": s.scan_paths,
+        "exclude": s.exclude,
         "inject_ampr": s.inject_ampr,
         "add_emulators": s.add_emulators,
         "playgo_off": s.playgo_off,
         "hidden": s.hidden,
+        "overlay_off": s.overlay_off,
         "ampr_auto_update": s.ampr_auto_update,
         "backports": s.backports,
         "scan_interval_seconds": s.scan_interval_secs,
@@ -414,8 +448,8 @@ pub fn from_json(v: &Value) -> Result<Settings, String> {
     let mut s = Settings::default();
     for (k, val) in obj {
         let vals: Vec<&Value> = match (k.as_str(), val) {
-            ("scanpath" | "playgo_off" | "hidden", Value::Array(a)) => a.iter().collect(),
-            ("scanpath" | "playgo_off" | "hidden", _) => return Err(format!("{k}: expected an array of strings")),
+            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off", Value::Array(a)) => a.iter().collect(),
+            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off", _) => return Err(format!("{k}: expected an array of strings")),
             _ => vec![val],
         };
         for x in vals {
