@@ -4,22 +4,31 @@
 /// A game's title id: four upper-case letters and five digits (PPSA01234, CUSA01234), never a
 /// system app (NPXS).
 pub fn valid_tid(t: &str) -> bool {
-    let _ = t;
-    false
+    let b = t.as_bytes();
+    b.len() == 9 && b[..4].iter().all(u8::is_ascii_uppercase) && b[4..].iter().all(u8::is_ascii_digit)
+        && !t.starts_with("NPXS")
 }
 
 /// Puts `tid` in `list` (`on`) or takes it out (`off`): the other titles keep their order, a title
 /// is never listed twice (an earlier duplicate goes too). True when the list changed.
 pub fn set_listed(list: &mut Vec<String>, tid: &str, on: bool) -> bool {
-    let _ = (list, tid, on);
-    false
+    let before = list.clone();
+    let mut seen = false;
+    list.retain(|t| t != tid || (on && !std::mem::replace(&mut seen, true)));
+    if on && !seen {
+        list.push(tid.to_string());
+    }
+    *list != before
 }
 
 /// The body of a per-title switch: exactly `on` (Some(true)) or `off` (Some(false)); anything else
 /// is None (a 400).
 pub fn switch_body(body: &[u8]) -> Option<bool> {
-    let _ = body;
-    None
+    match body {
+        b"on" => Some(true),
+        b"off" => Some(false),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ name = "maxpack-logic"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Logic of the MaxPack payload that needs no PS5, tested on the host: imported scan roots and the paths never scanned, other-mounter state, ShadowMountPlus image kinds, installed games, the request checks of port 8095 and installer route forwarding"
+description = "Logic of the MaxPack payload that needs no PS5, tested on the host: imported scan roots and the paths never scanned, other-mounter state, ShadowMountPlus image kinds, installed games, the request checks of port 8095, installer route forwarding, the per-game report, crash records, the Play gate and the per-title lists"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

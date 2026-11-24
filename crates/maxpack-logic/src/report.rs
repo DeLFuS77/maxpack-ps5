@@ -38,34 +38,91 @@ pub struct Report<'a> {
 
 /// The source kind as /api/state names it: (the report's words, the compatibility list's words).
 pub fn kind_text(kind: &str, packing: Option<&str>) -> (&'static str, &'static str) {
-    let _ = (kind, packing);
-    ("", "")
+    match (kind, packing) {
+        ("pkg", _) => ("pkg", "pkg"),
+        ("p5z", _) => ("p5z", "p5z"),
+        (_, Some("zstd")) => ("folder (zstd)", "carpeta zstd"),
+        (_, Some("lz4")) => ("folder (lz4)", "carpeta lz4"),
+        _ => ("folder", "carpeta"),
+    }
 }
 
 /// The firmware from the SDK's `kernel_get_fw_version()` (BCD: 0x13600000 is 13.60, the low 16 bits
 /// are not part of it); None for 0 or a value that is not BCD.
 pub fn fw_text(v: u32) -> Option<String> {
-    let _ = v;
-    None
+    let bcd = |b: u32| (b >> 4 <= 9 && b & 0xf <= 9).then_some((b >> 4) * 10 + (b & 0xf));
+    let (major, minor) = (bcd((v >> 24) & 0xff)?, bcd((v >> 16) & 0xff)?);
+    (major > 0).then(|| format!("{major}.{minor:02}"))
 }
 
 /// Unix seconds as `2026-11-19 20:51:03Z` (the log's stamp).
 pub fn utc(secs: u64) -> String {
-    let _ = secs;
-    String::new()
+    // Howard Hinnant's days-to-civil.
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    let z = days as i64 + 719_468;
+    let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}Z", rem / 3600, rem / 60 % 60, rem % 60)
 }
 
 /// A row of `docs/compatibilidad.md` with the result and the date left to fill in ("?"): the
 /// console's clock is often years behind, so the date is not taken from it.
 pub fn compat_row(r: &Report) -> String {
-    let _ = r;
-    String::new()
+    let cell = |s: &str| if s.is_empty() { "?".to_string() } else { s.replace('|', "\\|") };
+    let cells = [
+        cell(r.title_id), cell(r.title_name), cell(r.game_version), kind_text(r.kind, r.packing).1.to_string(),
+        cell(r.firmware.unwrap_or("")), format!("MaxPack {}", r.version), "?".into(), "?".into(),
+    ];
+    format!("| {} |", cells.join(" | "))
 }
 
 /// The whole report.
 pub fn text(r: &Report) -> String {
-    let _ = r;
-    String::new()
+    let mounting = match r.waiting {
+        None => "MaxPack mounts the games".to_string(),
+        Some("kstuff") => "waiting for kstuff (MaxPack mounts nothing yet)".to_string(),
+        Some(w) => format!("another mounter is running ({}): MaxPack only installs", w.strip_prefix("other:").unwrap_or(w)),
+    };
+    let version = if r.game_version.is_empty() { "?" } else { r.game_version };
+    let status = match r.error {
+        Some(e) if !e.is_empty() => format!("{} ({e})", r.status),
+        _ => r.status.to_string(),
+    };
+    let crash = r.crash.map_or("none recorded".to_string(), |c| {
+        format!("{} in {}, {} (console dump folder {})", utc(c.at), c.process, c.status, c.folder)
+    });
+    let mut lines = vec![
+        format!("MaxPack {}: game report", r.version),
+        format!("Firmware: {}", r.firmware.unwrap_or("(unknown: please fill in)")),
+        format!("Mounting: {mounting}"),
+        format!("Game: {} ({}), version {version}", r.title_name, r.title_id),
+        format!("Source: {} ({}, {})", r.path, kind_text(r.kind, r.packing).0, r.drive),
+        format!("Status: {status}"),
+    ];
+    if r.hidden {
+        lines.push("Hidden in the library: yes".into());
+    }
+    lines.extend([
+        format!("Backport: {}", r.backport.unwrap_or("none")),
+        format!("ampr-emu-ng: {}", r.ampr),
+        format!("PlayGo stub: {}", r.playgo),
+        format!("Last crash: {crash}"),
+        String::new(),
+        "Row for docs/compatibilidad.md (fill in the result and the date):".into(),
+        compat_row(r),
+        String::new(),
+        format!("maxpack.log, last {LOG_LINES} lines with {}:", r.title_id),
+    ]);
+    let log: Vec<&str> = r.log.lines().filter(|l| l.contains(r.title_id)).collect();
+    lines.extend(log[log.len().saturating_sub(LOG_LINES)..].iter().map(|l| l.to_string()));
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]

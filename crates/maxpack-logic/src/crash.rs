@@ -25,39 +25,70 @@ pub struct Crash {
 
 /// "PPSA22327_1795166239" -> "PPSA22327".
 pub fn folder_tid(name: &str) -> Option<&str> {
-    let _ = name;
-    None
+    let (tid, n) = name.split_once('_')?;
+    let digits = !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
+    (digits && crate::titles::valid_tid(tid)).then_some(tid)
 }
 
 /// "prosperocore-1795166239-0x000000e9-eboot.bin.prosperodmp" -> (0xe9, "eboot.bin").
 pub fn dump_pid_process(file: &str) -> Option<(i32, &str)> {
-    let _ = file;
-    None
+    let rest = file.strip_prefix("prosperocore-")?.strip_suffix(".prosperodmp")?;
+    let mut parts = rest.splitn(3, '-');
+    let (_, pid, process) = (parts.next()?, parts.next()?, parts.next()?);
+    let pid = i32::from_str_radix(pid.strip_prefix("0x")?, 16).ok()?;
+    (!process.is_empty()).then_some((pid, process))
 }
 
 /// The NOTE_EXIT data, a wait(2) status: "exited with 0", "killed by signal 11".
 pub fn exit_status(status: i32) -> String {
-    let _ = status;
-    String::new()
+    match status & 0x7f {
+        0 => format!("exited with {}", (status >> 8) & 0xff),
+        0x7f => format!("status {status:#x}"),
+        sig => format!("killed by signal {sig}"),
+    }
 }
 
 /// The dump of `pid` among the `<tid>_*` folders in `dir`: (folder, process).
 pub fn find_in(dir: &Path, tid: &str, pid: i32) -> Option<(String, String)> {
-    let _ = (dir, tid, pid);
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let folder = e.file_name().to_string_lossy().into_owned();
+        if folder_tid(&folder) != Some(tid) {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(e.path()) else { continue };
+        for f in files.flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            if let Some((p, process)) = dump_pid_process(&name) {
+                if p == pid {
+                    return Some((folder, process.to_string()));
+                }
+            }
+        }
+    }
     None
 }
 
 /// The crashes of FILE's text: {"<TID>": {at, process, folder, status}}. Not JSON, not an object,
 /// or a key that is not a title id: left out (a bad file is an empty list, never an error).
 pub fn parse(text: &str) -> HashMap<String, Crash> {
-    let _ = text;
-    HashMap::new()
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str(text) else { return HashMap::new() };
+    let s = |v: &serde_json::Value, k: &str| v[k].as_str().unwrap_or("").to_string();
+    map.into_iter()
+        .filter(|(tid, _)| crate::titles::valid_tid(tid))
+        .map(|(tid, v)| {
+            let c = Crash { at: v["at"].as_u64().unwrap_or(0), process: s(&v, "process"), folder: s(&v, "folder"), status: s(&v, "status") };
+            (tid, c)
+        })
+        .collect()
 }
 
 /// FILE's text, keys sorted.
 pub fn to_json(crashes: &HashMap<String, Crash>) -> String {
-    let _ = crashes;
-    String::new()
+    let sorted: BTreeMap<&String, serde_json::Value> = crashes
+        .iter()
+        .map(|(tid, c)| (tid, serde_json::json!({"at": c.at, "process": c.process, "folder": c.folder, "status": c.status})))
+        .collect();
+    serde_json::to_string(&sorted).unwrap_or_else(|_| "{}".into())
 }
 
 pub fn load_from(path: &Path) -> HashMap<String, Crash> {
@@ -66,8 +97,9 @@ pub fn load_from(path: &Path) -> HashMap<String, Crash> {
 
 /// Temp file + rename: a crash while writing never leaves a half file.
 pub fn save_to(path: &Path, crashes: &HashMap<String, Crash>) -> std::io::Result<()> {
-    let _ = (path, crashes, BTreeMap::<String, String>::new());
-    Ok(())
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, to_json(crashes))?;
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

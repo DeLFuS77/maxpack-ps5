@@ -18,27 +18,43 @@ pub enum Refusal {
 impl Refusal {
     /// The HTTP status of the refusal.
     pub fn status(self) -> u16 {
-        0
+        match self {
+            Refusal::NotFound => 404,
+            Refusal::GameRunning | Refusal::NotMounting | Refusal::NotReady => 409,
+        }
     }
 
     /// The plain-text body (the page shows it as it is).
     pub fn text(self) -> &'static str {
-        ""
+        match self {
+            Refusal::NotFound => "not found",
+            Refusal::GameRunning => "a game is running",
+            Refusal::NotMounting => "MaxPack does not mount now (another mounter runs, or no kstuff)",
+            Refusal::NotReady => "the game is not ready",
+        }
     }
 }
 
 /// `status`: the library entry's status (None when the title is not in the library); `mounts`:
 /// MaxPack mounts now; `paused`: a game runs.
 pub fn gate(status: Option<&str>, mounts: bool, paused: bool) -> Result<(), Refusal> {
-    let _ = (status, mounts, paused);
+    let status = status.ok_or(Refusal::NotFound)?;
+    if paused {
+        return Err(Refusal::GameRunning);
+    }
+    if !mounts {
+        return Err(Refusal::NotMounting);
+    }
+    if status != "ready" {
+        return Err(Refusal::NotReady);
+    }
     Ok(())
 }
 
 /// The answer of sceLncUtilLaunchApp: the launch was taken (submitted, or 0x80940005, which LncUtil
 /// returns for titles it starts anyway; CheatRunner's cr_launch.c).
 pub fn launch_taken(rc: i32) -> bool {
-    let _ = rc;
-    false
+    rc >= 0 || rc as u32 == 0x8094_0005
 }
 
 #[cfg(test)]
