@@ -145,7 +145,9 @@ pub fn loose_dest(path: &str) -> LooseDest {
 /// relative to /app0, then `<id> <offset> <length>` per volume. ampr-emu-ng parses exactly this.
 pub fn image_text(file_name: &str, volumes: &[Volume]) -> Result<String, String> {
     if file_name.is_empty() || file_name == "." || file_name == ".."
-        || file_name.contains(['/', '\\', '\n', '\r', '\0']) {
+        || file_name.contains(['/', '\\'])
+        // The contract is ASCII and ampr-emu-ng refuses any other byte: printable only.
+        || !file_name.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
         return Err(format!("unusable file name {file_name:?}"));
     }
     if volumes.is_empty() || volumes.len() > MAX_VOLUMES {
@@ -250,7 +252,8 @@ mod tests {
         let v = |id| Volume { id, offset: 1234, length: 5678 };
         assert_eq!(image_text("basic.p5z", &[v(0)]).unwrap(), "maxpack-image 1\np5z/basic.p5z\n0 1234 5678\n");
         assert_eq!(image_text("a.p5z", &[v(0), v(1)]).unwrap(), "maxpack-image 1\np5z/a.p5z\n0 1234 5678\n1 1234 5678\n");
-        for n in ["a/b.p5z", "a\nb", "a\\b", "..", ".", "", "a\rb", "a\0b"] {
+        assert!(image_text("Hollow Knight Silksong.p5z", &[v(0)]).is_ok());
+        for n in ["a/b.p5z", "a\nb", "a\\b", "..", ".", "", "a\rb", "a\0b", "Pokémon.p5z", "a\tb.p5z", "a\u{7f}b.p5z"] {
             assert!(image_text(n, &[v(0)]).is_err(), "{n:?}");
         }
         assert!(image_text("a.p5z", &[v(1), v(0)]).is_err());
