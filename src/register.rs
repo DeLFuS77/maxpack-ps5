@@ -414,12 +414,14 @@ pub fn install_all(title_ids: &[String]) -> io::Result<()> {
         fn sceAppInstUtilAppInstallAll(reserved: *mut c_void) -> i32;
     }
     let why = INSTALL_FN.get_or_init(resolve_install).as_ref().err().cloned().unwrap_or_default();
+    // Taken before the call: a tile staged while it runs (the tile thread) waits for the next pass
+    // instead of being marked registered by a call that never saw it.
+    // ponytail: taken either way: a failed tile keeps tile.ok "pending" and gets no retry until the
+    // next start, so a failing call does not repeat (~20 s) every pass.
+    let tile = TILE_STAGED.lock().unwrap().take();
     let t = std::time::Instant::now();
     let rc = unsafe { sceAppInstUtilAppInstallAll(ptr::null_mut()) } as u32;
     let ms = t.elapsed().as_millis();
-    // Taken either way: a failed tile keeps tile.ok "pending" and is retried at the next start, so a
-    // failing call does not repeat (~20 s) every pass.
-    let tile = TILE_STAGED.lock().unwrap().take();
     let ids: Vec<&str> = title_ids.iter().map(String::as_str).chain(tile.as_ref().map(|_| TILE_ID)).collect();
     log!("{}: {why}; sceAppInstUtilAppInstallAll: {rc:#x} ({ms} ms)", ids.join(", "));
     if rc != 0 {

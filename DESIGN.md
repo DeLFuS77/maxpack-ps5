@@ -338,7 +338,9 @@ so far are not registered yet, so the pass after the game exits stages them agai
 gets one toast (`<n> games registered` / `<n> games failed`) instead of one per title.
 The tile (`MXPK00001`) is staged the same way on FW 12+ (`tile_staged`): the pass calls InstallAll
 for it even with no game staged (not while a game runs), and `tile.ok` gets its hash once that succeeds
-(a failed call leaves it `pending`, retried at the next start). The tile registers again whenever
+(a failed call leaves it `pending`, retried at the next start). The staged tile is taken before the call, so a tile the
+tile thread stages while InstallAll runs waits for the next pass instead of being marked registered by a call that
+never saw it (ported from the upstream project's 0.3.2). The tile registers again whenever
 `tile.ok` lacks its param.json hash, a tile file changed, or app.db's `tbl_contentinfo` has no `MXPK00001`
 row (`SELECT COUNT(*)`; an unreadable app.db trusts `tile.ok`).
 Every staged copy (sce_sys, `icon0.png`, appmeta, trophy files) is set to 0666 after writing: a
