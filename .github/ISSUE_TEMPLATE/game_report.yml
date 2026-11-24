@@ -1,0 +1,105 @@
+name: Game report
+description: Report how a game runs with MaxPack, working or not. It feeds the compatibility list. English or Spanish.
+title: "[PPSAxxxxx] Game name: short result"
+labels: ["game report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. Reports that a game works are just as useful as reports that it does not.
+        One game per issue, and the results go to the
+        [compatibility list](https://github.com/DeLFuS77/maxpack-ps5/blob/main/docs/compatibility.md).
+        Search open and closed issues for the title ID first; if it is there, add a comment.
+        On MaxPack's page, the game's "Copy report" button gives most of these fields ready.
+
+  - type: input
+    id: title
+    attributes:
+      label: Game name
+      placeholder: "Hollow Knight: Silksong"
+    validations:
+      required: true
+
+  - type: input
+    id: ppsa
+    attributes:
+      label: Title ID (PPSA)
+      description: The one in `sce_sys/param.json`.
+      placeholder: "PPSA12544"
+    validations:
+      required: true
+
+  - type: input
+    id: game_version
+    attributes:
+      label: Game version
+      description: '`contentVersion` in `param.json`.'
+      placeholder: "01.000.010"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      description: How the game is on the drive.
+      options:
+        - Folder (unpacked)
+        - Folder packed with zstd
+        - Folder packed with LZ4
+        - FPKG (.pkg)
+        - .p5z (played without installing)
+        - .p5z installed with MaxPack
+    validations:
+      required: true
+
+  - type: dropdown
+    id: drive
+    attributes:
+      label: Drive
+      options:
+        - Internal SSD
+        - Extended M.2
+        - USB drive
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: MaxPack version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Console firmware
+      placeholder: "13.60"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      description: Pick everything that is true.
+      multiple: true
+      options:
+        - Boots
+        - Plays
+        - Saves and loads a game
+        - Exits cleanly (back to the menu, no hang)
+        - Fails at launch
+        - Crashes later
+        - Hangs (loading screen or black screen)
+        - Runs, but slow or stutters
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: How far you played, what fails, anything odd. For a failure, paste the page's "Copy report" text or the maxpack.log lines for the game.

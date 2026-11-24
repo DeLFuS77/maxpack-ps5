@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: MaxPack user guide
+    url: https://github.com/DeLFuS77/maxpack/blob/main/docs/guide.md
+    about: How to pack a game, put it on the console and play it. Please read it before opening an issue.
+  - name: Security problem
+    url: https://github.com/DeLFuS77/maxpack-ps5/security/advisories/new
+    about: Report a vulnerability privately; do not open a public issue.
+  - name: MaxPack for the PC (app and command line)
+    url: https://github.com/DeLFuS77/maxpack/issues
+    about: Problems with packing a game or with the PC app belong there.
