@@ -2,11 +2,12 @@
 
 <h1 align="center">MaxPack for the console</h1>
 
-<p align="center"><b>Mount, launch and install your PS5 game backups, and play a compressed <code>.p5z</code> straight from a USB drive, without unpacking it.</b></p>
+<p align="center"><b>Play a PS5 game you own straight from one compressed <code>.p5z</code> file, about half its size, without unpacking it. It also mounts, launches and installs your other backups.</b></p>
 
 <p align="center">
+  <a href="https://ko-fi.com/delfus77"><img src="https://img.shields.io/badge/Support_on-Ko--fi-ff5e5b?logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/DeLFuS77/maxpack-ps5" alt="Licence: GPL-3.0-or-later"></a>
-  <a href="https://github.com/DeLFuS77/maxpack-ps5/releases/latest"><img src="https://img.shields.io/github/v/release/DeLFuS77/maxpack-ps5" alt="Latest release"></a>
+  <a href="https://github.com/DeLFuS77/maxpack-ps5/releases"><img src="https://img.shields.io/github/v/release/DeLFuS77/maxpack-ps5?sort=semver" alt="Release"></a>
   <a href="https://github.com/DeLFuS77/maxpack-ps5/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/DeLFuS77/maxpack-ps5/build.yml?branch=main&label=build" alt="Build status"></a>
   <img src="https://img.shields.io/badge/runs%20on-PS5%20(payload)-informational" alt="Runs on: PS5, as a payload">
 </p>
@@ -20,29 +21,58 @@
 
 ![A tour of the MaxPack page: the library, a game's sheet, the Install tab and Settings](docs/img/console-tour.gif)
 
+- **Played on a real PS5.** Three games started straight from their `.p5z` on firmware 13.60, from the
+  internal SSD and from an external M.2 SSD over USB-C ([results](#tested-on-a-real-ps5)).
+- **40–70 % smaller** on those games, with nothing unpacked: 7.8 → 2.3 GiB, 69.0 → 33.2 GiB and
+  124.4 → 74.1 GiB.
+- **Ready in seconds.** Only the small loose files go to the internal SSD, once (213 MB in 3.4 s,
+  337 MB in 6.4 s); the packs are read from the `.p5z` while you play.
+- **Fakelib per game**, new in 1.0.0: **Full**, **Emulators only** or **Off**, for a game that shows a
+  black screen or stalls while checking add-ons ([more](#fakelib-per-game)).
+
+> [!NOTE]
+> **Status: first public release, help us test.** MaxPack 1.0.0 is the first public release. It has
+> been tested on one console (firmware 13.60) with a handful of games, so expect rough edges. Testing
+> on other firmwares, games and drives is the most useful help right now:
+> [here is how](#help-test-maxpack).
+
+<p align="center">
+  <a href="https://ko-fi.com/delfus77"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" height="36"></a>
+  <br>
+  <sub>❤️ Free and open source, and it will stay free. If it saves you time, a coffee helps keep it going.</sub>
+</p>
+
 **MaxPack for the console** is a payload (`maxpack.elf`) for a jailbroken PS5. It finds your games on
 the internal SSD, the M.2 drive and USB drives, puts them on the home screen, mounts them when they
 start and installs them, all from a web page you open on the PS5 browser, your phone or your PC.
 
 It is based on quer3q's [Kraken Mount](https://github.com/quer3q/kraken-mount), keeps its history and
 its licence, and adds what only MaxPack does: **playing a MaxPack `.p5z` in place**, an **installer**
-with space checks and resume, a richer **library page**, and the ability to **live next to
-ShadowMountPlus and Kraken Mount**.
+with space checks and resume, a richer **library page**, a **Fakelib setting per game**, and the
+ability to **live next to ShadowMountPlus and Kraken Mount**.
+
+**New to MaxPack? Start at the hub,** [DeLFuS77/maxpack](https://github.com/DeLFuS77/maxpack): it has
+the PC app that makes the `.p5z`, the [quick start](https://github.com/DeLFuS77/maxpack#quick-start),
+the [complete guide](https://github.com/DeLFuS77/maxpack/blob/main/docs/guide.md) and the short story
+of [why MaxPack exists](https://github.com/DeLFuS77/maxpack#why-maxpack-exists).
 
 ## Contents
 
 - [Why it exists](#why-it-exists)
-- [The MaxPack family](#the-maxpack-family)
-- [Features](#features)
-- [Numbers](#numbers)
+- [Why .p5z](#why-p5z)
+- [Tested on a real PS5](#tested-on-a-real-ps5)
+- [Storage advice](#storage-advice)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
-- [Updates](#updates)
+- [The MaxPack family](#the-maxpack-family)
+- [Features](#features)
+- [Fakelib per game](#fakelib-per-game)
+- [Trust and updates](#trust-and-updates)
 - [Documentation](#documentation)
 - [FAQ](#faq)
 - [Status](#status)
 - [Building](#building)
-- [Help and reports](#help-and-reports)
+- [Help test MaxPack](#help-test-maxpack)
 - [Legal and disclaimer](#legal-and-disclaimer)
 - [Credits and licence](#credits-and-licence)
 
@@ -64,10 +94,102 @@ That needs someone on the console to:
 MaxPack for the console does all of that, and adds an installer for when you want the game on the
 console's own storage.
 
+## Why .p5z
+
+- **One file per game**, 40–70 % smaller on the games tested, with the SHA-256 of every file inside
+  (`maxpack verify` checks them all on the PC).
+- **Plays without unpacking.** Only the small loose files (`eboot.bin`, modules, `sce_sys/`...) are
+  copied once to the cache on the internal SSD; the packs are read from the `.p5z` while you play.
+- **Easy to keep and move** on the PC, and never a dead end: `maxpack unpack --folder|--original` turns
+  it back into a packed folder or the original dump, bit for bit, whenever you want.
+- **Played by MaxPack for the console.** ShadowMountPlus and Kraken Mount do not read a `.p5z`; for
+  them, the Install tab turns it into a packed folder on the console.
+- **Over 4 GiB** (most are), a `.p5z` needs an exFAT drive or the internal SSD: FAT32 cannot hold it.
+
+The full comparison with dump folders, `.exfat` and `.ffpkg` images is in the hub:
+[Why .p5z](https://github.com/DeLFuS77/maxpack#why-p5z).
+
+## Tested on a real PS5
+
+24 November 2026, one PS5 on firmware 13.60, with MaxPack for the console. Each game was played straight
+from its `.p5z`, without unpacking it:
+
+| | Original → `.p5z` | Smaller by | Volumes | Drive | Loose files in the cache | Result |
+|---|---|---|---|---|---|---|
+| **Game A** | 7.8 → 2.3 GiB | 70 % | 1 | Internal SSD | 213 MB, ready in 3.4 s | Plays, saves and loads |
+| **Game B** | 69.0 → 33.2 GiB | 51 % | 9 | External M.2 SSD over USB-C | 337 MB, ready in 6.4 s | Played without problems |
+| **Game C** | 124.4 → 74.1 GiB | 40 % | 19 | The same M.2 SSD | | Reaches the main menu and opens its saves, with only ampr-emu-ng in its `fakelib/` (what Fakelib **Off** does) |
+
+<sub>Sizes in GiB, as the console page shows them.</sub>
+
+- **On the PC**, game B (74 GB) became a 35.5 GB `.p5z` in 14.5 minutes at zstd 19 on a 32-thread
+  PC, and `maxpack verify` checked it in 70 s.
+- **Reads from the `.p5z`** took about 2 ms each on average on the M.2 SSD. A launch reads about
+  1.5–2.5 GB in its first 20 s.
+- **A mechanical USB hard drive is far too slow** for a large `.p5z`: the game never got past its first
+  screen. See [Storage advice](#storage-advice).
+- **Game C needed Fakelib Off.** With the backport libraries its dump carries, or with a bundled
+  emulator, it did not get that far on this console. During the test its `fakelib/` was set by hand to
+  hold only ampr-emu-ng, which is what [Fakelib](#fakelib-per-game) **Off**, new in 1.0.0, does for you.
+
+Every game tried, with firmware, mounter and result, goes into the
+[compatibility list](docs/compatibility.md). Tried one? Open the game's sheet, press **Copy report** (it
+has the row ready) and paste it in a
+[Game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml), whether it
+worked or not. How much MaxPack for the PC saves on other games, measured on the PC, is in the
+[engine's report](https://github.com/DeLFuS77/maxpack/blob/main/docs/reports/phase1.md).
+
+## Storage advice
+
+Where the `.p5z` sits decides how fast the game can read it:
+
+| Drive | For a `.p5z` |
+|---|---|
+| **Internal SSD** (`/data/homebrew`) | The best. |
+| **External SSD or M.2 over USB 3, on a 10 Gbps port** | Works well: games of 33 and 74 GiB ran from an M.2 SSD over USB-C, at about 2 ms per read. |
+| **Mechanical USB hard drive** | Not recommended: a large `.p5z` was far too slow to get past its first screen. |
+
+- Format external drives **exFAT**: FAT32 cannot hold a file over 4 GiB, and most `.p5z` files are
+  bigger. Packed folders (MaxPack's "Play from the USB") split their packs into parts that fit FAT32.
+- Wherever the `.p5z` is, the packs never leave it: the internal SSD holds only the loose files, and
+  needs them plus 256 MiB free.
+
+## Requirements
+
+- A **jailbroken PS5** with **kstuff** loaded and an **ELF loader on port 9021** (elfldr, etaHEN or a
+  payload manager). Tested so far on firmware 13.60.
+- Games you own: dump folders, debug FPKGs, or `.p5z` files made by
+  [MaxPack for the PC](https://github.com/DeLFuS77/maxpack).
+- For a `.p5z`, a fast drive: the internal SSD, or an SSD on a 10 Gbps USB port, formatted **exFAT** for
+  any `.p5z` over 4 GiB ([storage advice](#storage-advice)).
+- To open the page: the PS5 browser, or a phone or a PC on the same network.
+- Not needed: ampr-emu-ng, the DLC emulator and the PlayGo stub are all inside `maxpack.elf`.
+
+## Quick start
+
+1. Download `maxpack.elf` and `SHA256SUMS` from [Releases](https://github.com/DeLFuS77/maxpack-ps5/releases)
+   and check the file: `sha256sum -c SHA256SUMS`, or its build attestation
+   ([how](#trust-and-updates)).
+2. Put your `.p5z` files on the console: in `homebrew/` of the internal SSD (`/data/homebrew`, over FTP
+   in binary mode), or in the root or `homebrew/` of an exFAT SSD plugged into the PS5.
+3. With kstuff loaded, send `maxpack.elf` to the ELF loader: `nc -w 3 <PS5 IP> 9021 < maxpack.elf`,
+   or use your payload loader.
+4. Open `http://<PS5 IP>:8095` in a browser, or the **MaxPack** tile on the home screen.
+5. Open a game and press **Play**, or start it from the home screen. The first time, MaxPack copies its
+   loose files to the cache (seconds on the games tested).
+
+MaxPack keeps a copy of itself in `/data/maxpack/maxpack.elf`, so later the home-screen tile starts it
+by itself. Step by step, with troubleshooting:
+[the guide, section 5](https://github.com/DeLFuS77/maxpack/blob/main/docs/guide.md#5-maxpack-on-the-console).
+
+> **Upgrading from the old phase-2 `maxpack.elf`?** It used the same name and port but cannot hand the
+> port over. Remove it from every autoload list and restart the console first, or the new one stops
+> with "port 8095 busy".
+
 ## The MaxPack family
 
 MaxPack is made of three projects that work together. Each one lives in its own repository and has
-its own releases.
+its own releases. The hub is [DeLFuS77/maxpack](https://github.com/DeLFuS77/maxpack): start there.
 
 ```mermaid
 flowchart TD
@@ -119,11 +241,19 @@ flowchart TD
 ### Play a `.p5z` in place (only in MaxPack)
 
 Put a `.p5z` made by MaxPack for the PC in the root of a USB drive, or in `homebrew/` of a USB drive,
-the M.2 drive or the internal SSD, and it shows up as **one more game**, ready to play.
+the M.2 drive or the internal SSD, and it shows up as **one more game**, ready to play:
 
-- **Nothing is unpacked.** Only the game's loose files (executables, `sce_sys/`, `fakelib/`...) are
-  copied to the internal SSD, into `/data/maxpack/caches/<TITLE_ID>`. The packs are read from the
-  `.p5z` itself, which is mounted read-only inside the game at launch.
+1. **Scan.** MaxPack finds the `.p5z` and checks it.
+2. **Cache.** It copies only the game's loose files (executables, `sce_sys/`, `fakelib/`...), once, to
+   the internal SSD, into `/data/maxpack/caches/<TITLE_ID>`, with a small `maxpack.image` that says
+   where each volume sits inside the `.p5z`.
+3. **Register.** The game goes on the home screen like any other.
+4. **Launch.** The folder that holds the `.p5z` is mounted read-only inside the game, and MaxPack's
+   ampr-emu-ng, in p5z mode, reads the zstd volumes from inside the file.
+
+The whole flow, from packing on the PC:
+[How playing a .p5z works](https://github.com/DeLFuS77/maxpack#how-playing-a-p5z-works).
+
 - **Space is checked first.** The loose files plus 256 MiB must fit on the internal SSD. If they do
   not, the game shows "Error" with how much is missing, and mounts by itself once you free that space.
 - **Damaged files are caught.** A cut or damaged `.p5z`, or one with more than 256 volumes, is listed
@@ -161,9 +291,7 @@ the M.2 drive or the internal SSD, and it shows up as **one more game**, ready t
   drive after asking you.
 - **Storage** shows what the game, its DLC, its saves and its cache take.
 - **Fakelib** chooses what goes into the game's `fakelib/`: **Full** (the default), **Emulators only** or
-  **Off** (only ampr-emu-ng, when the game needs it). If a game shows a black screen or stalls while
-  checking add-ons, try **Emulators only**, then **Off**. On an unpacked folder game, **Off** means
-  MaxPack mounts nothing at launch: no `/data`, USB, fonts or writable `/app0` in the game's sandbox.
+  **Off**. See [Fakelib per game](#fakelib-per-game).
 - **MaxPack libraries at launch** can be turned off for an unpacked folder game that must run as it
   is.
 
@@ -242,52 +370,38 @@ press **Compress**, and each game is packed and verified.
 
 ![The MaxPack window on the PC compressing three games](https://raw.githubusercontent.com/DeLFuS77/maxpack/main/docs/img/window-compress.gif)
 
-## Numbers
+## Fakelib per game
 
-Measured on the PC with real dumps, at the default level (zstd 19):
+New in 1.0.0. A game's `fakelib/` holds the libraries MaxPack lays over the game's system libraries
+when it starts: ampr-emu-ng, the bundled DLC and PlayGo emulators when the game needs them, and the
+libraries the dump or its backport carries. In the game's sheet, **Fakelib** chooses what goes in:
 
-| Game | Original | `.p5z` | Saved | On the internal SSD when played in place |
-|---|---|---|---|---|
-| An indie game | 8.4 GB | **2.3 GB** | **−72 %** | only its loose files, roughly 0.2 GB |
-| A large AAA game | 133 GB | **79 GB** | **−41 %** | only its loose files, roughly 0.4 GB |
+| Setting | What the game gets |
+|---|---|
+| **Full** (the default) | Everything, as always: the dump's or the backport's libraries, the bundled emulators it needs, and ampr-emu-ng. |
+| **Emulators only** | None of the dump's or the backport's libraries: only the bundled emulators it needs, and ampr-emu-ng. |
+| **Off** | Only ampr-emu-ng, which a `.p5z`, a `.pkg` and a packed folder cannot run without. On an unpacked folder game, nothing: MaxPack mounts nothing at its launch (no `/data`, USB, fonts or writable `/app0` in the game's sandbox). |
 
-When a `.p5z` is played in place, the packs never leave the USB drive or disk it is on: the internal SSD
-holds only the loose files, and needs them plus 256 MiB free. The full measurements are in the
-[engine's report](https://github.com/DeLFuS77/maxpack/blob/main/docs/reports/phase1.md); which games
-have run on a console, and how, is in the [compatibility list](docs/compatibility.md).
+**When to use it.** If a game shows a black screen, or gets stuck while checking add-ons, try
+**Emulators only**, then **Off**. On newer firmware, the backport libraries a dump carries, or a
+bundled emulator, may not suit that console. Game C of the [console tests](#tested-on-a-real-ps5) is
+one: it reached its main menu only with ampr-emu-ng alone in its `fakelib/`, which is what **Off** does.
 
-## Requirements
+Only that game's `fakelib/` is rebuilt, before its next launch; other games and their caches are not
+touched. The choice is kept in `config.toml` (`fakelib_emulators`, `fakelib_off`) and shows in
+**Copy report**.
 
-- A **jailbroken PS5** with **kstuff** loaded and an **ELF loader on port 9021** (elfldr, etaHEN or a
-  payload manager). Tested so far on firmware 13.60.
-- Games you own: dump folders, debug FPKGs, or `.p5z` files made by
-  [MaxPack for the PC](https://github.com/DeLFuS77/maxpack).
-- An **exFAT** USB drive for any `.p5z` over 4 GiB (FAT32 cannot hold files that big).
-- To open the page: the PS5 browser, or a phone or a PC on the same network.
-- Not needed: ampr-emu-ng, the DLC emulator and the PlayGo stub are all inside `maxpack.elf`.
+## Trust and updates
 
-## Quick start
+- **Every release** carries `maxpack.elf` and its `SHA256SUMS`, both with a GitHub build attestation
+  that proves they were built by this repository's workflow from the tagged commit:
+  `gh attestation verify maxpack.elf -R DeLFuS77/maxpack-ps5` checks a download. Releases are
+  immutable once published: their files cannot be replaced.
+- **The self-update** only takes this repository's releases, checks the `maxpack.elf` it downloads
+  against that release's `SHA256SUMS`, and stays off until the console has passed **Check secure
+  connections** (it must refuse forged certificates).
 
-1. Download `maxpack.elf` and `SHA256SUMS` from [Releases](https://github.com/DeLFuS77/maxpack-ps5/releases)
-   and check the file (`sha256sum -c SHA256SUMS`). Each release file also has a build attestation signed
-   through GitHub: `gh attestation verify maxpack.elf -R DeLFuS77/maxpack-ps5` proves it was built by this
-   repository's workflow from the tagged commit. Published releases are immutable.
-2. Plug in the USB drive with your games (`.p5z` files in its root or in `homebrew/`).
-3. With kstuff loaded, send `maxpack.elf` to the ELF loader: `nc -w 3 <PS5 IP> 9021 < maxpack.elf`,
-   or use your payload loader.
-4. Open `http://<PS5 IP>:8095` in a browser, or the **MaxPack** tile on the home screen.
-5. Open a game and press **Play**, or start it from the home screen. The first time, MaxPack prepares
-   it for a while.
-
-MaxPack keeps a copy of itself in `/data/maxpack/maxpack.elf`, so later the home-screen tile starts it
-by itself. Step by step, with troubleshooting:
-[the guide, section 5](https://github.com/DeLFuS77/maxpack/blob/main/docs/guide.md#5-maxpack-on-the-console).
-
-> **Upgrading from the old phase-2 `maxpack.elf`?** It used the same name and port but cannot hand the
-> port over. Remove it from every autoload list and restart the console first, or the new one stops
-> with "port 8095 busy".
-
-## Updates
+### Updates
 
 At start, MaxPack looks at the latest release of this repository. When a newer one is out, the page
 shows "MaxPack &lt;version&gt; is available": **Update** downloads its `maxpack.elf`, checks it against
@@ -337,6 +451,24 @@ with MaxPack.
 </details>
 
 <details>
+<summary><b>Which drive should I play a <code>.p5z</code> from?</b></summary>
+
+The internal SSD is the best; an external SSD or M.2 over USB 3, on a 10 Gbps port, works well; a
+mechanical hard drive is not recommended for a `.p5z`. Format external drives exFAT. Details and the
+measured numbers: [Storage advice](#storage-advice).
+</details>
+
+<details>
+<summary><b>A game shows a black screen or stalls while checking add-ons</b></summary>
+
+Open its sheet and change **Fakelib**: try **Emulators only**, then **Off**. The backport libraries a
+dump carries, or a bundled emulator, may not suit every console. See
+[Fakelib per game](#fakelib-per-game). If it still fails, send a
+[game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml) with its
+**Copy report**.
+</details>
+
+<details>
 <summary><b>FAT32 or exFAT?</b></summary>
 
 exFAT for `.p5z` files: FAT32 cannot hold a file over 4 GiB, and most `.p5z` files are bigger. Packed
@@ -382,14 +514,14 @@ MaxPack for the console **1.0.0** is the first public release. Honestly, this is
 | Area | State |
 |---|---|
 | Mounting a MaxPack-packed folder on a real PS5 | **Tested** on firmware 13.60: the first build of MaxPack for the console mounted, launched and cleaned up a packed game 3 times, and going back to ShadowMountPlus worked. The same game boots, saves and loads with MaxPack's ampr-emu-ng. |
-| Playing a `.p5z` in place (USB, M.2, internal SSD) | Done; the logic and the engine are tested on the PC with real `.p5z` files. **Not run on a console yet.** |
-| The library, Play, hide, Copy report, installer, excluded paths, living with ShadowMountPlus and Kraken Mount, the tile, the self-update | Done and tested on the PC. **Not run on a console yet.** |
+| Playing a `.p5z` in place | **Tested on a real PS5**: firmware 13.60, three games with 1, 9 and 19 volumes, from the internal SSD and an external M.2 SSD over USB-C ([results](#tested-on-a-real-ps5)). Still to do: a side-by-side timing against a packed folder, and more games, firmwares and drives. |
+| Fakelib per game | Done and tested on the PC. Game C reached its menu with the same `fakelib/` that **Off** makes, set up by hand during the tests. |
+| The library, Play, hide, Copy report, installer, excluded paths, living with ShadowMountPlus and Kraken Mount, the tile, the self-update | Done and tested on the PC; their pass through the console checklist is still under way. |
 | Everything inherited from Kraken Mount 0.3.1 | Kept as in Kraken Mount, a released mounter; MaxPack's own pass through that part of the checklist (section B) is still to do. |
 
 The full console checklist is [docs/console-tests.md](docs/console-tests.md), and every game tried
-is in the [compatibility list](docs/compatibility.md). Tried one? Add it with a
-[game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml), whether
-it worked or not.
+is in the [compatibility list](docs/compatibility.md). Tried one? See
+[Help test MaxPack](#help-test-maxpack).
 
 ## Building
 
@@ -426,13 +558,26 @@ back. How it is built, the rules for a change and the contract between modules a
   `SHA256SUMS`), and a pinned copy of the MaxPack engine.
 </details>
 
-## Help and reports
+## Help test MaxPack
 
-Bug reports, game reports and ideas are welcome, in English or Spanish: use the
-[issue templates](https://github.com/DeLFuS77/maxpack-ps5/issues/new/choose). Problems on the PC go to
-[maxpack](https://github.com/DeLFuS77/maxpack/issues), problems with the runtime to
-[ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng/issues). For a security problem, see
-[SECURITY.md](SECURITY.md).
+MaxPack has run on one console so far, so every report from another firmware, game or drive helps,
+and a game that works is as useful to know as one that does not. English or Spanish are both fine.
+
+- **Tried a game?** Open a
+  [Game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml). The
+  game's **Copy report** fills most of it, and the result goes into the
+  [compatibility list](docs/compatibility.md).
+- **Found a bug?** Open a
+  [Bug report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=bug_report.yml) and paste
+  the game's **Copy report** in it: it has the version, the firmware, the source, the last crash and
+  the last log lines.
+- **Always say** which firmware, drive (internal SSD, USB SSD, hard drive, M.2) and loader you used,
+  and whether another mounter was running.
+
+Problems on the PC go to [maxpack](https://github.com/DeLFuS77/maxpack/issues), problems with the
+runtime to [ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng/issues). An idea? Open a
+[feature request](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=feature_request.yml).
+For a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Legal and disclaimer
 
