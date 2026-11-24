@@ -71,7 +71,7 @@ pub fn spawn_check() {
 /// elfldr. `paused`: a game runs (the new copy's take-over would be refused), asked before and again
 /// after the download; `pass_idle`: no scan pass holds State::work, asked once the update is under
 /// way (a later pass then waits on `holding`); `installer_idle`: the installer copies nothing
-/// (quitting would pause it).
+/// (quitting would pause it), asked before and again after the download.
 pub fn install(version: &str, paused: &dyn Fn() -> bool, pass_idle: &dyn Fn() -> bool, installer_idle: &dyn Fn() -> bool)
     -> Result<(), Fail> {
     let game = paused();
@@ -87,7 +87,7 @@ pub fn install(version: &str, paused: &dyn Fn() -> bool, pass_idle: &dyn Fn() ->
     } else if !installer_idle() {
         Err(Fail::InstallRunning)
     } else {
-        download_and_send(&offer, paused)
+        download_and_send(&offer, paused, installer_idle)
     };
     updater().end(r.is_ok(), crate::sys::uptime_ms());
     match &r {
@@ -97,7 +97,7 @@ pub fn install(version: &str, paused: &dyn Fn() -> bool, pass_idle: &dyn Fn() ->
     r
 }
 
-fn download_and_send(o: &Offer, paused: &dyn Fn() -> bool) -> Result<(), Fail> {
+fn download_and_send(o: &Offer, paused: &dyn Fn() -> bool, installer_idle: &dyn Fn() -> bool) -> Result<(), Fail> {
     let addr = SocketAddr::from(ELFLDR);
     let connect = || TcpStream::connect_timeout(&addr, Duration::from_secs(1)).map_err(|e| Fail::NoElfldr(format!("{addr}: {e}")));
     // Probe before the download; the probe connection is closed at once.
@@ -106,8 +106,12 @@ fn download_and_send(o: &Offer, paused: &dyn Fn() -> bool) -> Result<(), Fail> {
     let sums = crate::net::https_get(&o.sums.url, logic::SUMS_MAX).map_err(|e| Fail::Download(e.to_string()))?;
     let elf = crate::net::https_get(&o.elf.url, logic::ELF_MAX).map_err(|e| Fail::Download(e.to_string()))?;
     logic::verify(&elf, o, &sums).map_err(Fail::Verify)?;
+    // Asked again: the download takes a while, and a game or an install may have started meanwhile.
     if paused() {
         return Err(Fail::GameRunning);
+    }
+    if !installer_idle() {
+        return Err(Fail::InstallRunning);
     }
     let mut s = connect()?;
     // A stalled elfldr must not hold this request (and the update) for good.
