@@ -3,7 +3,8 @@
 //! against the release's SHA256SUMS and sent to elfldr. The new copy then takes the web port
 //! (web::take_port asks this copy to quit, which waits for a running scan pass) and saves its own
 //! self copy. While the repository is private or has no published release the look gets a 404:
-//! one log line, nothing offered, no retry.
+//! one log line, nothing offered, no retry. Nothing is downloaded until the secure-connection
+//! self-test (src/tls.rs) has passed on this console: the page says so instead of offering Update.
 
 use maxpack_logic::update::{self as logic, Fail, Latest, LookFailed, Offer, Updater};
 use std::io::Write;
@@ -26,9 +27,11 @@ pub fn holding() -> bool {
     updater().holding(crate::sys::uptime_ms())
 }
 
-/// `{version, size}` of the newer release found at start (/api/state `update`), None when there is none.
+/// `{version, size, tls_passed}` of the newer release found at start (/api/state `update`), None
+/// when there is none. `tls_passed` false: the page asks for the secure-connection check first.
 pub fn available() -> Option<serde_json::Value> {
-    updater().offer().map(|o| serde_json::json!({"version": o.version, "size": o.elf.size}))
+    let offer = updater().offer().map(|o| (o.version.clone(), o.elf.size));
+    offer.map(|(version, size)| serde_json::json!({"version": version, "size": size, "tls_passed": crate::tls::passed()}))
 }
 
 /// The start-up look, in its own thread: once per start, LOOK_TRIES at most and only after no answer
@@ -71,11 +74,12 @@ pub fn spawn_check() {
 /// elfldr. `paused`: a game runs (the new copy's take-over would be refused), asked before and again
 /// after the download; `pass_idle`: no scan pass holds State::work, asked once the update is under
 /// way (a later pass then waits on `holding`); `installer_idle`: the installer copies nothing
-/// (quitting would pause it), asked before and again after the download.
+/// (quitting would pause it), asked before and again after the download. Refused (TlsUnchecked)
+/// until the secure-connection self-test has passed on this console.
 pub fn install(version: &str, paused: &dyn Fn() -> bool, pass_idle: &dyn Fn() -> bool, installer_idle: &dyn Fn() -> bool)
     -> Result<(), Fail> {
-    let game = paused();
-    let offer = match updater().begin(version, game, crate::sys::uptime_ms()) {
+    let (tls, game) = (crate::tls::passed(), paused());
+    let offer = match updater().begin(version, tls, game, crate::sys::uptime_ms()) {
         Ok(o) => o,
         Err(f) => {
             log!("update: {version} refused ({}): {}", f.code(), f.detail());

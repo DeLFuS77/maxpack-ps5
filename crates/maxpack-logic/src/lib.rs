@@ -19,5 +19,6 @@ pub mod sandbox;
 pub mod sha256;
 pub mod sony;
 pub mod titles;
+pub mod tls;
 pub mod update;
 pub mod version;

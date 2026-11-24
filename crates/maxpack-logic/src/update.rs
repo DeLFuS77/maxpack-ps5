@@ -183,6 +183,9 @@ pub fn verify(elf: &[u8], offer: &Offer, sums: &[u8]) -> Result<(), String> {
 pub enum Fail {
     /// The version asked for is not the one offered (none was, or another one).
     NotOffered,
+    /// The secure-connection self-test has not passed on this console (`crate::tls`): nothing
+    /// downloaded is run until it shows the console refuses bad certificates.
+    TlsUnchecked,
     /// A game runs: the new copy's take-over would be refused (its overlay stays mounted).
     GameRunning,
     /// An update runs, or its ELF was just sent (HOLD_MS).
@@ -205,6 +208,7 @@ impl Fail {
     pub fn status(&self) -> u16 {
         match self {
             Fail::NotOffered => 400,
+            Fail::TlsUnchecked => 409,
             Fail::GameRunning | Fail::UpdateRunning | Fail::ScanRunning | Fail::InstallRunning => 409,
             Fail::NoElfldr(_) => 503,
             Fail::Download(_) | Fail::Verify(_) | Fail::Send(_) => 502,
@@ -215,6 +219,7 @@ impl Fail {
     pub fn code(&self) -> &'static str {
         match self {
             Fail::NotOffered => "not_offered",
+            Fail::TlsUnchecked => "tls_unchecked",
             Fail::GameRunning => "game_running",
             Fail::UpdateRunning => "update_running",
             Fail::ScanRunning => "scan_running",
@@ -230,6 +235,7 @@ impl Fail {
     pub fn detail(&self) -> String {
         match self {
             Fail::NotOffered => "not the newer release found at start".into(),
+            Fail::TlsUnchecked => "the secure-connection check (Settings) has not passed on this console".into(),
             Fail::GameRunning => "a game is running: close it first".into(),
             Fail::UpdateRunning => "an update is already running".into(),
             Fail::ScanRunning => "a scan or build is in progress; try again in a moment".into(),
@@ -269,10 +275,14 @@ impl Updater {
         self.updating || self.hold_until > now_ms
     }
 
-    /// Starts the update to `version`: the offer it installs, or why not. `game_running`: a game
-    /// runs now.
-    pub fn begin(&mut self, version: &str, game_running: bool, now_ms: u64) -> Result<Offer, Fail> {
+    /// Starts the update to `version`: the offer it installs, or why not. `tls_passed`: the
+    /// secure-connection self-test passed on this console (`crate::tls::passed`); `game_running`: a
+    /// game runs now.
+    pub fn begin(&mut self, version: &str, tls_passed: bool, game_running: bool, now_ms: u64) -> Result<Offer, Fail> {
         let offer = self.offer.as_ref().filter(|o| o.version == version).ok_or(Fail::NotOffered)?.clone();
+        if !tls_passed {
+            return Err(Fail::TlsUnchecked);
+        }
         if game_running {
             return Err(Fail::GameRunning);
         }
@@ -440,6 +450,7 @@ mod tests {
     fn fail_codes() {
         let all = [
             (Fail::NotOffered, 400, "not_offered"),
+            (Fail::TlsUnchecked, 409, "tls_unchecked"),
             (Fail::GameRunning, 409, "game_running"),
             (Fail::UpdateRunning, 409, "update_running"),
             (Fail::ScanRunning, 409, "scan_running"),
@@ -460,25 +471,31 @@ mod tests {
     fn one_update_at_a_time_and_no_pass_meanwhile() {
         let mut u = Updater::new();
         // Nothing offered (no release, or the start-up look has not answered yet).
-        assert_eq!(u.begin("v1.0.1", false, 1000), Err(Fail::NotOffered));
+        assert_eq!(u.begin("v1.0.1", true, false, 1000), Err(Fail::NotOffered));
         u.set_offer(Some(offer()));
         assert_eq!(u.offer(), Some(&offer()));
-        assert_eq!(u.begin("v1.0.2", false, 1000), Err(Fail::NotOffered));
-        assert_eq!(u.begin("v1.0.1", true, 1000), Err(Fail::GameRunning));
+        assert_eq!(u.begin("v1.0.2", true, false, 1000), Err(Fail::NotOffered));
+        assert_eq!(u.begin("v1.0.1", true, true, 1000), Err(Fail::GameRunning));
+        // The secure-connection self-test has not passed: nothing is downloaded, nothing held.
+        assert_eq!(u.begin("v1.0.1", false, false, 1000), Err(Fail::TlsUnchecked));
+        assert_eq!(u.begin("v1.0.1", false, true, 1000), Err(Fail::TlsUnchecked));
         assert!(!u.holding(1000));
-        assert_eq!(u.begin("v1.0.1", false, 1000), Ok(offer()));
+        // A version that is not the offer is not_offered first, checked or not.
+        assert_eq!(u.begin("v1.0.2", false, false, 1000), Err(Fail::NotOffered));
+        assert!(!u.holding(1000));
+        assert_eq!(u.begin("v1.0.1", true, false, 1000), Ok(offer()));
         // While it downloads: no pass, no second update.
         assert!(u.holding(1000));
-        assert_eq!(u.begin("v1.0.1", false, 1001), Err(Fail::UpdateRunning));
+        assert_eq!(u.begin("v1.0.1", true, false, 1001), Err(Fail::UpdateRunning));
         // Failed: free again at once.
         u.end(false, 2000);
         assert!(!u.holding(2000));
-        assert_eq!(u.begin("v1.0.1", false, 3000), Ok(offer()));
+        assert_eq!(u.begin("v1.0.1", true, false, 3000), Ok(offer()));
         // Sent: held for HOLD_MS, then free (a new copy that never started only delayed the scan).
         u.end(true, 4000);
         assert!(u.holding(4000 + HOLD_MS - 1));
-        assert_eq!(u.begin("v1.0.1", false, 4000 + HOLD_MS - 1), Err(Fail::UpdateRunning));
+        assert_eq!(u.begin("v1.0.1", true, false, 4000 + HOLD_MS - 1), Err(Fail::UpdateRunning));
         assert!(!u.holding(4000 + HOLD_MS));
-        assert_eq!(u.begin("v1.0.1", false, 4000 + HOLD_MS), Ok(offer()));
+        assert_eq!(u.begin("v1.0.1", true, false, 4000 + HOLD_MS), Ok(offer()));
     }
 }

@@ -452,6 +452,11 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             reply(409, "text/plain", "a game is running")
         }
         ("POST", "/api/self_update") => self_update(state, body),
+        // Settings' "Check secure connections" (src/tls.rs): answered when every probe is done.
+        ("POST", "/api/selftest/tls") => match crate::tls::run() {
+            Ok(v) => reply(200, "application/json", v.to_string()),
+            Err(e) => reply(409, "text/plain", e),
+        },
         ("POST", "/api/quit") if loopback || body == b"shutdown" => {
             let user = body == b"shutdown";
             // A newer copy waits for the scan pass: quitting mid-build would leave a cache without
@@ -834,8 +839,12 @@ fn api_state(state: &State) -> Vec<u8> {
     }).collect();
     let v = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
-        // {version, size} of a newer release found at start (the page offers Update), else null.
+        // {version, size, tls_passed} of a newer release found at start (the page offers Update
+        // once tls_passed), else null.
         "update": crate::update::available(),
+        // The secure-connection self-test: {passed, at, version} of its last conclusive run ({}:
+        // never), and running.
+        "tls_check": crate::tls::summary(),
         "busy": state.busy.load(Ordering::SeqCst),
         "paused": !running.is_empty(),
         // null | "kstuff" | "other:<process>"

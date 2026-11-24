@@ -1,9 +1,12 @@
 //! A minimal HTTPS GET over the console's own libSceHttp/libSceSsl (ported from
 //! ShadowMountPlus' sm_ampr_updater.c). Blocking HTTP/1.1, trust limited to the 4 root CAs below
-//! (the chains GitHub releases use).
+//! (the chains GitHub releases use), and the certificate checks asked for explicitly
+//! (VERIFY_FLAGS). Whether the console really applies them is what the self-test shows
+//! (src/tls.rs, `POST /api/selftest/tls`); the self-update waits for it.
 
-use std::ffi::{c_char, c_int, c_void, CString};
+use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::io;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Once;
 
 const NET_POOL_SIZE: c_int = 32 * 1024;
@@ -13,6 +16,22 @@ const HTTP_HEADER_MAX_SIZE: usize = 32 * 1024;
 const IO_BUFFER_SIZE: usize = 64 * 1024;
 const HTTP_TIMEOUT_US: u32 = 30 * 1000 * 1000;
 const HTTP_VERSION_1_1: c_int = 2;
+
+/// SCE_HTTPS_FLAG_* (PS4's values, the same as the Vita's: shadPS4's network/http.h, vitasdk's
+/// psp2/net/http.h; ps5-payload-sdk v0.45 has the sceHttpsEnableOption stub but no header).
+const HTTPS_FLAG_SERVER_VERIFY: u32 = 0x01;
+const HTTPS_FLAG_CN_CHECK: u32 = 0x04;
+const HTTPS_FLAG_NOT_AFTER_CHECK: u32 = 0x08;
+const HTTPS_FLAG_KNOWN_CA_CHECK: u32 = 0x20;
+/// The chain to a loaded root, the host name, the expiry date and a known CA, set on every
+/// template whatever the firmware's defaults are. Not NOT_BEFORE_CHECK (0x10): a console clock that
+/// is behind (it may be years behind) would refuse every new certificate, and a certificate that is
+/// not valid yet by that clock is no attack. Not CLIENT_VERIFY (0x02): there is no client
+/// certificate.
+const VERIFY_FLAGS: u32 = HTTPS_FLAG_SERVER_VERIFY | HTTPS_FLAG_CN_CHECK | HTTPS_FLAG_NOT_AFTER_CHECK | HTTPS_FLAG_KNOWN_CA_CHECK;
+
+/// sceHttpsEnableOption's last result (0 = the flags are set); the self-test reports it.
+static VERIFY_RC: AtomicI32 = AtomicI32::new(0);
 
 #[repr(C)]
 struct SceSslData {
@@ -65,6 +84,11 @@ extern "C" {
     fn sceHttpSetConnectTimeOut(id: c_int, timeout_us: u32) -> c_int;
     fn sceHttpSetSendTimeOut(id: c_int, timeout_us: u32) -> c_int;
     fn sceHttpSetRecvTimeOut(id: c_int, timeout_us: u32) -> c_int;
+    /// id: a template, connection or request; flags: SCE_HTTPS_FLAG_* to turn on.
+    fn sceHttpsEnableOption(id: c_int, ssl_flags: u32) -> c_int;
+    /// After a failed send on request `id`: the SSL error and the SCE_HTTPS_ERROR_SSL_* bits of the
+    /// certificate checks that failed.
+    fn sceHttpsGetSslError(id: c_int, err_num: *mut c_int, detail: *mut u32) -> c_int;
 }
 
 /// Runs its release function on drop: the handles go away in reverse order on every path.
@@ -76,12 +100,35 @@ impl Drop for Guard {
     }
 }
 
-fn sce_err(op: &str, url: &str, rc: c_int) -> io::Error {
-    io::Error::other(format!("{op} failed for {url}: 0x{:08x}", rc as u32))
+/// A libSceHttp/libSceSsl call that failed, kept inside the io::Error so the self-test can tell a
+/// TLS refusal from a failure before it (`sce_code`, `ssl_detail`).
+#[derive(Debug)]
+struct SceFailure {
+    op: &'static str,
+    url: String,
+    rc: u32,
+    /// sceHttpsGetSslError after a failed send: (error number, SCE_HTTPS_ERROR_SSL_* bits).
+    ssl: Option<(c_int, u32)>,
+}
+
+impl std::fmt::Display for SceFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{} failed for {}: 0x{:08x}", self.op, self.url, self.rc)?;
+        if let Some((n, detail)) = self.ssl {
+            write!(f, " (SSL error {n}, detail 0x{detail:02x})")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for SceFailure {}
+
+fn sce_err(op: &'static str, url: &str, rc: c_int) -> io::Error {
+    io::Error::other(SceFailure { op, url: url.to_string(), rc: rc as u32, ssl: None })
 }
 
 /// rc as a handle (>= 0) or the error.
-fn handle(op: &str, url: &str, rc: c_int) -> io::Result<c_int> {
+fn handle(op: &'static str, url: &str, rc: c_int) -> io::Result<c_int> {
     if rc < 0 {
         Err(sce_err(op, url, rc))
     } else {
@@ -90,12 +137,27 @@ fn handle(op: &str, url: &str, rc: c_int) -> io::Result<c_int> {
 }
 
 /// rc == 0 or the error.
-fn ok(op: &str, url: &str, rc: c_int) -> io::Result<()> {
+fn ok(op: &'static str, url: &str, rc: c_int) -> io::Result<()> {
     if rc != 0 {
         Err(sce_err(op, url, rc))
     } else {
         Ok(())
     }
+}
+
+/// The libSceHttp/libSceSsl code of a failed request, None for any other error.
+pub fn sce_code(e: &io::Error) -> Option<u32> {
+    Some(e.get_ref()?.downcast_ref::<SceFailure>()?.rc)
+}
+
+/// sceHttpsGetSslError's SCE_HTTPS_ERROR_SSL_* bits for a failed send, when it gave them.
+pub fn ssl_detail(e: &io::Error) -> Option<u32> {
+    Some(e.get_ref()?.downcast_ref::<SceFailure>()?.ssl?.1)
+}
+
+/// sceHttpsEnableOption's last result: 0 when VERIFY_FLAGS were set on the last template.
+pub fn verify_option_rc() -> u32 {
+    VERIFY_RC.load(Ordering::Relaxed) as u32
 }
 
 /// A non-200 answer, kept inside the io::Error so a caller can tell a 404 (`status_of`).
@@ -123,6 +185,36 @@ pub fn status_of(e: &io::Error) -> Option<u16> {
 /// GETs url (https:// or http://) and returns the body: Err on a non-200 status (`status_of`), a
 /// sce error (hex code in the message) or a body over max bytes.
 pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
+    request(url, c"GET", HTTP_TIMEOUT_US, |req, status| {
+        if status != 200 {
+            return Err(io::Error::other(HttpStatus { url: url.to_string(), status }));
+        }
+        let mut body = Vec::new();
+        let mut buf = vec![0u8; IO_BUFFER_SIZE];
+        loop {
+            // SAFETY: req is the live request; buf outlives the call and is buf.len() bytes.
+            let n = unsafe { sceHttpReadData(req, buf.as_mut_ptr().cast(), buf.len()) };
+            let n = handle("sceHttpReadData", url, n)? as usize;
+            if n == 0 {
+                return Ok(body);
+            }
+            if n > max - body.len() {
+                return Err(io::Error::other(format!("GET {url}: body over {max} bytes")));
+            }
+            body.extend_from_slice(&buf[..n]);
+        }
+    })
+}
+
+/// HEADs url with every timeout at `timeout_us` and returns the HTTP status, whatever it is: Ok
+/// means the TLS handshake (with VERIFY_FLAGS) went through. For the self-test (src/tls.rs).
+pub fn probe(url: &str, timeout_us: u32) -> io::Result<u16> {
+    request(url, c"HEAD", timeout_us, |_, status| Ok(u16::try_from(status).unwrap_or(0)))
+}
+
+/// One request: sets everything up, sends it, and hands the request and its status to `then`; every
+/// handle is released on the way out.
+fn request<T>(url: &str, method: &CStr, timeout_us: u32, then: impl FnOnce(c_int, c_int) -> io::Result<T>) -> io::Result<T> {
     static NET_INIT: Once = Once::new();
     // ponytail: the result is ignored (it is non-zero when the net library is already up); a
     // real failure shows up at sceNetPoolCreate below. Never retried for the process' life.
@@ -152,37 +244,33 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
         let tmpl = sceHttpCreateTemplate(http, agent.as_ptr().cast(), HTTP_VERSION_1_1, 1);
         let tmpl = handle("sceHttpCreateTemplate", url, tmpl)?;
         let _tmpl = Guard(tmpl, sceHttpDeleteTemplate);
+        // Logged once and not fatal: the firmware's defaults stay, and the self-test, which reports
+        // this code, is what the self-update relies on.
+        let rc = sceHttpsEnableOption(tmpl, VERIFY_FLAGS);
+        if VERIFY_RC.swap(rc, Ordering::Relaxed) != rc && rc != 0 {
+            log!("net: sceHttpsEnableOption(0x{VERIFY_FLAGS:02x}) failed: 0x{:08x}; the firmware's certificate checks apply", rc as u32);
+        }
         ok("sceHttpSetAutoRedirect", url, sceHttpSetAutoRedirect(tmpl, 1))?;
         ok("sceHttpSetResponseHeaderMaxSize", url, sceHttpSetResponseHeaderMaxSize(tmpl, HTTP_HEADER_MAX_SIZE))?;
-        ok("sceHttpSetResolveTimeOut", url, sceHttpSetResolveTimeOut(tmpl, HTTP_TIMEOUT_US))?;
-        ok("sceHttpSetConnectTimeOut", url, sceHttpSetConnectTimeOut(tmpl, HTTP_TIMEOUT_US))?;
-        ok("sceHttpSetSendTimeOut", url, sceHttpSetSendTimeOut(tmpl, HTTP_TIMEOUT_US))?;
-        ok("sceHttpSetRecvTimeOut", url, sceHttpSetRecvTimeOut(tmpl, HTTP_TIMEOUT_US))?;
+        ok("sceHttpSetResolveTimeOut", url, sceHttpSetResolveTimeOut(tmpl, timeout_us))?;
+        ok("sceHttpSetConnectTimeOut", url, sceHttpSetConnectTimeOut(tmpl, timeout_us))?;
+        ok("sceHttpSetSendTimeOut", url, sceHttpSetSendTimeOut(tmpl, timeout_us))?;
+        ok("sceHttpSetRecvTimeOut", url, sceHttpSetRecvTimeOut(tmpl, timeout_us))?;
         let conn = sceHttpCreateConnectionWithURL(tmpl, c_url.as_ptr(), 1);
         let conn = handle("sceHttpCreateConnectionWithURL", url, conn)?;
         let _conn = Guard(conn, sceHttpDeleteConnection);
-        let req = sceHttpCreateRequestWithURL2(conn, c"GET".as_ptr(), c_url.as_ptr(), 0);
+        let req = sceHttpCreateRequestWithURL2(conn, method.as_ptr(), c_url.as_ptr(), 0);
         let req = handle("sceHttpCreateRequestWithURL2", url, req)?;
         let _req = Guard(req, sceHttpDeleteRequest);
-        ok("sceHttpSendRequest", url, sceHttpSendRequest(req, std::ptr::null(), 0))?;
+        let rc = sceHttpSendRequest(req, std::ptr::null(), 0);
+        if rc != 0 {
+            let (mut err_num, mut detail) = (0, 0u32);
+            let ssl = (sceHttpsGetSslError(req, &mut err_num, &mut detail) == 0).then_some((err_num, detail));
+            return Err(io::Error::other(SceFailure { op: "sceHttpSendRequest", url: url.to_string(), rc: rc as u32, ssl }));
+        }
         let mut status: c_int = 0;
         ok("sceHttpGetStatusCode", url, sceHttpGetStatusCode(req, &mut status))?;
-        if status != 200 {
-            return Err(io::Error::other(HttpStatus { url: url.to_string(), status }));
-        }
-        let mut body = Vec::new();
-        let mut buf = vec![0u8; IO_BUFFER_SIZE];
-        loop {
-            let n = sceHttpReadData(req, buf.as_mut_ptr().cast(), buf.len());
-            let n = handle("sceHttpReadData", url, n)? as usize;
-            if n == 0 {
-                return Ok(body);
-            }
-            if n > max - body.len() {
-                return Err(io::Error::other(format!("GET {url}: body over {max} bytes")));
-            }
-            body.extend_from_slice(&buf[..n]);
-        }
+        then(req, status)
     }
 }
 

@@ -19,6 +19,7 @@ mod p5z;
 mod register;
 mod scan;
 mod storage;
+mod tls;
 mod update;
 mod web;
 

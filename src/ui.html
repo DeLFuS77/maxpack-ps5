@@ -379,6 +379,12 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 .row select { max-width: 30rem; min-width: 0; }
 .row input[type="checkbox"] { width: 1.5rem; height: 1.5rem; flex: none; margin: 0; accent-color: var(--accent); }
 .settings-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
+/* The secure-connection check: its result in the row's hint, one line per site under the row. */
+.row .hint.ok, .tls-list li.ok { color: var(--ok); }
+.row .hint.bad, .tls-list li.bad { color: var(--danger-ink); }
+.tls-list li.unproven { color: var(--warn); }
+.tls-list { list-style: none; margin: -0.2rem 0 0.8rem; padding: 0 1.2rem; font-size: 0.85rem; }
+.tls-list li { padding: 0.15rem 0; overflow-wrap: anywhere; }
 .settings-foot p { color: var(--muted); font-size: 0.9rem; }
 .settings-foot .btns { display: flex; gap: 0.6rem; }
 .about { margin-top: 1.6rem; padding-top: 1.2rem; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
@@ -764,6 +770,8 @@ button.inst-item[aria-checked="true"] {
     <label class="row"><span class="lbl" data-i18n="injectAmpr">Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)</span><input type="checkbox" id="f_inject_ampr"></label>
     <label class="row"><span><span class="lbl" data-i18n="amprAutoUpdate">Auto-update ampr-emu-ng (checked once at start)</span><span class="hint" data-i18n="amprAutoUpdateHint">Off until MaxPack is published. It only ever downloads MaxPack's own ampr-emu-ng build.</span></span><input type="checkbox" id="f_ampr_auto_update"></label>
     <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
+    <div class="row"><span><span class="lbl" data-i18n="tlsTitle">Secure connections</span><span class="hint" data-i18n="tlsHint">MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.</span><span class="hint" id="tlsmsg" role="status"></span></span><button id="tlscheck" type="button" data-i18n="tlsCheck">Check secure connections</button></div>
+    <ul class="tls-list" id="tlslist" hidden></ul>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
     <label class="row"><span class="lbl" data-i18n="scanInterval">Scan interval, seconds (1-3600)</span><input type="number" id="f_scan_interval_seconds" min="1" max="3600"></label>
     <label class="row"><span class="lbl" data-i18n="stabilityWait">Wait for a copy to finish, seconds (0-3600, 0 = off)</span><input type="number" id="f_stability_wait_seconds" min="0" max="3600"></label>
@@ -903,6 +911,25 @@ var MSG = {
     updFail_download: 'the download from GitHub failed.',
     updFail_checksum: 'the download does not match the release\'s SHA256SUMS: nothing was sent.',
     updFail_send: 'sending it to elfldr failed.',
+    tlsTitle: "Secure connections",
+    tlsHint: "MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.",
+    tlsCheck: "Check secure connections",
+    tlsChecking: "Checking secure connections (up to a minute)...",
+    tlsError: "The check did not run: {error}",
+    tlsNever: "Not checked yet: updates stay off until this check passes.",
+    tlsPassedOn: "Passed on {date}: this console refuses forged certificates.",
+    tlsBrokenOn: "Failed on {date}: this console accepted a forged certificate, so updates stay off.",
+    tlsVerdict_passed: "Passed: this console refuses forged certificates. Updates can be installed.",
+    tlsVerdict_broken: "Failed: this console accepted a forged certificate, so updates stay off. Please report it with the lines below.",
+    tlsVerdict_inconclusive: "Could not finish (no internet, or a site did not answer), so nothing changed. Try again.",
+    tlsProbeRefused: "{host}: refused, as expected ({code})",
+    tlsProbeConnected: "{host}: connected, as expected (HTTP {status})",
+    tlsProbeAccepted: "{host}: accepted (HTTP {status}), but it must be refused",
+    tlsProbeUnreached: "{host}: failed before the certificate check ({code}), which proves nothing",
+    tlsProbeNoConnect: "{host}: did not connect ({code})",
+    updNeedsTls: "MaxPack {v} is available. Before it installs updates, MaxPack checks that this console refuses forged certificates.",
+    updTlsNotPassed: "MaxPack {v} is available, but the secure-connection check did not pass, so updates stay off. Details in Settings.",
+    updFail_tls_unchecked: "the secure-connection check has not passed on this console (Settings > Secure connections).",
     // Game sheet
     delete: 'Delete', rebuildCache: 'Rebuild cache', close: 'Close', storage: 'Storage',
     fTitleId: 'Title ID', fVersion: 'Version', fStatus: 'Status', fType: 'Type', fDrive: 'Drive',
@@ -1142,6 +1169,25 @@ var MSG = {
     updFail_download: "не удалось загрузить с GitHub.",
     updFail_checksum: "загрузка не совпадает с SHA256SUMS релиза: ничего не отправлено.",
     updFail_send: "не удалось отправить в elfldr.",
+    tlsTitle: "Защищённые соединения",
+    tlsHint: "MaxPack загружает обновления по HTTPS. Эта проверка показывает, что консоль отвергает поддельные сертификаты; пока она не пройдена хотя бы раз, обновления отключены.",
+    tlsCheck: "Проверить защищённые соединения",
+    tlsChecking: "Проверка защищённых соединений (до минуты)...",
+    tlsError: "Проверка не запустилась: {error}",
+    tlsNever: "Ещё не проверено: обновления отключены, пока эта проверка не пройдена.",
+    tlsPassedOn: "Пройдено {date}: эта консоль отвергает поддельные сертификаты.",
+    tlsBrokenOn: "Не пройдено {date}: эта консоль приняла поддельный сертификат, поэтому обновления отключены.",
+    tlsVerdict_passed: "Пройдено: эта консоль отвергает поддельные сертификаты. Обновления можно устанавливать.",
+    tlsVerdict_broken: "Не пройдено: эта консоль приняла поддельный сертификат, поэтому обновления отключены. Сообщите об этом, приложив строки ниже.",
+    tlsVerdict_inconclusive: "Не удалось завершить (нет интернета или сайт не ответил), поэтому ничего не изменилось. Повторите попытку.",
+    tlsProbeRefused: "{host}: отклонён, как и ожидалось ({code})",
+    tlsProbeConnected: "{host}: соединение установлено, как и ожидалось (HTTP {status})",
+    tlsProbeAccepted: "{host}: принят (HTTP {status}), хотя должен быть отклонён",
+    tlsProbeUnreached: "{host}: сбой до проверки сертификата ({code}), это ничего не доказывает",
+    tlsProbeNoConnect: "{host}: не удалось подключиться ({code})",
+    updNeedsTls: "Доступен MaxPack {v}. Прежде чем устанавливать обновления, MaxPack проверяет, что эта консоль отвергает поддельные сертификаты.",
+    updTlsNotPassed: "Доступен MaxPack {v}, но проверка защищённых соединений не пройдена, поэтому обновления отключены. Подробности в настройках.",
+    updFail_tls_unchecked: "проверка защищённых соединений на этой консоли не пройдена (Настройки > Защищённые соединения).",
     play: "Играть",
     launchFailed: "Не удалось запустить игру: {error}",
     launchStarted: "Запуск {name} на консоли...",
@@ -1363,6 +1409,25 @@ var MSG = {
     updFail_download: "从 GitHub 下载失败。",
     updFail_checksum: "下载内容与该版本的 SHA256SUMS 不符：未发送任何内容。",
     updFail_send: "发送到 elfldr 失败。",
+    tlsTitle: "安全连接",
+    tlsHint: "MaxPack 通过 HTTPS 下载更新。此检查用于确认主机会拒绝伪造的证书；在检查通过一次之前，更新保持关闭。",
+    tlsCheck: "检查安全连接",
+    tlsChecking: "正在检查安全连接（最多一分钟）...",
+    tlsError: "检查未能运行：{error}",
+    tlsNever: "尚未检查：在此检查通过之前，更新保持关闭。",
+    tlsPassedOn: "已于 {date} 通过：这台主机会拒绝伪造的证书。",
+    tlsBrokenOn: "已于 {date} 失败：这台主机接受了伪造的证书，因此更新保持关闭。",
+    tlsVerdict_passed: "已通过：这台主机会拒绝伪造的证书。可以安装更新。",
+    tlsVerdict_broken: "未通过：这台主机接受了伪造的证书，因此更新保持关闭。请附上下面几行进行报告。",
+    tlsVerdict_inconclusive: "未能完成（没有网络，或某个网站没有响应），因此没有任何改变。请再试一次。",
+    tlsProbeRefused: "{host}：已拒绝，符合预期（{code}）",
+    tlsProbeConnected: "{host}：已连接，符合预期（HTTP {status}）",
+    tlsProbeAccepted: "{host}：已接受（HTTP {status}），但它必须被拒绝",
+    tlsProbeUnreached: "{host}：在证书检查之前就失败了（{code}），这无法证明任何事",
+    tlsProbeNoConnect: "{host}：未能连接（{code}）",
+    updNeedsTls: "MaxPack {v} 可用。在安装更新之前，MaxPack 会检查这台主机是否拒绝伪造的证书。",
+    updTlsNotPassed: "MaxPack {v} 可用，但安全连接检查未通过，因此更新保持关闭。详情见设置。",
+    updFail_tls_unchecked: "这台主机尚未通过安全连接检查（设置 > 安全连接）。",
     play: "开始游戏",
     launchFailed: "无法启动游戏：{error}",
     launchStarted: "正在主机上启动 {name}...",
@@ -1584,6 +1649,25 @@ var MSG = {
     updFail_download: "der Download von GitHub ist fehlgeschlagen.",
     updFail_checksum: "der Download passt nicht zu den SHA256SUMS des Releases: nichts wurde gesendet.",
     updFail_send: "das Senden an elfldr ist fehlgeschlagen.",
+    tlsTitle: "Sichere Verbindungen",
+    tlsHint: "MaxPack lädt seine Updates über HTTPS. Diese Prüfung zeigt, dass die Konsole gefälschte Zertifikate ablehnt; bis sie einmal bestanden ist, bleiben Updates aus.",
+    tlsCheck: "Sichere Verbindungen prüfen",
+    tlsChecking: "Sichere Verbindungen werden geprüft (bis zu einer Minute)...",
+    tlsError: "Die Prüfung lief nicht: {error}",
+    tlsNever: "Noch nicht geprüft: Updates bleiben aus, bis diese Prüfung bestanden ist.",
+    tlsPassedOn: "Bestanden am {date}: Diese Konsole lehnt gefälschte Zertifikate ab.",
+    tlsBrokenOn: "Nicht bestanden am {date}: Diese Konsole hat ein gefälschtes Zertifikat angenommen, daher bleiben Updates aus.",
+    tlsVerdict_passed: "Bestanden: Diese Konsole lehnt gefälschte Zertifikate ab. Updates können installiert werden.",
+    tlsVerdict_broken: "Nicht bestanden: Diese Konsole hat ein gefälschtes Zertifikat angenommen, daher bleiben Updates aus. Bitte melde es mit den Zeilen unten.",
+    tlsVerdict_inconclusive: "Konnte nicht abgeschlossen werden (kein Internet, oder eine Seite hat nicht geantwortet), daher hat sich nichts geändert. Versuche es erneut.",
+    tlsProbeRefused: "{host}: abgelehnt, wie erwartet ({code})",
+    tlsProbeConnected: "{host}: verbunden, wie erwartet (HTTP {status})",
+    tlsProbeAccepted: "{host}: angenommen (HTTP {status}), muss aber abgelehnt werden",
+    tlsProbeUnreached: "{host}: vor der Zertifikatsprüfung fehlgeschlagen ({code}), das beweist nichts",
+    tlsProbeNoConnect: "{host}: keine Verbindung ({code})",
+    updNeedsTls: "MaxPack {v} ist verfügbar. Bevor MaxPack Updates installiert, prüft es, ob diese Konsole gefälschte Zertifikate ablehnt.",
+    updTlsNotPassed: "MaxPack {v} ist verfügbar, aber die Prüfung sicherer Verbindungen wurde nicht bestanden, daher bleiben Updates aus. Details in den Einstellungen.",
+    updFail_tls_unchecked: "die Prüfung sicherer Verbindungen wurde auf dieser Konsole nicht bestanden (Einstellungen > Sichere Verbindungen).",
     play: "Spielen",
     launchFailed: "Das Spiel konnte nicht gestartet werden: {error}",
     launchStarted: "{name} wird auf der Konsole gestartet...",
@@ -1740,6 +1824,25 @@ var MSG = {
     updFail_download: 'la descarga desde GitHub ha fallado.',
     updFail_checksum: 'lo descargado no coincide con el SHA256SUMS de la versión: no se ha enviado nada.',
     updFail_send: 'no se ha podido enviar a elfldr.',
+    tlsTitle: "Conexiones seguras",
+    tlsHint: "MaxPack descarga sus actualizaciones por HTTPS. Esta comprobación muestra que la consola rechaza los certificados falsificados; las actualizaciones siguen desactivadas hasta que la pase una vez.",
+    tlsCheck: "Comprobar conexiones seguras",
+    tlsChecking: "Comprobando las conexiones seguras (hasta un minuto)...",
+    tlsError: "La comprobación no se ha hecho: {error}",
+    tlsNever: "Sin comprobar: las actualizaciones siguen desactivadas hasta que pase esta comprobación.",
+    tlsPassedOn: "Superada el {date}: esta consola rechaza los certificados falsificados.",
+    tlsBrokenOn: "No superada el {date}: esta consola aceptó un certificado falsificado, así que las actualizaciones siguen desactivadas.",
+    tlsVerdict_passed: "Superada: esta consola rechaza los certificados falsificados. Ya se pueden instalar actualizaciones.",
+    tlsVerdict_broken: "No superada: esta consola ha aceptado un certificado falsificado, así que las actualizaciones siguen desactivadas. Avísanos con las líneas de abajo.",
+    tlsVerdict_inconclusive: "No se ha podido terminar (sin internet, o un sitio no ha respondido), así que no ha cambiado nada. Vuelve a probar.",
+    tlsProbeRefused: "{host}: rechazado, como debe ser ({code})",
+    tlsProbeConnected: "{host}: conectado, como debe ser (HTTP {status})",
+    tlsProbeAccepted: "{host}: aceptado (HTTP {status}), pero debe rechazarse",
+    tlsProbeUnreached: "{host}: ha fallado antes de comprobar el certificado ({code}), lo que no demuestra nada",
+    tlsProbeNoConnect: "{host}: no se ha podido conectar ({code})",
+    updNeedsTls: "Hay una versión nueva: MaxPack {v}. Antes de instalar actualizaciones, MaxPack comprueba que esta consola rechaza los certificados falsificados.",
+    updTlsNotPassed: "Hay una versión nueva: MaxPack {v}, pero la comprobación de conexiones seguras no se ha superado, así que las actualizaciones siguen desactivadas. Detalles en Ajustes.",
+    updFail_tls_unchecked: "la comprobación de conexiones seguras no se ha superado en esta consola (Ajustes > Conexiones seguras).",
     delete: 'Eliminar', rebuildCache: 'Recrear caché', close: 'Cerrar', storage: 'Almacenamiento',
     fTitleId: 'Title ID', fVersion: 'Versión', fStatus: 'Estado', fType: 'Tipo', fDrive: 'Unidad',
     fPath: 'Ruta', fCachePath: 'Ruta de caché', fCacheSize: 'Tamaño de caché', fCacheBuilt: 'Caché creada',
@@ -1971,6 +2074,25 @@ var MSG = {
     updFail_download: "le téléchargement depuis GitHub a échoué.",
     updFail_checksum: "le téléchargement ne correspond pas au SHA256SUMS de la version : rien n'a été envoyé.",
     updFail_send: "l'envoi à elfldr a échoué.",
+    tlsTitle: "Connexions sécurisées",
+    tlsHint: "MaxPack télécharge ses mises à jour en HTTPS. Ce test montre que la console refuse les certificats falsifiés ; les mises à jour restent désactivées tant qu'il n'a pas réussi une fois.",
+    tlsCheck: "Tester les connexions sécurisées",
+    tlsChecking: "Test des connexions sécurisées (jusqu'à une minute)...",
+    tlsError: "Le test n'a pas pu s'exécuter : {error}",
+    tlsNever: "Pas encore testé : les mises à jour restent désactivées tant que ce test n'a pas réussi.",
+    tlsPassedOn: "Réussi le {date} : cette console refuse les certificats falsifiés.",
+    tlsBrokenOn: "Échoué le {date} : cette console a accepté un certificat falsifié, les mises à jour restent donc désactivées.",
+    tlsVerdict_passed: "Réussi : cette console refuse les certificats falsifiés. Les mises à jour peuvent être installées.",
+    tlsVerdict_broken: "Échoué : cette console a accepté un certificat falsifié, les mises à jour restent donc désactivées. Signalez-le avec les lignes ci-dessous.",
+    tlsVerdict_inconclusive: "Impossible de terminer (pas d'internet, ou un site n'a pas répondu) : rien n'a changé. Réessayez.",
+    tlsProbeRefused: "{host} : refusé, comme prévu ({code})",
+    tlsProbeConnected: "{host} : connecté, comme prévu (HTTP {status})",
+    tlsProbeAccepted: "{host} : accepté (HTTP {status}), alors qu'il doit être refusé",
+    tlsProbeUnreached: "{host} : échec avant la vérification du certificat ({code}), ce qui ne prouve rien",
+    tlsProbeNoConnect: "{host} : connexion impossible ({code})",
+    updNeedsTls: "MaxPack {v} est disponible. Avant d'installer des mises à jour, MaxPack vérifie que cette console refuse les certificats falsifiés.",
+    updTlsNotPassed: "MaxPack {v} est disponible, mais le test des connexions sécurisées n'a pas réussi : les mises à jour restent désactivées. Détails dans Paramètres.",
+    updFail_tls_unchecked: "le test des connexions sécurisées n'a pas réussi sur cette console (Paramètres > Connexions sécurisées).",
     play: "Jouer",
     launchFailed: "Impossible de lancer le jeu : {error}",
     launchStarted: "Lancement de {name} sur la console...",
@@ -2192,6 +2314,25 @@ var MSG = {
     updFail_download: "GitHub からのダウンロードに失敗しました。",
     updFail_checksum: "ダウンロードがリリースの SHA256SUMS と一致しません。何も送信していません。",
     updFail_send: "elfldr への送信に失敗しました。",
+    tlsTitle: "安全な接続",
+    tlsHint: "MaxPack はアップデートを HTTPS でダウンロードします。このチェックで、本体が偽の証明書を拒否することを確かめます。一度合格するまでアップデートはオフのままです。",
+    tlsCheck: "安全な接続をチェック",
+    tlsChecking: "安全な接続をチェック中（最大 1 分）...",
+    tlsError: "チェックを実行できませんでした: {error}",
+    tlsNever: "未チェック: このチェックに合格するまでアップデートはオフのままです。",
+    tlsPassedOn: "{date} に合格: この本体は偽の証明書を拒否します。",
+    tlsBrokenOn: "{date} に不合格: この本体が偽の証明書を受け入れたため、アップデートはオフのままです。",
+    tlsVerdict_passed: "合格: この本体は偽の証明書を拒否します。アップデートをインストールできます。",
+    tlsVerdict_broken: "不合格: この本体が偽の証明書を受け入れたため、アップデートはオフのままです。下の行を添えて報告してください。",
+    tlsVerdict_inconclusive: "完了できませんでした（インターネットに接続されていないか、サイトが応答しませんでした）。何も変わっていません。もう一度お試しください。",
+    tlsProbeRefused: "{host}: 想定どおり拒否されました（{code}）",
+    tlsProbeConnected: "{host}: 想定どおり接続しました（HTTP {status}）",
+    tlsProbeAccepted: "{host}: 受け入れられました（HTTP {status}）が、拒否されなければなりません",
+    tlsProbeUnreached: "{host}: 証明書のチェックより前に失敗しました（{code}）。これでは何も確かめられません",
+    tlsProbeNoConnect: "{host}: 接続できませんでした（{code}）",
+    updNeedsTls: "MaxPack {v} が利用できます。アップデートをインストールする前に、MaxPack はこの本体が偽の証明書を拒否するかをチェックします。",
+    updTlsNotPassed: "MaxPack {v} が利用できますが、安全な接続のチェックに合格していないため、アップデートはオフのままです。詳しくは設定を見てください。",
+    updFail_tls_unchecked: "この本体は安全な接続のチェックに合格していません（設定 > 安全な接続）。",
     play: "プレイ",
     launchFailed: "ゲームを起動できませんでした: {error}",
     launchStarted: "本体で {name} を起動しています...",
@@ -2413,6 +2554,25 @@ var MSG = {
     updFail_download: "o download do GitHub falhou.",
     updFail_checksum: "o download não confere com o SHA256SUMS da versão: nada foi enviado.",
     updFail_send: "falha ao enviar para o elfldr.",
+    tlsTitle: "Conexões seguras",
+    tlsHint: "O MaxPack baixa as atualizações por HTTPS. Esta verificação mostra que o console recusa certificados falsificados; as atualizações ficam desativadas até ela passar uma vez.",
+    tlsCheck: "Verificar conexões seguras",
+    tlsChecking: "Verificando as conexões seguras (até um minuto)...",
+    tlsError: "A verificação não foi executada: {error}",
+    tlsNever: "Ainda não verificado: as atualizações ficam desativadas até esta verificação passar.",
+    tlsPassedOn: "Aprovado em {date}: este console recusa certificados falsificados.",
+    tlsBrokenOn: "Reprovado em {date}: este console aceitou um certificado falsificado, por isso as atualizações ficam desativadas.",
+    tlsVerdict_passed: "Aprovado: este console recusa certificados falsificados. As atualizações podem ser instaladas.",
+    tlsVerdict_broken: "Reprovado: este console aceitou um certificado falsificado, por isso as atualizações ficam desativadas. Informe o problema com as linhas abaixo.",
+    tlsVerdict_inconclusive: "Não foi possível terminar (sem internet, ou um site não respondeu), por isso nada mudou. Tente de novo.",
+    tlsProbeRefused: "{host}: recusado, como esperado ({code})",
+    tlsProbeConnected: "{host}: conectado, como esperado (HTTP {status})",
+    tlsProbeAccepted: "{host}: aceito (HTTP {status}), mas deve ser recusado",
+    tlsProbeUnreached: "{host}: falhou antes da verificação do certificado ({code}), o que não prova nada",
+    tlsProbeNoConnect: "{host}: não conectou ({code})",
+    updNeedsTls: "O MaxPack {v} está disponível. Antes de instalar atualizações, o MaxPack verifica se este console recusa certificados falsificados.",
+    updTlsNotPassed: "O MaxPack {v} está disponível, mas a verificação de conexões seguras não passou, por isso as atualizações ficam desativadas. Detalhes em Configurações.",
+    updFail_tls_unchecked: "a verificação de conexões seguras não passou neste console (Configurações > Conexões seguras).",
     play: "Jogar",
     launchFailed: "Não foi possível iniciar o jogo: {error}",
     launchStarted: "Iniciando {name} no console...",
@@ -2634,6 +2794,25 @@ var MSG = {
     updFail_download: "il download da GitHub non è riuscito.",
     updFail_checksum: "il download non corrisponde allo SHA256SUMS della release: non è stato inviato nulla.",
     updFail_send: "l'invio a elfldr non è riuscito.",
+    tlsTitle: "Connessioni sicure",
+    tlsHint: "MaxPack scarica i suoi aggiornamenti tramite HTTPS. Questo controllo mostra che la console rifiuta i certificati falsificati; gli aggiornamenti restano disattivati finché non viene superato una volta.",
+    tlsCheck: "Controlla le connessioni sicure",
+    tlsChecking: "Controllo delle connessioni sicure (fino a un minuto)...",
+    tlsError: "Il controllo non è stato eseguito: {error}",
+    tlsNever: "Non ancora controllato: gli aggiornamenti restano disattivati finché questo controllo non viene superato.",
+    tlsPassedOn: "Superato il {date}: questa console rifiuta i certificati falsificati.",
+    tlsBrokenOn: "Non superato il {date}: questa console ha accettato un certificato falsificato, quindi gli aggiornamenti restano disattivati.",
+    tlsVerdict_passed: "Superato: questa console rifiuta i certificati falsificati. Gli aggiornamenti si possono installare.",
+    tlsVerdict_broken: "Non superato: questa console ha accettato un certificato falsificato, quindi gli aggiornamenti restano disattivati. Segnalalo con le righe qui sotto.",
+    tlsVerdict_inconclusive: "Impossibile finire (niente internet, o un sito non ha risposto), quindi non è cambiato nulla. Riprova.",
+    tlsProbeRefused: "{host}: rifiutato, come previsto ({code})",
+    tlsProbeConnected: "{host}: connesso, come previsto (HTTP {status})",
+    tlsProbeAccepted: "{host}: accettato (HTTP {status}), ma deve essere rifiutato",
+    tlsProbeUnreached: "{host}: non riuscito prima del controllo del certificato ({code}), il che non prova nulla",
+    tlsProbeNoConnect: "{host}: connessione non riuscita ({code})",
+    updNeedsTls: "MaxPack {v} è disponibile. Prima di installare aggiornamenti, MaxPack controlla che questa console rifiuti i certificati falsificati.",
+    updTlsNotPassed: "MaxPack {v} è disponibile, ma il controllo delle connessioni sicure non è stato superato, quindi gli aggiornamenti restano disattivati. Dettagli in Impostazioni.",
+    updFail_tls_unchecked: "il controllo delle connessioni sicure non è stato superato su questa console (Impostazioni > Connessioni sicure).",
     play: "Gioca",
     launchFailed: "Impossibile avviare il gioco: {error}",
     launchStarted: "Avvio di {name} sulla console...",
@@ -2855,6 +3034,25 @@ var MSG = {
     updFail_download: "GitHub에서 다운로드하지 못했습니다.",
     updFail_checksum: "다운로드한 파일이 릴리스의 SHA256SUMS와 일치하지 않습니다. 아무것도 전송하지 않았습니다.",
     updFail_send: "elfldr로 전송하지 못했습니다.",
+    tlsTitle: "보안 연결",
+    tlsHint: "MaxPack은 업데이트를 HTTPS로 다운로드합니다. 이 검사는 콘솔이 위조된 인증서를 거부하는지 보여 줍니다. 한 번 통과할 때까지 업데이트는 꺼진 상태로 유지됩니다.",
+    tlsCheck: "보안 연결 검사",
+    tlsChecking: "보안 연결을 검사하는 중(최대 1분)...",
+    tlsError: "검사를 실행하지 못했습니다: {error}",
+    tlsNever: "아직 검사하지 않음: 이 검사를 통과할 때까지 업데이트는 꺼진 상태로 유지됩니다.",
+    tlsPassedOn: "{date}에 통과: 이 콘솔은 위조된 인증서를 거부합니다.",
+    tlsBrokenOn: "{date}에 실패: 이 콘솔이 위조된 인증서를 받아들였으므로 업데이트는 꺼진 상태로 유지됩니다.",
+    tlsVerdict_passed: "통과: 이 콘솔은 위조된 인증서를 거부합니다. 업데이트를 설치할 수 있습니다.",
+    tlsVerdict_broken: "실패: 이 콘솔이 위조된 인증서를 받아들였으므로 업데이트는 꺼진 상태로 유지됩니다. 아래 줄을 첨부해 신고해 주세요.",
+    tlsVerdict_inconclusive: "끝내지 못했습니다(인터넷 연결이 없거나 사이트가 응답하지 않음). 바뀐 것은 없습니다. 다시 시도하세요.",
+    tlsProbeRefused: "{host}: 예상대로 거부됨({code})",
+    tlsProbeConnected: "{host}: 예상대로 연결됨(HTTP {status})",
+    tlsProbeAccepted: "{host}: 받아들여짐(HTTP {status}), 하지만 거부되어야 합니다",
+    tlsProbeUnreached: "{host}: 인증서 검사 전에 실패함({code}), 아무것도 증명하지 못합니다",
+    tlsProbeNoConnect: "{host}: 연결하지 못함({code})",
+    updNeedsTls: "MaxPack {v}을(를) 사용할 수 있습니다. 업데이트를 설치하기 전에 MaxPack은 이 콘솔이 위조된 인증서를 거부하는지 검사합니다.",
+    updTlsNotPassed: "MaxPack {v}을(를) 사용할 수 있지만 보안 연결 검사를 통과하지 못해 업데이트는 꺼진 상태로 유지됩니다. 자세한 내용은 설정에 있습니다.",
+    updFail_tls_unchecked: "이 콘솔은 보안 연결 검사를 통과하지 않았습니다(설정 > 보안 연결).",
     play: "플레이",
     launchFailed: "게임을 시작할 수 없습니다: {error}",
     launchStarted: "콘솔에서 {name}을(를) 시작하는 중...",
@@ -3076,6 +3274,25 @@ var MSG = {
     updFail_download: "فشل التنزيل من GitHub.",
     updFail_checksum: "التنزيل لا يطابق SHA256SUMS الخاص بالإصدار: لم يُرسَل شيء.",
     updFail_send: "فشل الإرسال إلى elfldr.",
+    tlsTitle: "الاتصالات الآمنة",
+    tlsHint: "يُنزّل MaxPack تحديثاته عبر HTTPS. يُظهر هذا الفحص أن الجهاز يرفض الشهادات المزوّرة؛ وتبقى التحديثات متوقفة حتى ينجح مرة واحدة.",
+    tlsCheck: "فحص الاتصالات الآمنة",
+    tlsChecking: "جارٍ فحص الاتصالات الآمنة (حتى دقيقة واحدة)...",
+    tlsError: "لم يُنفَّذ الفحص: {error}",
+    tlsNever: "لم يُفحص بعد: تبقى التحديثات متوقفة حتى ينجح هذا الفحص.",
+    tlsPassedOn: "نجح في {date}: يرفض هذا الجهاز الشهادات المزوّرة.",
+    tlsBrokenOn: "فشل في {date}: قبِل هذا الجهاز شهادة مزوّرة، لذلك تبقى التحديثات متوقفة.",
+    tlsVerdict_passed: "نجح: يرفض هذا الجهاز الشهادات المزوّرة. يمكن تثبيت التحديثات.",
+    tlsVerdict_broken: "فشل: قبِل هذا الجهاز شهادة مزوّرة، لذلك تبقى التحديثات متوقفة. أبلغ عن ذلك مع الأسطر أدناه.",
+    tlsVerdict_inconclusive: "تعذّر الإكمال (لا يوجد اتصال بالإنترنت، أو لم يستجب أحد المواقع)، لذلك لم يتغير شيء. حاول مرة أخرى.",
+    tlsProbeRefused: "{host}: رُفض كما هو متوقع ({code})",
+    tlsProbeConnected: "{host}: تم الاتصال كما هو متوقع (HTTP {status})",
+    tlsProbeAccepted: "{host}: قُبل (HTTP {status})، مع أنه يجب أن يُرفض",
+    tlsProbeUnreached: "{host}: فشل قبل فحص الشهادة ({code})، وهذا لا يثبت شيئًا",
+    tlsProbeNoConnect: "{host}: تعذّر الاتصال ({code})",
+    updNeedsTls: "الإصدار {v} من MaxPack متاح. قبل تثبيت التحديثات، يتحقق MaxPack من أن هذا الجهاز يرفض الشهادات المزوّرة.",
+    updTlsNotPassed: "الإصدار {v} من MaxPack متاح، لكن فحص الاتصالات الآمنة لم ينجح، لذلك تبقى التحديثات متوقفة. التفاصيل في الإعدادات.",
+    updFail_tls_unchecked: "لم ينجح فحص الاتصالات الآمنة على هذا الجهاز (الإعدادات > الاتصالات الآمنة).",
     play: "العب",
     launchFailed: "تعذّر تشغيل اللعبة: {error}",
     launchStarted: "جارٍ تشغيل {name} على الجهاز...",
@@ -4290,16 +4507,35 @@ function renderUpdate() {
   var u = state && state.update;
   if (u && u.version && !upd.busy) upd.v = String(u.version);
   var show = upd.busy || !!(u && u.version && (upd.error || !upd.hidden)) || !!(upd.error && upd.error.timeout);
+  var needTls = updNeedsTls();
+  // The check ran and did not pass: the notice says so, in red.
+  var tlsBad = needTls && !tlsRunning() && tlsNotPassed();
   live($('update-msg'), !show ? null : function () {
-    return upd.error ? updErrorText(upd.error) : t(upd.busy ? 'updRunning' : 'updAvail', { v: updVersion() });
+    if (upd.error) return updErrorText(upd.error);
+    if (upd.busy) return t('updRunning', { v: updVersion() });
+    if (!updNeedsTls()) return t('updAvail', { v: updVersion() });
+    if (tlsRunning()) return t('tlsChecking');
+    return t(tlsNotPassed() ? 'updTlsNotPassed' : 'updNeedsTls', { v: updVersion() });
   });
   $('update').classList.toggle('show', show);
-  $('update').classList.toggle('ok', !upd.error);
-  setText($('update-go'), t(upd.error ? 'updRetry' : 'updNow'));
-  setText($('update-later'), t(upd.error ? 'close' : 'updLater'));
+  $('update').classList.toggle('ok', !upd.error && !tlsBad);
+  setText($('update-go'), t(needTls ? 'tlsCheck' : upd.error ? 'updRetry' : 'updNow'));
+  setText($('update-later'), t(upd.error || tlsBad ? 'close' : 'updLater'));
   $('update-go').hidden = $('update-later').hidden = upd.busy;
+  if (needTls && tlsRunning()) $('update-go').hidden = true;
   // A new copy that never started is not offered again from here: the page reloads to look.
   if (upd.error && upd.error.timeout) $('update-go').hidden = true;
+}
+// The offer waits for the secure-connection check (src/tls.rs): Update would be refused.
+function updNeedsTls() {
+  var u = state && state.update;
+  return !upd.busy && !!(u && u.version && u.tls_passed === false);
+}
+// The check did not pass: its last run from this page, else the console's record (broken).
+function tlsNotPassed() {
+  if (tls.error) return true;
+  if (tls.result) return tls.result.verdict !== 'passed';
+  return !!(state && state.tls_check && state.tls_check.passed === false);
 }
 async function runSelfUpdate() {
   if (upd.busy || !upd.v) return;
@@ -4329,7 +4565,9 @@ async function runSelfUpdate() {
   upd.until = Date.now() + 120000;
   schedule(1000);
 }
-$('update-go').onclick = runSelfUpdate;
+$('update-go').onclick = function () {
+  if (updNeedsTls()) { upd.error = null; runTlsCheck(); } else runSelfUpdate();
+};
 $('update-later').onclick = function () {
   var had = document.activeElement === this;
   upd.hidden = true;
@@ -4374,6 +4612,7 @@ function readSettings() {
   return v;
 }
 function renderSettingsInfo() {
+  renderTls();
   var c = (state && state.cache) || {};
   setText($('scache'), t('cacheInfo', { size: fmtSize(c.size), path: c.path || '/data/maxpack/caches', free: gb(c.free) }));
   var drives = (state && Array.isArray(state.drives)) ? state.drives : [];
@@ -4417,6 +4656,70 @@ $('amprupdate').onclick = function () {
       t('amprReplaceYes'), runAmprUpdate);
   else runAmprUpdate();
 };
+
+// The secure-connection check (POST /api/selftest/tls; state.tls_check: {passed, at, version} of its
+// last conclusive run, and running). The self-update installs nothing until it has passed once on
+// this console. result: the answer of the last run from this page; error: why it gave none.
+var tls = { busy: false, result: null, error: null };
+function tlsRunning() { return tls.busy || !!(state && state.tls_check && state.tls_check.running); }
+// [text, class] of the row's status line.
+function tlsStatus() {
+  if (tlsRunning()) return [t('tlsChecking'), ''];
+  if (tls.error) return [t('tlsError', { error: tls.error }), 'bad'];
+  if (tls.result) return [t('tlsVerdict_' + tls.result.verdict), tls.result.verdict === 'passed' ? 'ok' : 'bad'];
+  var c = (state && state.tls_check) || {}, date = c.at ? fmtTime(c.at) : '?';
+  if (c.passed === true) return [t('tlsPassedOn', { date: date }), 'ok'];
+  if (c.passed === false) return [t('tlsBrokenOn', { date: date }), 'bad'];
+  return [t('tlsNever'), ''];
+}
+// One site's line: what it must get and what it got (the HTTP status, or the libSceHttp code). The
+// host and the code are isolated, so the line follows the page's direction (Arabic too).
+function tlsProbeLine(li, p) {
+  var host = String(p.url || '').replace(/^https:\/\//, '').replace(/\/$/, '');
+  var code = [p.code, p.ssl_detail && 'SSL ' + p.ssl_detail].filter(Boolean).join(', ') || p.error || '?';
+  var key = p.check === 'accepted' ? 'tlsProbeAccepted' : p.check === 'ok'
+    ? (p.expect === 'refused' ? 'tlsProbeRefused' : 'tlsProbeConnected')
+    : (p.expect === 'refused' ? 'tlsProbeUnreached' : 'tlsProbeNoConnect');
+  fill(li, key, { host: host, code: code, status: p.status != null ? p.status : '?' }, { host: 'bdi', code: 'bdi', status: 'bdi' });
+}
+function renderTls() {
+  var s = tlsStatus();
+  live($('tlsmsg'), function () { return tlsStatus()[0]; });
+  $('tlsmsg').className = 'hint' + (s[1] ? ' ' + s[1] : '');
+  $('tlscheck').disabled = tlsRunning();
+}
+function renderTlsList() {
+  var list = $('tlslist'), probes = tls.result && Array.isArray(tls.result.probes) ? tls.result.probes : [];
+  list.textContent = '';
+  probes.forEach(function (p) {
+    var li = el('li', p.check === 'ok' ? 'ok' : p.check === 'accepted' ? 'bad' : 'unproven');
+    tlsProbeLine(li, p);
+    list.appendChild(li);
+  });
+  list.hidden = !probes.length;
+}
+async function runTlsCheck() {
+  if (tlsRunning()) return;
+  tls.busy = true;
+  tls.error = null;
+  renderTls();
+  renderUpdate();
+  try {
+    var r = await fetch('/api/selftest/tls', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    tls.result = await r.json();
+  } catch (e) {
+    tls.result = null;
+    tls.error = (e && e.message) || '?';
+  }
+  tls.busy = false;
+  renderTls();
+  renderTlsList();
+  renderUpdate();
+  // The next state says whether the offer may be installed now.
+  schedule(300);
+}
+$('tlscheck').onclick = runTlsCheck;
 async function loadSettings() {
   loadAmpr();
   var request = ++settingsRequest;
@@ -5114,6 +5417,7 @@ function renderAll() {
     if (modalOpen()) { renderModal(); if ($('m-legend')._redo) $('m-legend')._redo(); }
     renderSettingsInfo();
   }
+  renderTlsList();
   placeTabInd();
 }
 var topbar = document.querySelector('.topbar');

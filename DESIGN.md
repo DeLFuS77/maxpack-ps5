@@ -554,7 +554,7 @@ minute):
   `GET /maxpack.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
   the rest `no-store`.
 - `GET /api/state`:
-  `{version, update:{version, size}|null (a newer release found at start, see Self-update), busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
+  `{version, update:{version, size, tls_passed}|null (a newer release found at start, see Self-update), tls_check:{passed?, at?, version?, running} (the secure-connection self-test), busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
   shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off),
@@ -638,12 +638,19 @@ minute):
   taking over) or body `shutdown` from any host (the UI's Shut down, toast "MaxPack stopped"); 409 while a game runs.
   A newer copy's quit is also 409 while a scan pass runs (try-lock of `State::work`, then held until the exit so no
   pass starts): quitting mid-build would leave a cache without `.built`, which the next start empties.
-  `web::take_port` asks again on each of its 20 tries (5 s).
+  `web::take_port` asks again on each of its 20 tries (5 s) and reads each answer: when the last one was that 409
+  (`maxpack_logic::http::QUIT_BUILDING`) the new copy's toast says MaxPack is finishing a build and to try again in a
+  moment (`i18n::finishing_build`), otherwise "port 8095 busy" (`i18n::port_busy`).
   Before exiting, the installer is stopped in order (`installer::stop`); the same when another copy took the port.
 - `POST /api/self_update`, body `{"version":"<tag>"}` -> see Self-update: 200 `{}` once the checked ELF went to
   elfldr, else `{code, detail}` (`maxpack_logic::update::Fail`): 400 `not_offered`, 409 `game_running`,
   `update_running`, `scan_running` or `install_running`, 503 `no_elfldr`, 502 `download`, `checksum` or `send`;
   400 text for a body without a string `version`. Behind the same Host and Origin checks as every POST.
+  409 `tls_unchecked` until the secure-connection self-test has passed on this console (Self-update, below).
+- `POST /api/selftest/tls` -> the secure-connection self-test (`src/tls.rs`, `maxpack_logic::tls`), answered when it
+  ends (up to about a minute): 200 `{verdict:"passed"|"broken"|"inconclusive", passed, verify_option:"set"|"0x...",
+  probes:[{url, expect:"refused"|"connects", check:"ok"|"accepted"|"unproven", status?, code?, ssl_detail?, error?}]}`;
+  409 text while another run is under way. Behind the same Host and Origin checks as every POST.
 - `/api/inst/<x>`: the installer's own API as `/api/<x>` (`maxpack_logic::inst::installer_path`): GET `state`,
   `icon?p5z=`; POST `scan`, `probe`, `install`, `pause`, `verify`, `uninstall`, `discard` (JSON bodies, see the
   engine's `src/web/mp_api.h`); anything else 404. Method, Host, Content-Type and body go as sent, `loopback`
@@ -664,7 +671,8 @@ minute):
   They would pass the checks above (Playden is a native app on the console: libcurl to `127.0.0.1`, no Origin), but
   Playden calls ShadowMountPlus only, at `127.0.0.1:10101`, and the upstream project serves them on its own port,
   which MaxPack never takes; on 8095 nothing would call them. Its self-update and the release's `payloads.json` are
-  ported (Self-update, below), with a checksum check the upstream project does not make.
+  ported (Self-update, below), with a checksum check the upstream project does not make, and the secure-connection
+  self-test it waits for.
 
 ## Self-update (`src/update.rs`, `maxpack_logic::update`)
 - At start (`update::spawn_check`, its own thread) MaxPack asks GitHub for the latest published release of
@@ -678,11 +686,27 @@ minute):
   read limits (32 MiB, 64 KiB). Anything else is logged and not offered. The offer is `update` in `/api/state`.
 - `POST /api/self_update` (`update::install`): refused when the version is not the offer, while a game runs, while
   another update runs or one was sent less than 90 s ago, while a scan pass holds `State::work`, or while the
-  installer runs a job (`installer::idle`: quitting would pause it). Otherwise it probes elfldr
+  installer runs a job (`installer::idle`: quitting would pause it), or until the secure-connection self-test has
+  passed (below). Otherwise it probes elfldr
   (`127.0.0.1:9021`), downloads `SHA256SUMS` and `maxpack.elf` (one try each), and sends the ELF to elfldr only
   when its size is the asset's, it starts with the ELF (or SELF) magic and its SHA-256
   (`maxpack_logic::sha256`, FIPS 180-4, tested on the host) is the one `SHA256SUMS` lists for `maxpack.elf`
-  (`update::verify`). A game started during the download refuses the send. Every outcome is logged.
+  (`update::verify`). A game or an install started during the download refuses the send. Every outcome is logged.
+- The secure-connection self-test (`src/tls.rs`, `maxpack_logic::tls`). `SHA256SUMS` comes over the same HTTPS
+  channel as the ELF, so the checksum stops a network attacker only if the console checks certificates.
+  `net::https_get` loads 4 root CAs and sets `SERVER_VERIFY | CN_CHECK | NOT_AFTER_CHECK | KNOWN_CA_CHECK` on every
+  template with `sceHttpsEnableOption` (a failure is logged once and reported, not fatal); `NOT_BEFORE_CHECK` is left
+  to the firmware, since the console's clock may be behind. Whether the console applies them is shown by Settings >
+  "Check secure connections" (`POST /api/selftest/tls`): a HEAD with 8 s timeouts to five sites, one after the
+  other. `untrusted-root.badssl.com`, `wrong.host.badssl.com` and `expired.badssl.com` must be refused by the TLS
+  layer (SCE_HTTPS_ERROR_CERT or _HANDSHAKE, SCE_HTTP_ERROR_SSL, or a certificate bit in sceHttpsGetSslError's
+  detail; a DNS error or a timeout proves nothing); `badssl.com` (the same `*.badssl.com` certificate as wrong.host,
+  under ISRG Root X1, so its refusal is the host check) and `api.github.com` must connect. Any bad site accepted is
+  `broken`; everything as expected is `passed`; anything else is `inconclusive`. `passed` and `broken` are kept in
+  `/data/maxpack/tls_check.json` (`{passed, at, version}`); `inconclusive` leaves it as it was. Until the last
+  conclusive run passed, `update.tls_passed` is false in `/api/state`, the notice asks for the check (its button runs
+  it) instead of offering Update, and `update::install` refuses with `tls_unchecked` before anything is downloaded.
+  `/api/state` `tls_check` is `{passed, at, version}` of that record (empty without one) and `running`.
 - While an update runs, and for 90 s after its ELF was sent (`HOLD_MS`), the scan loop starts no pass
   (`update::holding`), so the new copy finds none to wait for. The new copy takes the port as any newer copy
   (`web::take_port`, above) and saves its own self copy; the hold runs out by itself if it never starts.
@@ -776,7 +800,8 @@ New texts are in English and Spanish; the other languages show the English ones.
 | `src/web.rs`, `src/ui.html` | HTTP server and the single-file UI |
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
-| `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl (ampr-emu-ng updater, self-update) |
+| `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update) and the self-test's HEAD probe |
+| `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update waits for |
 | `src/update.rs` | self-update: the latest release looked at once per start, `POST /api/self_update` |
 | `src/i18n.rs` | toast texts in the console language (the UI's 11 languages) |
 | `crates/maxpack-logic` | pure logic tested on the host (`cargo test -p maxpack-logic`) |
