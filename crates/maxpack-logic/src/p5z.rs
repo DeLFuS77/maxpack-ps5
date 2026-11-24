@@ -403,8 +403,8 @@ mod tests {
     fn image_text_golden_utf8() {
         let v = Volume { id: 0, offset: 1234, length: 5678 };
         assert_eq!(
-            image_text("Marvel’s Spider-Man™ 2 [PPSA01234].p5z", &[v]).unwrap(),
-            "maxpack-image 1\np5z/Marvel’s Spider-Man™ 2 [PPSA01234].p5z\n0 1234 5678\n"
+            image_text("Starfall’s Odyssey™ 2 [PPSA01234].p5z", &[v]).unwrap(),
+            "maxpack-image 1\np5z/Starfall’s Odyssey™ 2 [PPSA01234].p5z\n0 1234 5678\n"
         );
     }
 

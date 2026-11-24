@@ -84,7 +84,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
 | `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
-| `ampr_auto_update` | true | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
+| `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
 | `stability_wait_seconds` | 10 | skip a source changed less than this many seconds ago (still being copied) (0..3600, 0 = off) |
@@ -117,8 +117,8 @@ is ignored as a whole). The web UI edits the same file.
   `maxpack_logic::p5z::image_text`). The file name is the directory's, in UTF-8 (MaxPack's PC app names a `.p5z`
   `<Title> [<TITLE_ID>].p5z` with every character of the title: ™, ’, accents, Japanese), and ampr-emu-ng opens the
   `.p5z` with those same bytes. It must not be empty, `.` or `..`, nor hold a byte below 0x20, 0x7F, `/` or `\` (the
-  contract, ampr-emu-ng's `docs/p5z-mode.md`; both sides test the same golden text, `"maxpack-image 1\np5z/Marvel’s
-  Spider-Man™ 2 [PPSA01234].p5z\n0 1234 5678\n"`): a name that is not UTF-8 or breaks those rules, or a volume list
+  contract, ampr-emu-ng's `docs/p5z-mode.md`; both sides test the same golden text, `"maxpack-image 1\np5z/Starfall’s
+  Odyssey™ 2 [PPSA01234].p5z\n0 1234 5678\n"`): a name that is not UTF-8 or breaks those rules, or a volume list
   outside the contract, fails the build with that reason. Space (`maxpack_logic::p5z::space_short`): before
   extracting anything, the loose files plus `SPACE_MARGIN` (256 MiB, the installer's `space_margin`) must fit in the
   free space of `/data`, else the build stops with `cache::NoSpace { missing }` (`cache::missing_bytes`). `main.rs` does

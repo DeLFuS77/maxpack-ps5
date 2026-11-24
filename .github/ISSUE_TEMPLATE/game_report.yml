@@ -16,7 +16,7 @@ body:
     id: title
     attributes:
       label: Game name
-      placeholder: "Hollow Knight: Silksong"
+      placeholder: "Starfall Odyssey"
     validations:
       required: true
 
@@ -25,7 +25,7 @@ body:
     attributes:
       label: Title ID (PPSA)
       description: The one in `sce_sys/param.json`.
-      placeholder: "PPSA12544"
+      placeholder: "PPSA01234"
     validations:
       required: true
 
