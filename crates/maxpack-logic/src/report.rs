@@ -183,6 +183,18 @@ mod tests {
     }
 
     #[test]
+    fn control_characters_never_break_the_row() {
+        // A name from param.json may carry a line break, a tab or another control character: each is a
+        // space, so the row stays one markdown line.
+        let r = Report { title_name: "Line one\r\nLine\ttwo\u{7}|x", game_version: "01.0\n00", ..silksong("", None) };
+        let row = compat_row(&r);
+        assert_eq!(row, "| PPSA12544 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 0.2.0 | ? | ? |");
+        assert!(!row.chars().any(char::is_control), "{row:?}");
+        // The whole report keeps the row on one line too.
+        assert!(text(&r).contains(&format!("\n{row}\n")), "{}", text(&r));
+    }
+
+    #[test]
     fn the_whole_report() {
         let c = Crash { at: 1_767_225_600, process: "eboot.bin".into(), folder: "PPSA12544_1795166239".into(), status: "killed by signal 11".into() };
         let log = "2026-01-01 00:00:00Z [1] PPSA12544: built\n2026-01-01 00:00:01Z [2] PPSA00001: other game\n2026-01-01 00:00:02Z [3] [launch] PPSA12544 exit pid=233\n";
