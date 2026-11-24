@@ -1,4 +1,5 @@
-# Host check (cargo check + UI script syntax), the payload build, and draft releases on v* tags.
+# Host check (cargo check + UI script syntax), the payload build, and draft releases on v* tags
+# (maxpack.elf, SHA256SUMS and payloads.json for ps5-payload-manager).
 name: build
 
 on:
@@ -127,6 +128,9 @@ jobs:
         run: |
           cp target/ps5/maxpack.elf .
           sha256sum maxpack.elf | tee SHA256SUMS
+      # The release job writes it again for the release; here it is only tried, on every push.
+      - name: payloads.json (as the release writes it)
+        run: bash ps5/make-payloads-json.sh maxpack.elf "$RUNNER_TEMP/payloads.json" && cat "$RUNNER_TEMP/payloads.json"
       - uses: actions/upload-artifact@v4
         with:
           name: payload
@@ -143,6 +147,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Checkout first: it cleans the workspace the artifact lands in. Cargo.toml and the
+      # payloads.json script come from it.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: payload
@@ -151,10 +158,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          # The page's self-update offers a release by its tag: it must be the version the ELF says.
+          version=$(tr -d '\r' < Cargo.toml | sed -n 's/^version = "\(.*\)"$/\1/p' | head -n1)
+          [ "$TAG" = "v$version" ] || { echo "tag $TAG is not v$version (Cargo.toml)" >&2; exit 1; }
           sha256sum -c SHA256SUMS
+          # The ps5-payload-manager catalog; SHA256SUMS does not list it.
+          bash ps5/make-payloads-json.sh maxpack.elf payloads.json
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --draft \
             --generate-notes \
-            maxpack.elf SHA256SUMS
+            maxpack.elf SHA256SUMS payloads.json
