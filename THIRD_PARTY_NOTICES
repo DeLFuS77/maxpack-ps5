@@ -3,6 +3,17 @@ Third-party notices for maxpack.elf
 MaxPack is a modified version of Kraken Mount (quer3q, GPL-3.0-or-later). MaxPack is GPL-3.0-or-later (LICENSE). The ELF also contains code under the licenses
 below, whose terms require these notices to accompany binary distributions.
 
+- Kraken Mount by quer3q, the base of MaxPack (v0.3.1, 387e665, whose history this repository keeps;
+  parts of v0.3.2 are ported by hand, as DESIGN.md says): GPL-3.0-or-later (text in LICENSE).
+  Corresponding Source: https://github.com/quer3q/kraken-mount/tree/v0.3.1
+- ps5-dump-forge by quer3q: crates/kraken-mount-pkg/src/decoder is a port of the Kraken decoder it
+  vendors (kraken.rs, kraken/huff.rs, kraken_image.rs), and the self copy, tile and toasts follow
+  it: GPL-3.0-or-later (text in LICENSE).
+  Source: https://github.com/quer3q/ps5-dump-forge
+- ps5-payload-sdk v0.45 by ps5-payload-dev (the toolchain, the crt and the libraries maxpack.elf is
+  linked with, ps5/Dockerfile and ps5/linker.sh): GPL-3.0 (its LICENSE; the same terms as MaxPack's,
+  text in LICENSE).
+  Corresponding Source: https://github.com/ps5-payload-dev/sdk/tree/v0.45
 - ps5/shim/getpeereid.c, ps5/shim/lockf.c: BSD-2-Clause.
 - dlc_emu 0.3 by drakmor (vendor/dlc_emu: libSceAppContent.sprx,
   libSceNpEntitlementAccess.sprx, libSceGameUpdate.sprx), the released binaries, embedded and
