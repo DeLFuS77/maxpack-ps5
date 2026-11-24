@@ -14,6 +14,10 @@
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
+// Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
+// (PPSA01234, its sheet shows it and Copy report copies GET /api/report), Play (POST /api/launch:
+// the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
+// for 3 s). Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -43,6 +47,14 @@ const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
 // Fixed, so the page does not ask for the cards' art again on every poll.
 const BUILT = Math.floor(Date.now() / 1000) - 3600;
+// The page's switches and actions, as the payload keeps them.
+const hidden = new Set(['PPSA02345']);
+const queued = new Set();
+let running = null; // { tid, until }
+function runningNow() {
+  if (running && Date.now() > running.until) running = null;
+  return running ? [running.tid] : [];
+}
 
 function waitingValue() {
   if (mock.waiting === 'other') return 'other:shadowmountplus.elf';
@@ -57,9 +69,11 @@ function games() {
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
     cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false, playgo_off: false,
+    hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
   }, extra || {});
   return [
-    g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0' }),
+    g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
+      crash: { at: BUILT + 600, process: 'eboot.bin', status: 'killed by signal 11' } }),
     g('PPSA02345', 'Folder Quest', 'folder', 'zstd', 'ready'),
     g('PPSA03456', 'Plain Racer', 'folder', 'plain', 'building', { cache_built: null, cache_size: 0 }),
     g('PPSA04567', 'Lz4 Tactics', 'folder', 'lz4', 'pending'),
@@ -78,7 +92,7 @@ function games() {
 
 function apiState() {
   return {
-    version: '0.2.0', busy: false, paused: false, waiting: waitingValue(), running: [],
+    version: '0.2.0', busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Juego [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
@@ -111,6 +125,9 @@ const found = [
     name: 'Folder Quest', p5z_size: 12 * GB, install_size: 12 * GB, original_size: 12 * GB },
   { path: '/mnt/usb0/Juego [PPSA06789].exfat', kind: 'image', packed: false, title_id: 'PPSA06789',
     version: '01.000.000', name: 'Imagen de ejemplo', p5z_size: 30 * GB, install_size: 30 * GB, original_size: 30 * GB },
+  // Larger than the internal SSD's free space (311 GB): fits only on the USB drive.
+  { path: '/mnt/usb0/Huge Example.p5z', kind: 'p5z', packed: true, title_id: 'PPSA08000', version: '01.000.000',
+    name: 'Huge Example', p5z_size: 280 * GB, install_size: 330 * GB, original_size: 400 * GB },
 ];
 let installed = [
   { title_id: 'PPSA09012', name: 'Installed Example', version: '01.000.000', dir: '/data/homebrew/PPSA09012',
@@ -296,6 +313,43 @@ http.createServer((req, res) => {
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
     if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.0', updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
+    if (req.method === 'GET' && p.startsWith('/api/report/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/report/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      // The shape of maxpack_logic::report::text, with fixed values.
+      const kinds = { pkg: ['pkg', 'pkg'], p5z: ['p5z', 'p5z'], plain: ['folder', 'carpeta'], zstd: ['folder (zstd)', 'carpeta zstd'], lz4: ['folder (lz4)', 'carpeta lz4'] };
+      const [en, es] = kinds[g.kind === 'folder' ? g.packing : g.kind];
+      const text = [`MaxPack 0.2.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
+        `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
+        `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
+        ['Backport: none', 'ampr-emu-ng: bundled v0.5.0-maxpack.3', 'PlayGo stub: on',
+          `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
+          '', 'Row for docs/compatibilidad.md (fill in the result and the date):',
+          `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 0.2.0 | ? | ? |`, '',
+          `maxpack.log, last 40 lines with ${g.title_id}:`, `2026-11-23 20:00:05Z [5000] ${g.title_id}: cache fresh`]).join('\n') + '\n';
+      return send(res, 200, 'text/plain; charset=utf-8', text);
+    }
+    if (req.method === 'POST' && p.startsWith('/api/launch/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/launch/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      if (runningNow().length) return send(res, 409, 'text/plain', 'a game is running');
+      if (waitingValue()) return send(res, 409, 'text/plain', 'MaxPack does not mount now (another mounter runs, or no kstuff)');
+      if (g.status !== 'ready') return send(res, 409, 'text/plain', 'the game is not ready');
+      running = { tid: g.title_id, until: Date.now() + 8000 };
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/hidden/')) {
+      const tid = p.slice('/api/hidden/'.length);
+      if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
+      if (chunks === 'on') hidden.add(tid); else hidden.delete(tid);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/rebuild/')) {
+      const tid = p.slice('/api/rebuild/'.length);
+      queued.add(tid);
+      setTimeout(() => queued.delete(tid), 3000);
+      return send(res, 204, 'text/plain', '');
+    }
     if (req.method === 'GET' && p === '/api/inst/state') return json(res, 200, instState());
     if (req.method === 'GET' && p === '/api/inst/icon') {
       const which = url.searchParams.get('p5z') || '';

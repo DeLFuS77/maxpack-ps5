@@ -167,7 +167,8 @@ button.danger:hover { background: rgba(255, 92, 115, 0.5); }
 
 /* ---------- Filter row: L2 [chips] R2 ... storage pill ---------- */
 main { padding: 1.1rem var(--gutter) 2rem; }
-.filters { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.3rem; }
+/* The drive pills go under the chips when both do not fit on one row (a narrower window than the TV's). */
+.filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.3rem; }
 /* One card per drive; Internal is always the last (rightmost), extra drives grow to its left. */
 .storage { display: flex; justify-content: flex-end; gap: 0.6rem; margin-left: auto; min-width: 0; }
 .seg-wrap { display: flex; align-items: center; gap: 0.6rem; min-width: 0; flex: none; }
@@ -184,15 +185,53 @@ button.shoulder:hover { color: var(--fg); }
   background: rgba(255, 255, 255, 0.16); color: var(--fg); font-size: 0.78rem; font-weight: 600;
 }
 .seg-opt[aria-pressed="true"] .count { background: #12121a; color: #fff; }
+/* A drive pill is also a filter: its body (button.pick: name, meter, free space) shows only that
+   drive's games, white while it does, like a type chip; Unmount stays beside it in the pill. */
 .storage-pill {
-  display: flex; align-items: center; gap: 0.9rem; height: 2.85rem; padding: 0 1.2rem;
+  display: flex; align-items: center; gap: 0.3rem; height: 2.85rem; padding: 0 0.35rem 0 0;
   border-radius: 999px; font-size: 0.92rem; white-space: nowrap; min-width: 0; overflow: hidden;
+  -webkit-transition: background-color 0.2s; transition: background-color 0.2s;
 }
+.storage-pill .pick {
+  display: flex; align-items: center; gap: 0.9rem; height: 100%; min-width: 0; padding: 0 0.85rem 0 1.2rem;
+  border-radius: 999px; background: transparent; box-shadow: none; font-size: inherit; font-weight: 400;
+}
+.storage-pill .pick:hover { background: rgba(255, 255, 255, 0.08); }
+.storage-pill.on { background: rgba(255, 255, 255, 0.94); }
+.storage-pill.on .pick { color: #0b1220; }
+.storage-pill.on .pick:hover { background: transparent; }
+.storage-pill.on .meter { background: rgba(11, 18, 32, 0.16); }
+.storage-pill.on .eject { background: rgba(11, 18, 32, 0.1); color: #0b1220; box-shadow: none; }
 .storage-pill b { font-weight: 600; }
-.storage-pill b, .storage-pill > span:last-of-type, .storage-pill .eject { flex: none; }
+.storage-pill b, .storage-pill .eject { flex: none; }
+/* Short of room (many drives on one row with the chips): the free-space text ends in an ellipsis
+   inside its own button and Unmount stays whole. */
+.storage-pill .pick { overflow: hidden; }
+.storage-pill .pick > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .storage-pill .eject { height: 2rem; padding: 0 0.8rem; }
 /* On one row with the filters: the meters give up width first when many drives are mounted. */
 .storage-pill .meter { min-width: 1.5rem; }
+/* Search: its own row under the filters, a magnifier drawn inline (no external request), and the
+   "show hidden" switch beside it once some game is hidden. */
+.search-row { display: flex; align-items: center; gap: 0.6rem; margin: -0.4rem 0 1.3rem; }
+.search {
+  display: block; -webkit-box-flex: 1; flex: 1 1 auto; min-width: 0; height: 2.85rem; padding: 0 1.2rem 0 3.1rem;
+  border: 0; border-radius: 999px; color: var(--fg); font: inherit; font-size: 1rem;
+  background: rgba(7, 16, 31, 0.55) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d6dcec' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 1.1rem center;
+  background-size: 1.25rem; box-shadow: var(--glass-edge), 0 0.4rem 1.2rem rgba(0, 0, 0, 0.25);
+  -webkit-appearance: none; appearance: none;
+}
+.search::placeholder { color: var(--muted); }
+.search:focus { background-color: rgba(40, 54, 84, 0.8); }
+[dir="rtl"] .search { padding: 0 3.1rem 0 1.2rem; background-position: right 1.1rem center; }
+.search-row .seg-opt {
+  flex: none; height: 2.85rem; color: var(--fg); background: rgba(7, 16, 31, 0.55);
+  box-shadow: var(--glass-edge), 0 0.4rem 1.2rem rgba(0, 0, 0, 0.25);
+}
+.search-row .seg-opt:hover { background: rgba(40, 54, 84, 0.8); }
+.search-row .seg-opt[aria-pressed="true"] { background: rgba(255, 255, 255, 0.94); color: #0b1220; }
+/* A hidden game shown with "show hidden" on: its art dimmed, "Hidden" on its badge. */
+.card.is-hidden .cover { opacity: 0.5; }
 .meter { width: 7rem; height: 0.4rem; border-radius: 999px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
 /* A meter's fill is as wide as the meter and scaled to its share (scaleX), so it only ever transforms. */
 .meter i {
@@ -290,6 +329,14 @@ button.shoulder:hover { color: var(--fg); }
 .sheet-pic:before { content: ""; display: block; padding-bottom: 100%; }
 .sheet-side .btns { display: flex; flex-direction: column; gap: 0.6rem; }
 .sheet-side button { width: 100%; height: 3rem; font-size: 1rem; }
+/* Play first; Delete set apart at the end. */
+.sheet-side .btns .danger { margin-top: 0.6rem; }
+/* The report when the browser cannot copy it: selected, to copy by hand. */
+.m-report { display: block; width: 100%; min-height: 9rem; margin-top: 0.9rem; padding: 0.7rem 0.9rem; border: 0;
+  border-radius: 0.8rem; font: 0.78rem/1.45 var(--mono); color: var(--fg-2); background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 0.2rem rgba(0, 0, 0, 0.3); resize: vertical; }
+.m-note { margin-top: 0.9rem; color: var(--ok); overflow-wrap: break-word; }
+.m-note:empty { display: none; }
 .sheet-side .badge { left: 1rem; top: 1rem; }
 .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .sheet-head h2 { font: 800 2.4rem/1.12 var(--display); letter-spacing: -0.03em; text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.55); }
@@ -447,7 +494,8 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
   .brand img { width: 3rem; height: 3rem; }
   .brand-row { gap: 0.4rem; }
   .top-actions { gap: 0.35rem; }
-  .storage-pill { max-width: 100%; white-space: normal; height: auto; min-height: 2.85rem; flex-wrap: wrap; padding: 0.6rem 0.9rem; }
+  .storage-pill { max-width: 100%; white-space: normal; height: auto; min-height: 2.85rem; padding: 0.3rem 0.35rem 0.3rem 0; }
+  .storage-pill .pick { height: auto; min-height: 2.25rem; flex-wrap: wrap; white-space: normal; gap: 0.3rem 0.9rem; padding: 0.3rem 0.6rem 0.3rem 0.9rem; }
   .dialog { max-width: none; border-radius: 1.2rem; }
   .settings-foot .btns { flex-wrap: wrap; }
 }
@@ -510,6 +558,9 @@ button.inst-item[aria-checked="true"] {
 .inst-drives button span { font-size: 0.8rem; font-weight: 400; color: var(--muted); }
 .inst-drives button[aria-checked="true"] { background: rgba(255, 255, 255, 0.9); color: #12121a; }
 .inst-drives button[aria-checked="true"] span { color: #3a3a48; }
+/* The chosen game does not fit there (its size plus the installer's 256 MiB margin). */
+.inst-drives button span.short { color: var(--danger-ink); font-weight: 600; }
+.inst-drives button[aria-checked="true"] span.short { color: #b0213a; }
 .inst-go { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
 .inst-go .row { flex: 1 1 24rem; margin: 0; }
 .inst-go .primary { height: 3rem; padding: 0 2.4rem; font-size: 1.05rem; }
@@ -621,7 +672,11 @@ button.inst-item[aria-checked="true"] {
       <div class="chips" id="chips" role="group" aria-label="Source type" data-i18n-aria="sourceType"></div>
       <button class="shoulder glass" type="button" tabindex="-1" data-step="1" aria-label="Next filter (R2)" data-i18n-aria="nextFilter">R2</button>
     </div>
-    <div class="storage" id="storage"></div>
+    <div class="storage" id="storage" role="group" aria-label="Drive" data-i18n-aria="fDrive"></div>
+  </div>
+  <div class="search-row">
+    <input class="search" id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search" data-i18n-aria="search">
+    <button class="seg-opt" type="button" id="showhidden" aria-pressed="false" hidden><span></span> <span class="count"></span></button>
   </div>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden>
@@ -736,8 +791,11 @@ button.inst-item[aria-checked="true"] {
     <div class="sheet-side">
       <div class="sheet-pic" id="m-pic"></div>
       <div class="btns">
-        <button class="danger" type="button" id="m-delete" data-i18n="delete">Delete</button>
+        <button class="primary" type="button" id="m-play" data-i18n="play">Play</button>
         <button type="button" id="m-rebuild" data-i18n="rebuildCache">Rebuild cache</button>
+        <button type="button" id="m-report" data-i18n="copyReport">Copy report</button>
+        <button type="button" id="m-hide"></button>
+        <button class="danger" type="button" id="m-delete" data-i18n="delete">Delete</button>
       </div>
     </div>
     <div class="sheet-head">
@@ -755,6 +813,8 @@ button.inst-item[aria-checked="true"] {
         <span class="hint" data-i18n="playgoHint">Turn off if the game stays on a black screen; turn on if it asks to finish the download.</span></span>
         <input type="checkbox" id="m-playgo"></label>
       <div class="m-err" id="m-err"></div>
+      <div class="m-note" id="m-note" role="status"></div>
+      <textarea class="m-report" id="m-report-text" readonly spellcheck="false" hidden aria-label="Report" data-i18n-aria="reportLabel"></textarea>
     </div>
     <div class="storage-line">
       <h3 data-i18n="storage">Storage</h3>
@@ -811,6 +871,9 @@ var MSG = {
     statusRunning: '{status} · running',
     cardAria: '{name}, {type}, {status}', cardAriaRunning: '{name}, {type}, {status}, running',
     noGames: 'No games found.', noGamesType: 'No games of this type.',
+    search: 'Search games', noGamesMatch: 'No games match "{q}".', noGamesDrive: 'No games on this drive.',
+    noGamesHidden: 'Every game here is hidden: press Show hidden to see them.',
+    showHidden: 'Show hidden', hiddenTag: 'Hidden', pickDrive: 'Show only the games on {drive}',
     emptyCopy: 'Copy {pkg} files or game folders to {dir} (or {usb} on a USB drive), then press Rescan.',
     emptyHome: 'Each game shows up here and on the home screen once it is registered.',
     showLog: 'Show log', hideLog: 'Hide log',
@@ -819,6 +882,13 @@ var MSG = {
     fTitleId: 'Title ID', fVersion: 'Version', fStatus: 'Status', fType: 'Type', fDrive: 'Drive',
     fPath: 'Path', fCachePath: 'Cache path', fCacheSize: 'Cache size', fCacheBuilt: 'Cache built',
     fBackport: 'Backport', yes: 'Yes', no: 'No', notBuilt: 'not built',
+    play: 'Play', launchFailed: 'Could not start the game: {error}', launchStarted: 'Starting {name} on the console...',
+    hide: 'Hide from the library', unhide: 'Show in the library',
+    hiddenNote: 'Hidden from this library. It stays on the home screen and is still mounted.',
+    copyReport: 'Copy report', reportCopied: 'Report copied. Paste it into your issue or into docs/compatibilidad.md.',
+    reportManual: 'This browser cannot copy it: select the text below and copy it.', reportFailed: 'Could not get the report: {error}',
+    reportLabel: 'Report',
+    fCrash: 'Last crash', crashHint: 'The game crashed while running. That usually comes from the dump, ampr-emu-ng or the PlayGo stub, not the mount. Copy the report when you open an issue.',
     playgoStub: 'PlayGo stub', playgoHint: 'Turn off if the game stays on a black screen; turn on if it asks to finish the download.',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
@@ -899,7 +969,7 @@ var MSG = {
     iFound: 'Games to install', iRescan: 'Search again',
     iFoundEmpty: 'No .p5z, game folder or image on the drives or in /data/maxpack. Plug in a USB drive with them and press Search again.',
     iManualPh: 'Path to a .p5z, game folder or image, for example /mnt/usb0/game.p5z', iManualAria: 'Path to add',
-    iAdd: 'Add', iDest: 'Where to install', iFree: '{free} free',
+    iAdd: 'Add', iDest: 'Where to install', iFree: '{free} free', iShort: 'Does not fit: {size} more needed',
     iDeleteP5z: 'Delete the .p5z once it is installed and verified', iInstall: 'Install',
     iPickFirst: 'Pick a game from the list first.',
     iInstalled: 'Installed with MaxPack', iInstalledEmpty: "You haven't installed any game with MaxPack yet.",
@@ -1209,6 +1279,9 @@ var MSG = {
     statusRunning: '{status} · en curso',
     cardAria: '{name}, {type}, {status}', cardAriaRunning: '{name}, {type}, {status}, en curso',
     noGames: 'No se encontraron juegos.', noGamesType: 'No hay juegos de este tipo.',
+    search: 'Buscar juegos', noGamesMatch: 'Ningún juego coincide con «{q}».', noGamesDrive: 'No hay juegos en esta unidad.',
+    noGamesHidden: 'Todos los juegos de aquí están ocultos: pulsa Mostrar ocultos para verlos.',
+    showHidden: 'Mostrar ocultos', hiddenTag: 'Oculto', pickDrive: 'Mostrar solo los juegos de {drive}',
     emptyCopy: 'Copia archivos {pkg} o carpetas de juegos en {dir} (o en {usb} en una unidad USB) y pulsa Volver a escanear.',
     emptyHome: 'Cada juego aparece aquí y en la pantalla de inicio cuando se registra.',
     showLog: 'Mostrar registro', hideLog: 'Ocultar registro',
@@ -1216,6 +1289,13 @@ var MSG = {
     fTitleId: 'Title ID', fVersion: 'Versión', fStatus: 'Estado', fType: 'Tipo', fDrive: 'Unidad',
     fPath: 'Ruta', fCachePath: 'Ruta de caché', fCacheSize: 'Tamaño de caché', fCacheBuilt: 'Caché creada',
     fBackport: 'Backport', yes: 'Sí', no: 'No', notBuilt: 'sin crear',
+    play: 'Jugar', launchFailed: 'No se pudo iniciar el juego: {error}', launchStarted: 'Iniciando {name} en la consola...',
+    hide: 'Ocultar en la biblioteca', unhide: 'Mostrar en la biblioteca',
+    hiddenNote: 'Oculto en esta biblioteca. Sigue en la pantalla de inicio y montado.',
+    copyReport: 'Copiar informe', reportCopied: 'Informe copiado. Pégalo en tu incidencia o en docs/compatibilidad.md.',
+    reportManual: 'Este navegador no puede copiarlo: selecciona el texto de abajo y cópialo.', reportFailed: 'No se pudo obtener el informe: {error}',
+    reportLabel: 'Informe',
+    fCrash: 'Último cierre inesperado', crashHint: 'El juego se cerró de forma inesperada mientras se ejecutaba. Suele deberse al volcado, a ampr-emu-ng o al stub de PlayGo, no al montaje. Copia el informe al abrir una incidencia.',
     playgoStub: 'Stub de PlayGo', playgoHint: 'Desactívalo si el juego se queda en pantalla negra; actívalo si pide terminar la descarga.',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
@@ -1289,7 +1369,7 @@ var MSG = {
     iFound: 'Juegos para instalar', iRescan: 'Buscar otra vez',
     iFoundEmpty: 'No hay ningún .p5z, carpeta de juego ni imagen en las unidades ni en /data/maxpack. Conecta un USB con ellos y pulsa Buscar otra vez.',
     iManualPh: 'Ruta de un .p5z, una carpeta de juego o una imagen, por ejemplo /mnt/usb0/juego.p5z', iManualAria: 'Ruta para añadir',
-    iAdd: 'Añadir', iDest: 'Dónde instalar', iFree: '{free} libres',
+    iAdd: 'Añadir', iDest: 'Dónde instalar', iFree: '{free} libres', iShort: 'No cabe: faltan {size}',
     iDeleteP5z: 'Borrar el .p5z cuando esté instalado y verificado', iInstall: 'Instalar',
     iPickFirst: 'Elige primero un juego de la lista.',
     iInstalled: 'Instalados con MaxPack', iInstalledEmpty: 'Todavía no has instalado ningún juego con MaxPack.',
@@ -1892,6 +1972,8 @@ function applyStatic() {
   for (i = 0; i < list.length; i++) list[i].setAttribute('aria-label', t(list[i].getAttribute('data-i18n-aria')));
   list = document.querySelectorAll('[data-i18n-title]');
   for (i = 0; i < list.length; i++) list[i].title = t(list[i].getAttribute('data-i18n-title'));
+  list = document.querySelectorAll('[data-i18n-ph]');
+  for (i = 0; i < list.length; i++) list[i].placeholder = t(list[i].getAttribute('data-i18n-ph'));
 }
 // Text set from script keeps its producer, so a switch can render it again.
 function live(node, fn) { node._live = fn || null; setText(node, fn ? fn() : ''); }
@@ -1926,9 +2008,14 @@ function setLang(l) {
   applyLang();
   renderAll();
 }
-var state = null, cardsById = {}, filter = 'all', openTid = null, opener = null;
+var state = null, cardsById = {}, filter = 'all', query = '', driveFilter = '', openTid = null, opener = null;
+// "Show hidden": a per-browser choice (hidden titles themselves are in config.toml, `hidden`).
+var HIDDEN_KEY = 'maxpack.showHidden', showHidden = false;
+try { showHidden = localStorage.getItem(HIDDEN_KEY) === '1'; } catch (e) { /* blocked storage: off */ }
 var confirmFn = null, confirmOpener = null, timer = null, queued = false;
 var logOpen = false, settingsLoaded = false, sizesRequest = 0, modalActionError = '';
+// The sheet's green line (a function, so a language switch renders it again), and its report.
+var modalNote = null, reportText = null, reportError = '', reportSig = '', reportRequest = 0;
 var PS = /PlayStation (?:4|5)\b/i.test(navigator.userAgent || '');
 var ELF = 'http://127.0.0.1:9021/data/maxpack/maxpack.elf';
 var LOOPBACK = (location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '8095';
@@ -2004,6 +2091,40 @@ function gameKind(g) {
 }
 function badgeText(g) { return { pkg: 'PKG', p5z: 'P5Z', folder: t('badgeFolder'), lz4: 'LZ4', zstd: 'ZSTD' }[gameKind(g)]; }
 function gameName(g) { return g.title_name || g.title_id; }
+// Lower case without accents, so "pokemon" finds "Pokémon" (old WebKit without normalize: case only).
+function fold(s) {
+  s = String(s || '').toLowerCase();
+  return s.normalize ? s.normalize('NFD').replace(/[̀-ͯ]/g, '') : s;
+}
+// Search box: every word of the query is in the name or the title id.
+function matchesQuery(g, q) {
+  var hay = fold(gameName(g) + ' ' + g.title_id);
+  return fold(q).split(/\s+/).every(function (w) { return !w || hay.indexOf(w) >= 0; });
+}
+function allGames() { return state && Array.isArray(state.games) ? state.games : []; }
+// The games the library lists at all: a hidden one only with "show hidden" on.
+function listed(g) { return !!(g && g.title_id) && (showHidden || !g.hidden); }
+function setQuery(q) {
+  query = q.replace(/^\s+|\s+$/g, '');
+  renderGrid(allGames());
+}
+function setShowHidden(on) {
+  showHidden = !!on;
+  try { localStorage.setItem(HIDDEN_KEY, showHidden ? '1' : '0'); } catch (e) { /* lasts until the page closes */ }
+  renderChips(allGames());
+  renderShowHidden(allGames());
+  renderGrid(allGames());
+}
+// The "show hidden" switch beside the search box: only once some game is hidden (or while it is on).
+function renderShowHidden(games) {
+  var n = games.filter(function (g) { return g && g.title_id && g.hidden; }).length, b = $('showhidden');
+  var wasFocused = document.activeElement === b;
+  b.hidden = !n && !showHidden;
+  b.setAttribute('aria-pressed', String(showHidden));
+  setText(b.firstChild, t('showHidden'));
+  setText(b.lastChild, n);
+  if (wasFocused && b.hidden) $('q').focus();
+}
 function gameSub(g) { return g.title_id + (g.version ? ' · ' + g.version : ''); }
 function isRunning(g) { return state && Array.isArray(state.running) && state.running.indexOf(g.title_id) >= 0; }
 function driveLabel(mount) {
@@ -2185,7 +2306,7 @@ function updateCover(c, g) {
 
 function renderChips(games) {
   var counts = { all: 0, pkg: 0, p5z: 0, folder: 0, lz4: 0, zstd: 0 };
-  games.forEach(function (g) { if (g && g.title_id) { counts.all++; counts[gameKind(g)]++; } });
+  games.forEach(function (g) { if (listed(g)) { counts.all++; counts[gameKind(g)]++; } });
   var box = $('chips');
   KINDS.forEach(function (kind, i) {
     var b = box.children[i];
@@ -2224,10 +2345,13 @@ function stepFilter(d) {
   KINDS.forEach(function (k, j) { if (k.id === filter) i = j; });
   setFilter(KINDS[(i + d + KINDS.length) % KINDS.length].id);
 }
+// Each pill's body (button.pick) filters the grid to that drive's games; pressed again, all drives.
 function renderStorage(drives) {
   var list = [], internal = null;
   (drives || []).forEach(function (d) { if (d.mount === '/data') internal = d; else list.push(d); });
   if (internal) list.push(internal);
+  // A drive that went (unplugged, unmounted) stops filtering.
+  if (driveFilter && !list.some(function (d) { return d.mount === driveFilter; })) driveFilter = '';
   var box = $('storage');
   box.hidden = !list.length;
   var key = list.map(function (d) { return d.mount + (d.ejectable ? '*' : ''); }).join('|');
@@ -2236,11 +2360,15 @@ function renderStorage(drives) {
     box.setAttribute('data-key', key);
     box.textContent = '';
     list.forEach(function (d) {
-      var pill = el('div', 'storage-pill glass'), meter = el('span', 'meter');
+      var pill = el('div', 'storage-pill glass'), pick = el('button', 'pick'), meter = el('span', 'meter');
+      pick.type = 'button';
+      pick.setAttribute('data-mount', d.mount);
+      pick.onclick = function () { setDriveFilter(driveFilter === d.mount ? '' : d.mount); };
       meter.appendChild(el('i'));
-      pill.appendChild(el('b'));
-      pill.appendChild(meter);
-      pill.appendChild(el('span'));
+      pick.appendChild(el('b'));
+      pick.appendChild(meter);
+      pick.appendChild(el('span'));
+      pill.appendChild(pick);
       if (d.ejectable) {
         var btn = el('button', 'small eject');
         btn.type = 'button';
@@ -2253,20 +2381,28 @@ function renderStorage(drives) {
     if (hadFocus) focusChip();
   }
   list.forEach(function (d, i) {
-    var pill = box.children[i];
+    var pill = box.children[i], pick = pill.firstChild;
     var used = d.total ? Math.max(0, Math.min(100, 100 * (d.total - d.free) / d.total)) : 0;
-    setText(pill.children[0], driveLabel(d.mount));
+    pill.classList.toggle('on', d.mount === driveFilter);
+    pick.setAttribute('aria-pressed', String(d.mount === driveFilter));
+    pick.title = t('pickDrive', { drive: driveLabel(d.mount) });
+    setText(pick.children[0], driveLabel(d.mount));
     var share = 'scaleX(' + (used / 100).toFixed(3) + ')';
-    pill.children[1].firstChild.style.webkitTransform = share;
-    pill.children[1].firstChild.style.transform = share;
-    setText(pill.children[2], t('driveFree', { free: fmtSize(d.free), total: fmtSize(d.total) }));
-    var btn = pill.children[3];
+    pick.children[1].firstChild.style.webkitTransform = share;
+    pick.children[1].firstChild.style.transform = share;
+    setText(pick.children[2], t('driveFree', { free: fmtSize(d.free), total: fmtSize(d.total) }));
+    var btn = pill.children[1];
     if (btn) {
       btn.disabled = ejecting != null;
       setText(btn, t(ejecting === d.mount ? 'ejecting' : 'eject'));
       btn.setAttribute('aria-label', t('ejectAria', { drive: driveLabel(d.mount) }));
     }
   });
+}
+function setDriveFilter(mount) {
+  driveFilter = mount;
+  renderStorage(state && state.drives);
+  renderGrid(allGames());
 }
 // One unmount at a time; the server answers within ~6 s. The reason comes from the server, in English.
 var ejecting = null, ejectTimer = null;
@@ -2322,8 +2458,10 @@ function updateCard(c, g) {
   setText(c.name, name);
   c.name.title = name;
   setText(c.sub, gameSub(g));
-  setText(c.cover.badge, badgeText(g));
-  c.el.setAttribute('aria-label', t(isRunning(g) ? 'cardAriaRunning' : 'cardAria', { name: name, type: badgeText(g), status: label }));
+  var badge = badgeText(g) + (g.hidden ? ' · ' + t('hiddenTag') : '');
+  setText(c.cover.badge, badge);
+  c.el.classList.toggle('is-hidden', !!g.hidden);
+  c.el.setAttribute('aria-label', t(isRunning(g) ? 'cardAriaRunning' : 'cardAria', { name: name, type: badge, status: label }));
   c.status.hidden = status === 'ready';
   c.status.className = 'status-pill s-' + status;
   setText(c.status, label);
@@ -2336,7 +2474,9 @@ function renderGrid(games) {
   var grid = $('grid'), seen = {}, count = 0;
   var focus = document.activeElement, focusKey = focus && focus.getAttribute ? focus.getAttribute('data-key') : null;
   games.forEach(function (g) {
-    if (!g || !g.title_id || (filter !== 'all' && gameKind(g) !== filter)) return;
+    if (!listed(g) || (filter !== 'all' && gameKind(g) !== filter)) return;
+    if (query && !matchesQuery(g, query)) return;
+    if (driveFilter && g.drive !== driveFilter) return;
     var id = gameId(g);
     if (seen[id]) return;
     seen[id] = true;
@@ -2355,9 +2495,11 @@ function renderGrid(games) {
   if (focusId && !seen[focusId]) { focusId = null; grid.classList.remove('dim'); setAmbient(null); }
   renderHero();
   var empty = $('empty'), any = games.some(function (g) { return g && g.title_id; });
+  var shown = games.some(listed);
   // While start-up waits (kstuff, ShadowMount+) the banner explains the empty library.
   empty.hidden = count > 0 || !!(state && state.waiting);
-  setText(empty.querySelector('h2'), t(any ? 'noGamesType' : 'noGames'));
+  setText(empty.querySelector('h2'), !any ? t('noGames') : !shown ? t('noGamesHidden') :
+    query ? t('noGamesMatch', { q: query }) : driveFilter ? t('noGamesDrive') : t('noGamesType'));
   var paragraphs = empty.querySelectorAll('p');
   for (var i = 0; i < paragraphs.length; i++) paragraphs[i].hidden = any;
   if (focusKey && document.activeElement === document.body) {
@@ -2377,6 +2519,9 @@ function syncInert() {
 }
 function closeModal() {
   sizesRequest++;
+  reportRequest++;
+  reportText = null;
+  $('m-report-text').hidden = true;
   openTid = null;
   $('modal').hidden = true;
   syncInert();
@@ -2402,7 +2547,7 @@ function renderModal() {
     $('m-pic').appendChild(picture.el);
   }
   updateCover(picture, g);
-  setText(picture.badge, badgeText(g));
+  setText(picture.badge, badgeText(g) + (g.hidden ? ' · ' + t('hiddenTag') : ''));
   var status = statusLabel(g.status);
   if (isRunning(g)) status = t('statusRunning', { status: status });
   var backport = g.backport == null || g.backport === false || g.backport === '' ? t('no') :
@@ -2415,6 +2560,11 @@ function renderModal() {
     [t('fCachePath'), (state.cache && state.cache.path ? state.cache.path : '/data/maxpack/caches') + '/' + g.title_id, 'mono'],
     [t('fCacheSize'), fmtSize(g.cache_size)], [t('fCacheBuilt'), fmtTime(g.cache_built)], [t('fBackport'), backport]
   ];
+  // The last crash of this title (crashes.json, from the console's crash folder), after the status.
+  if (g.crash) {
+    var how = [g.crash.process, g.crash.status].filter(Boolean).join(', ');
+    rows.splice(3, 0, [t('fCrash'), fmtTime(g.crash.at) + (how ? ' (' + how + ')' : '')]);
+  }
   var fields = $('m-fields'), sig = JSON.stringify(rows);
   if (fields._sig !== sig) {
     fields._sig = sig;
@@ -2428,10 +2578,23 @@ function renderModal() {
     });
   }
   var noSpace = g.error_code === 'no_space' ? t('errNoSpace', { size: gb(Math.ceil((Number(g.missing_bytes) || 0) / 107374182.4) * 107374182.4) }) : '';
-  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || g.error) || '');
+  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || g.error) ||
+    (g.crash ? t('crashHint') : ''));
+  setText($('m-note'), modalNote ? modalNote() : g.hidden ? t('hiddenNote') : '');
   // A duplicate shares the title id of the library copy: the API calls would act on that copy.
-  $('m-rebuild').disabled = g.status === 'duplicate' || g.status === 'building';
-  $('m-delete').disabled = g.status === 'duplicate';
+  var dup = g.status === 'duplicate';
+  $('m-rebuild').disabled = rebuildLocked(g);
+  $('m-delete').disabled = dup;
+  $('m-report').disabled = dup;
+  // Play: a ready title while no game runs and MaxPack mounts; a started launch waits up to 10 s for
+  // the launch watcher to see the game (state.paused).
+  $('m-play').disabled = dup || g.status !== 'ready' || !!state.paused || !!state.waiting || Date.now() < ($('m-play')._until || 0);
+  var hide = $('m-hide');
+  setText(hide, t(g.hidden ? 'unhide' : 'hide'));
+  hide.disabled = dup || !!hide._busy;
+  // The report follows the game: fetched again when its status, crash or hidden state changes.
+  var rsig = dup ? '' : g.title_id + '|' + g.status + '|' + JSON.stringify(g.crash || null) + '|' + !!g.hidden;
+  if (rsig && rsig !== reportSig) { reportSig = rsig; loadReport(g.title_id, ++reportRequest); }
   // The PlayGo switch: only for a game whose eboot imports PlayGo, or one turned off already.
   var pg = $('m-playgo');
   $('m-playgo-row').hidden = !(g.playgo === true || g.playgo_off);
@@ -2478,6 +2641,12 @@ function openModal(id, fromCard) {
   opener = fromCard || document.activeElement;
   openTid = id;
   modalActionError = '';
+  modalNote = null;
+  reportText = null;
+  reportSig = '';
+  $('m-report-text').hidden = true;
+  $('m-report-text').value = '';
+  $('m-play')._until = 0;
   $('m-pic').textContent = '';
   $('m-pic')._cover = null;
   $('m-fields')._sig = null;
@@ -2491,11 +2660,113 @@ function openModal(id, fromCard) {
   $('m-close').focus();
 }
 $('m-close').onclick = closeModal;
+// No Rebuild while one is queued or running (building, then checking while it registers), so it is
+// not pressed again; a duplicate shares the title id of the library copy, so the call would act on
+// that copy.
+function rebuildLocked(g) {
+  return !!g.rebuild_queued || ['duplicate', 'pending', 'checking', 'building'].indexOf(g.status) >= 0;
+}
 $('m-rebuild').onclick = function () {
   var g = openTid && findGame(openTid);
   if (!g) return;
-  ask(t('rebuildTitle', { name: gameName(g) }), t('rebuildText'), t('rebuildYes'),
-    function () { post('/api/rebuild/' + encodeURIComponent(g.title_id)); });
+  ask(t('rebuildTitle', { name: gameName(g) }), t('rebuildText'), t('rebuildYes'), function () {
+    // Until the next state says it is queued.
+    $('m-rebuild').disabled = true;
+    post('/api/rebuild/' + encodeURIComponent(g.title_id));
+  });
+};
+$('m-play').onclick = async function () {
+  var btn = this, g = openTid && findGame(openTid);
+  if (!g) return;
+  var id = gameId(g), name = gameName(g);
+  btn._until = Date.now() + 10000;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/launch/' + encodeURIComponent(g.title_id), { method: 'POST' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    modalActionError = '';
+    modalNote = function () { return t('launchStarted', { name: name }); };
+  } catch (e) {
+    btn._until = 0;
+    modalActionError = t('launchFailed', { error: e.message });
+    modalNote = null;
+  }
+  if (modalOpen() && openTid === id) renderModal();
+  schedule(300);
+};
+// The report of the open game (GET /api/report/<TID>), fetched when the sheet opens and when the game
+// changes, so Copy report copies at once: a copy must happen inside the press, before any await.
+async function loadReport(tid, request) {
+  try {
+    var r = await fetch('/api/report/' + encodeURIComponent(tid), { cache: 'no-store' });
+    var text = await r.text();
+    if (!r.ok) throw new Error(text || 'HTTP ' + r.status);
+    if (request === reportRequest) { reportText = text; reportError = ''; }
+  } catch (e) { if (request === reportRequest) { reportText = null; reportError = e.message; } }
+}
+// Copies text: execCommand on the sheet's text box (works on http, where the clipboard API is
+// missing), else the clipboard API; when neither can, the text stays shown and selected.
+function copyReport(text) {
+  var ta = $('m-report-text'), btn = $('m-report'), copied = false;
+  ta.value = text;
+  ta.hidden = false;
+  ta.focus();
+  ta.select();
+  try { ta.setSelectionRange(0, text.length); } catch (e) { /* old WebKit: select() did it */ }
+  try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+  var done = function () {
+    ta.hidden = true;
+    modalActionError = '';
+    modalNote = function () { return t('reportCopied'); };
+    if (modalOpen()) renderModal();
+    btn.focus();
+  };
+  var manual = function () {
+    modalNote = function () { return t('reportManual'); };
+    if (modalOpen()) renderModal();
+    ta.focus();
+    ta.select();
+  };
+  if (copied) done();
+  else if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, manual);
+  else manual();
+}
+$('m-report').onclick = async function () {
+  var g = openTid && findGame(openTid);
+  if (!g) return;
+  if (reportText) { copyReport(reportText); return; }
+  // Not fetched yet (or it failed): fetch it now; the copy may then need the text box.
+  var request = ++reportRequest;
+  await loadReport(g.title_id, request);
+  if (!modalOpen() || request !== reportRequest) return;
+  if (reportText) copyReport(reportText);
+  else { modalActionError = t('reportFailed', { error: reportError }); renderModal(); }
+};
+$('m-hide').onclick = async function () {
+  var btn = this, g = openTid && findGame(openTid);
+  if (!g) return;
+  var id = gameId(g), tid = g.title_id, on = !g.hidden;
+  btn._busy = true;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/hidden/' + encodeURIComponent(tid), { method: 'POST', body: on ? 'on' : 'off' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    // Every entry of the title (a duplicate copy too), until the next state arrives.
+    allGames().forEach(function (x) { if (x && x.title_id === tid) x.hidden = on; });
+    modalActionError = '';
+    modalNote = null;
+  } catch (e) {
+    if (modalOpen() && openTid === id) modalActionError = e.message;
+  }
+  btn._busy = false;
+  renderChips(allGames());
+  renderShowHidden(allGames());
+  renderGrid(allGames());
+  if (modalOpen() && openTid === id) {
+    renderModal();
+    if (!btn.disabled) btn.focus();
+  }
+  schedule(300);
 };
 $('m-playgo').onchange = async function () {
   var box = this, g = openTid && findGame(openTid);
@@ -2651,6 +2922,7 @@ async function poll() {
     setBanner('waiting', !!state.waiting, waitingText);
     var games = Array.isArray(state.games) ? state.games : [];
     renderChips(games);
+    renderShowHidden(games);
     renderStorage(state.drives);
     renderGrid(games);
     renderImages(state.images);
@@ -2815,6 +3087,8 @@ $('logtoggle').onclick = function () {
   setText(this, t(logOpen ? 'hideLog' : 'showLog'));
   if (logOpen) $('log').scrollTop = $('log').scrollHeight;
 };
+$('q').oninput = function () { setQuery(this.value); };
+$('showhidden').onclick = function () { setShowHidden(!showHidden); };
 var shoulders = document.querySelectorAll('.shoulder[data-step]');
 for (var s = 0; s < shoulders.length; s++)
   shoulders[s].onclick = function () { stepFilter(+this.getAttribute('data-step')); };
@@ -2956,6 +3230,26 @@ function instSelect(path) {
   var rows = $('i-found').children;
   for (var i = 0; i < rows.length; i++)
     rows[i].setAttribute('aria-checked', String(rows[i].getAttribute('data-path') === path));
+  // Each destination says whether the chosen game fits there.
+  if (inst) renderInstDrives(false);
+}
+function instItem(path) {
+  var list = instAll();
+  for (var i = 0; i < list.length; i++) if (list[i].path === path) return list[i];
+  return null;
+}
+// The installer's margin over a game's size (the engine's space_margin, 256 MiB).
+var INST_MARGIN = 256 * 1048576;
+// Bytes the game `item` is short of on drive `d`, 0 when it fits: its install size plus the margin
+// against the drive's free space, plus what an unfinished install of it already copied there (the
+// engine counts that as free too). The engine checks again when Install is pressed.
+function instShort(item, d) {
+  if (!item || !d || !(Number(item.install_size) > 0)) return 0;
+  var have = Number(d.free) || 0;
+  (inst && Array.isArray(inst.pending) ? inst.pending : []).forEach(function (p) {
+    if (p.title_id === item.title_id && p.dest === d.root) have += Number(p.bytes) || 0;
+  });
+  return Math.max(0, Number(item.install_size) + INST_MARGIN - have);
 }
 function instFoundRow(item) {
   var b = el('button', 'inst-item'), info = el('span', 'inst-info');
@@ -3009,12 +3303,14 @@ function renderInstDrives(force) {
   var drives = Array.isArray(inst.drives) ? inst.drives : [], box = $('i-drives');
   if (!drives.some(function (d) { return d.root === instDest; })) instDest = drives.length ? drives[0].root : null;
   if (force) box._key = null;
-  instRebuild(box, lang + JSON.stringify(drives), drives, function (d) {
-    var b = el('button', null, driveLabel(d.root));
+  var item = instItem(instSel), shorts = drives.map(function (d) { return instShort(item, d); });
+  instRebuild(box, lang + JSON.stringify(drives) + JSON.stringify(shorts), drives, function (d) {
+    var b = el('button', null, driveLabel(d.root)), short = instShort(item, d);
     b.type = 'button';
     b.setAttribute('role', 'radio');
     b.setAttribute('data-path', d.root);
-    b.appendChild(el('span', null, t('iFree', { free: fmtSize(d.free) })));
+    b.appendChild(el('span', short ? 'short' : null,
+      short ? t('iShort', { size: fmtSize(short) }) : t('iFree', { free: fmtSize(d.free) })));
     b.onclick = function () { instDest = d.root; renderInstDrives(false); };
     return b;
   });
@@ -3176,6 +3472,11 @@ async function instInstall(src, dst, replace, del) {
 }
 $('i-install').onclick = function () {
   if (!instSel) { instShow(false, function () { return t('iPickFirst'); }); return; }
+  // The free-space check before any copy: nothing is asked of the engine when it cannot fit.
+  var drives = inst && Array.isArray(inst.drives) ? inst.drives : [], dest = null;
+  for (var i = 0; i < drives.length; i++) if (drives[i].root === instDest) dest = drives[i];
+  var short = instShort(instItem(instSel), dest);
+  if (short) { instShow(false, function () { return t('iNoSpace', { size: fmtSize(short) }); }); return; }
   instInstall(instSel, instDest, [], $('i-del').checked);
 };
 $('i-pause').onclick = function () { instPost('pause', {}); };
@@ -3227,7 +3528,7 @@ function moveInGrid(card, key) {
   if (key === 'ArrowRight' && i % cols === cols - 1) return;
   var j = key === 'ArrowLeft' ? i - 1 : key === 'ArrowRight' ? i + 1 :
     key === 'ArrowUp' ? i - cols : i + cols;
-  if (key === 'ArrowUp' && j < 0) { focusChip(); return; }
+  if (key === 'ArrowUp' && j < 0) { $('q').focus(); return; }
   if (key === 'ArrowDown' && j >= list.length) {
     if (Math.floor(i / cols) < Math.floor((list.length - 1) / cols)) j = list.length - 1;
     else return;
@@ -3240,21 +3541,31 @@ function moveInSeg(btn, key) {
     var sib = key === 'ArrowLeft' ? btn.previousElementSibling : btn.nextElementSibling;
     if (sib) sib.focus();
     else if (seg.id !== 'chips') moveInTop(btn, key);
-    else if (key === 'ArrowRight' && document.querySelector('#storage .eject')) document.querySelector('#storage .eject').focus();
+    else if (key === 'ArrowRight' && storageRow()[0]) storageRow()[0].focus();
   } else if (seg.id === 'chips') {
-    if (key === 'ArrowDown' && cards().length) cards()[0].focus();
+    if (key === 'ArrowDown') $('q').focus();
     if (key === 'ArrowUp') document.querySelector('.nav [aria-selected="true"]').focus();
   } else if (key === 'ArrowDown') {
     focusView();
   }
 }
-// The Unmount buttons on the drive pills, right of the filter chips.
+// The drive pills (their filter and Unmount buttons), right of the type chips.
+function storageRow() { return Array.prototype.slice.call(document.querySelectorAll('#storage button')); }
 function moveInStorage(btn, key) {
-  var row = Array.prototype.slice.call(document.querySelectorAll('#storage .eject')), i = row.indexOf(btn);
+  var row = storageRow(), i = row.indexOf(btn);
   if (key === 'ArrowRight' && row[i + 1]) row[i + 1].focus();
   else if (key === 'ArrowLeft') { if (row[i - 1]) row[i - 1].focus(); else focusChip(); }
-  else if (key === 'ArrowDown' && cards().length) cards()[0].focus();
+  else if (key === 'ArrowDown') $('q').focus();
   else if (key === 'ArrowUp') document.querySelector('.nav [aria-selected="true"]').focus();
+}
+// The search box and the "show hidden" switch: down to the cards, up to the chips.
+function moveInSearch(t, key) {
+  if (key === 'ArrowDown') { if (cards().length) cards()[0].focus(); return true; }
+  if (key === 'ArrowUp') { focusChip(); return true; }
+  if (t === $('showhidden')) { if (key === 'ArrowLeft') $('q').focus(); return true; }
+  // In the box the arrows move the caret; Right past its end goes to the switch when it shows.
+  if (key === 'ArrowRight' && t.selectionStart === t.value.length && !$('showhidden').hidden) { $('showhidden').focus(); return true; }
+  return false;
 }
 // The top row: screen tabs, then Stop and GitHub.
 function moveInTop(t, key) {
@@ -3292,8 +3603,8 @@ function moveInSettings(t, key) {
 }
 // The game sheet's controls in page order: its enabled buttons and the PlayGo switch when shown.
 function modalControls() {
-  return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled])'))
-    .filter(function (c) { return c.id !== 'm-playgo' || !$('m-playgo-row').hidden; });
+  return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled]), #modal textarea'))
+    .filter(function (c) { return c.id === 'm-playgo' ? !$('m-playgo-row').hidden : !c.hidden; });
 }
 function moveInModal(key) {
   var list = modalControls();
@@ -3335,6 +3646,8 @@ document.addEventListener('keydown', function (e) {
     if (arrow && !PS) { e.preventDefault(); moveInModal(k); }
     return;
   }
+  if (k === 'Escape' && t === $('q') && t.value) { e.preventDefault(); t.value = ''; setQuery(''); return; }
+  if (k === '/' && !typing && !$('library').hidden) { e.preventDefault(); $('q').focus(); return; }
   if (k === 'Escape' || (k === 'Backspace' && !typing)) {
     if ($('library').hidden) { e.preventDefault(); setView('library'); $('tab-library').focus(); }
     return;
@@ -3346,10 +3659,11 @@ document.addEventListener('keydown', function (e) {
   if (!arrow || PS) return;
   if ($('settings').contains(t)) { if (moveInSettings(t, k)) e.preventDefault(); return; }
   if ($('install').contains(t)) { if (moveInInstall(t, k)) e.preventDefault(); return; }
+  if (t === $('q') || t === $('showhidden')) { if (moveInSearch(t, k)) e.preventDefault(); return; }
   if (typing) return;
   if (t.classList.contains('card')) { e.preventDefault(); moveInGrid(t, k); }
   else if (t.classList.contains('seg-opt')) { e.preventDefault(); moveInSeg(t, k); }
-  else if (t.classList.contains('eject')) { e.preventDefault(); moveInStorage(t, k); }
+  else if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('storage-pill')) { e.preventDefault(); moveInStorage(t, k); }
   else if ((k === 'ArrowLeft' || k === 'ArrowRight') && t.parentNode.classList.contains('top-actions')) {
     e.preventDefault(); moveInTop(t, k);
   }
@@ -3377,6 +3691,7 @@ function renderAll() {
   if (state) {
     var games = Array.isArray(state.games) ? state.games : [];
     renderChips(games);
+    renderShowHidden(games);
     renderStorage(state.drives);
     renderGrid(games);
     renderImages(state.images);
