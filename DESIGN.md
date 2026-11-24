@@ -693,7 +693,8 @@ them dimmed with "Hidden" on their badge (a per-browser choice, `localStorage` `
 says which filter left nothing. The game sheet's buttons: Play (`POST /api/launch`: a ready title while no game runs
 and MaxPack mounts; after a launch it stays off up to 10 s, until the watcher reports the game), Rebuild cache (off while
 `rebuild_queued` or pending, checking or building), Copy report (the report is fetched when the sheet opens and when
-the game's status, crash or hidden state changes, so the copy happens inside the press: `execCommand('copy')` on the
+the game's status, crash, hidden or overlay state changes or it starts or stops running, so a run that left no dump
+still has its exit lines, and the copy happens inside the press: `execCommand('copy')` on the
 sheet's text box, else the clipboard API; when neither can, the text stays shown and selected), Hide / Show in the
 library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last crash" to the fields and a hint.
 Under the PlayGo switch, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries

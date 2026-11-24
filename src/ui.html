@@ -2608,8 +2608,10 @@ function renderModal() {
   var hide = $('m-hide');
   setText(hide, t(g.hidden ? 'unhide' : 'hide'));
   hide.disabled = dup || !!hide._busy;
-  // The report follows the game: fetched again when its status, crash or hidden state changes.
-  var rsig = dup ? '' : g.title_id + '|' + g.status + '|' + JSON.stringify(g.crash || null) + '|' + !!g.hidden;
+  // The report follows the game: fetched again when its status, crash, hidden or overlay state changes, and
+  // when it starts or stops running (the exit lines of a run that left no dump are in the log tail).
+  var rsig = dup ? '' : g.title_id + '|' + g.status + '|' + JSON.stringify(g.crash || null) + '|' + !!g.hidden +
+    '|' + !!g.overlay_off + '|' + isRunning(g);
   if (rsig && rsig !== reportSig) { reportSig = rsig; loadReport(g.title_id, ++reportRequest); }
   // The PlayGo switch: only for a game whose eboot imports PlayGo, or one turned off already.
   var pg = $('m-playgo');
