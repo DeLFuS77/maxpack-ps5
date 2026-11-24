@@ -42,7 +42,7 @@ Lo que añade MaxPack:
   jugar». Si el mismo juego está también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como
   duplicado. El nombre del archivo debe ser ASCII imprimible. Siempre va con nuestra ampr-emu-ng, la
   única que conoce este modo.
-- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.2`, con el modo `.p5z`), de
+- **Nuestra ampr-emu-ng**: la incluida es una compilación propia (`v0.5.0-maxpack.3`, con el modo `.p5z`), de
   [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (`vendor/ampr-emu-ng/SOURCE`). La
   actualización automática está apagada hasta que se publique.
 - **Protecciones**: nunca registra ni monta un título que esté instalado en la consola, nunca explora

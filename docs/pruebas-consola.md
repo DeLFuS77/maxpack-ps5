@@ -55,7 +55,7 @@ un FPKG (`.pkg`).
 - [ ] **B.3. Aviso de ampr-emu-ng.**
   - Lanza el juego en zstd.
   - Esperado: el aviso dice «ampr-emu-ng: v0.5.0 (zstd) running», **sin** `-beta`; con el de LZ4,
-    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.2`.
+    «(lz4)». En Ajustes, ampr-emu-ng sale como incluida, versión `v0.5.0-maxpack.3`.
   - Esta compilación sale sin `-beta` (la de `main`, la de la etapa 1, sí lo llevaba: `v0.5.0-beta.a52648f`).
     Si sale `-beta` u otra versión, no es la de esta rama: mira `/data/maxpack/ampr/libSceAmpr.sprx` y
     `/data/maxpack/ampr.bundled`, y apúntalo.
@@ -294,7 +294,7 @@ un FPKG (`.pkg`).
 
 Prepara en un USB un `.p5z` hecho con `maxpack pack --p5z` y una imagen `.exfat` de otro juego,
 los dos en la raíz del USB. Al arrancar, el registro dice `installer: ready in N ms (MaxPack engine
-5780807, runtime ampr-emu-ng v0.5.0-maxpack.2 712560 bytes)`.
+5780807, runtime ampr-emu-ng v0.5.0-maxpack.3 712624 bytes)`.
 
 - [ ] **5.1. Instalar un `.p5z` y un `.exfat` tal cual.**
   - En Instalar salen los dos en «Juegos para instalar»: el `.p5z` con su icono, lo que ahorra y lo
