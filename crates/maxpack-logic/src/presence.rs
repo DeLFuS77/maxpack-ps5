@@ -46,8 +46,17 @@ impl DbMemo {
     /// the stamp or `tids` differ from the last good read. A read error is returned and not memoized.
     pub fn get<E>(&mut self, stamp: (u64, i64, i64), tids: &[&str], read: impl FnOnce() -> Result<Vec<u8>, E>)
         -> Result<Vec<bool>, E> {
-        let _ = (stamp, tids, &self.key, &self.found);
-        read().map(|db| in_app_db(&db, tids))
+        if let Some((s, t)) = &self.key {
+            if *s == stamp && t.iter().map(String::as_str).eq(tids.iter().copied()) {
+                return Ok(self.found.clone());
+            }
+        }
+        // Forgotten first: a failed read leaves nothing to answer from.
+        self.key = None;
+        let found = in_app_db(&read()?, tids);
+        self.key = Some((stamp, tids.iter().map(|t| t.to_string()).collect()));
+        self.found = found.clone();
+        Ok(found)
     }
 }
 
