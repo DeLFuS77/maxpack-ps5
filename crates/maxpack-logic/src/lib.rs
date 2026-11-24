@@ -15,6 +15,8 @@ pub mod presence;
 pub mod report;
 pub mod roots;
 pub mod sandbox;
+pub mod sha256;
 pub mod sony;
 pub mod titles;
+pub mod update;
 pub mod version;
