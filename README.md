@@ -8,18 +8,23 @@ USB drives, registers them on the home screen and mounts them when they start, a
 them. It is based on [Kraken Mount](https://github.com/quer3q/kraken-mount) by quer3q, and keeps its
 history and its licence.
 
-- **On the PC**: [MaxPack](https://github.com/DeLFuS77/maxpack) packs a game into a `.p5z` or a zstd
-  folder, and has the full user guide (in Spanish).
-- **ampr-emu-ng**: MaxPack bundles its own build,
-  [DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng) (quer3q's ampr-emu-ng plus the
-  mode that reads a game from inside its `.p5z`).
+MaxPack is made of three repositories:
+
+- **[DeLFuS77/maxpack](https://github.com/DeLFuS77/maxpack)**: the PC app and command line, which
+  pack a game into a `.p5z` or a zstd folder, and the full
+  [user guide](https://github.com/DeLFuS77/maxpack/blob/main/docs/guide.md).
+- **[DeLFuS77/maxpack-ps5](https://github.com/DeLFuS77/maxpack-ps5)**: this repository, the console
+  payload.
+- **[DeLFuS77/ampr-emu-ng](https://github.com/DeLFuS77/ampr-emu-ng)**: MaxPack bundles its own build
+  of it (quer3q's ampr-emu-ng plus the mode that reads a game from inside its `.p5z`).
 
 **Supported formats**: debug FPKG (`.pkg`), game folders (unpacked, or packed with zstd or LZ4) and
 MaxPack `.p5z` files, which are played as they are, without installing them. The installer also
 installs `.p5z` files and ShadowMountPlus images.
 
-MaxPack ships no games and touches no keys, encryption or DRM: it is meant for dumps of your own
-games. It is not affiliated with or endorsed by Sony.
+**Legal note.** MaxPack ships no games and nothing copyrighted, and it touches no keys, encryption or
+DRM: it is meant for backups of games you own, dumped from your own console. You are responsible for
+what you do with it. It is not affiliated with or endorsed by Sony.
 
 ## Download and start
 
@@ -53,9 +58,9 @@ the manager starts MaxPack at boot, update it there too.
 ## Status
 
 Early versions. MaxPack has run on a PS5 (firmware 13.60); what has been tried, game by game, and
-with what result is in the [compatibility list](docs/compatibilidad.md). The full checklist for a
-console is [`docs/pruebas-consola.md`](docs/pruebas-consola.md) (in Spanish); not every item of it
-has been checked yet. Logic that needs no console is tested on the PC.
+with what result is in the [compatibility list](docs/compatibility.md). The full checklist for a
+console is [`docs/console-tests.md`](docs/console-tests.md); not every item of it has been checked
+yet. Tried a game? Add it with a [game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml). Logic that needs no console is tested on the PC.
 
 What Kraken Mount 0.3.1, its base, does, MaxPack does the same way: finding games in the usual
 roots, a cache per game, registering on the home screen and mounting at launch, ampr-emu-ng, the
@@ -99,7 +104,7 @@ What MaxPack adds:
   (`vendor/ampr-emu-ng/SOURCE`). Its automatic update is off until MaxPack is published.
 - **The library page**: "Play" starts a ready game from its sheet (from a phone too), "Copy report"
   gives a text for an issue with the firmware, the last unexpected close and the row for the
-  [compatibility list](docs/compatibilidad.md), and a game can be hidden from the library (it stays
+  [compatibility list](docs/compatibility.md), and a game can be hidden from the library (it stays
   mounted and on the home screen; "Show hidden" shows it). Before installing, each drive says
   whether the game fits, and when it does not, the copy does not start.
 - **Protections**: it never registers or mounts a title installed on the console, never scans
@@ -136,6 +141,13 @@ SDK v0.45. Quick checks on the PC, without Docker:
 `cargo test -p maxpack-logic`. In CI the `check` job also runs `tools/check_identity.sh`, which
 fails if an old name or path comes back. How it is built, the rules for a change and the contract
 between modules are in [DESIGN.md](DESIGN.md).
+
+## Help and reports
+
+Bug reports, game reports and ideas are welcome, in English or Spanish: use the
+[issue templates](https://github.com/DeLFuS77/maxpack-ps5/issues/new/choose). For a security
+problem, see [SECURITY.md](SECURITY.md). What changed in each version is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 
