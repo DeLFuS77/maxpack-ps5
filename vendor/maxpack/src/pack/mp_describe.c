@@ -222,6 +222,9 @@ static int describe_p5z(const char *path, mp_describe *d, mp_err *e) {
     for (size_t i = 0; i < p->nfiles; i++) {
         if (p->files[i].role != MP_ROLE_ORIGINAL) d->install_size += p->files[i].size;
         if (p->files[i].role == MP_ROLE_VOLUME) d->volumes++;
+        if (p->files[i].role == MP_ROLE_LOOSE || p->files[i].role == MP_ROLE_ZPK_INDEX ||
+            p->files[i].role == MP_ROLE_IDX3)
+            d->loose_bytes += p->files[i].size;
     }
     d->files = m->n;
     d->p5z_size = p->size;

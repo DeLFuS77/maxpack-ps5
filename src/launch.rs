@@ -364,11 +364,11 @@ impl Session {
         if !self.mount_app0(&app0) {
             return;
         }
-        if let Some(pkg) = crate::cache::pkg_source(&self.tid) {
+        if let Some((at, pkg)) = crate::cache::mount_source(&self.tid) {
             // Read-only: the game must never write into the folder holding its .pkg.
             // A single-file nullfs of the .pkg fails here with ENOTDIR.
             if let Some(pkg_dir) = std::path::Path::new(&pkg).parent().and_then(|p| p.to_str()) {
-                self.mount_dir(&format!("{app0}/{}", crate::cache::PKG_MOUNT_DIR), pkg_dir, libc::MNT_RDONLY as i32);
+                self.mount_dir(&format!("{app0}/{at}"), pkg_dir, libc::MNT_RDONLY as i32);
             }
         }
     }
@@ -670,10 +670,11 @@ impl Watcher {
                 }
             }
             // /app0/kraken too: left behind on exit it hangs the sandbox teardown like /data.
-            let pkg_dir = crate::cache::pkg_source(&tid)
-                .and_then(|p| std::path::Path::new(&p).parent().and_then(|d| d.to_str()).map(str::to_string));
-            if let Some(from) = pkg_dir {
-                let path = format!("{root}/app0/{}", crate::cache::PKG_MOUNT_DIR);
+            let pkg_dir = crate::cache::mount_source(&tid).and_then(|(at, p)| {
+                std::path::Path::new(&p).parent().and_then(|d| d.to_str()).map(|d| (at, d.to_string()))
+            });
+            if let Some((at, from)) = pkg_dir {
+                let path = format!("{root}/app0/{at}");
                 for m in all.iter().filter(|m| m.on == path && m.fstype == "nullfs" && m.from == from) {
                     s.data.push((path.clone(), m.fsid));
                 }

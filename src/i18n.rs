@@ -144,6 +144,21 @@ pub fn low_space(l: Lang, gb: u64) -> String {
     }
 }
 
+/// A .p5z's loose files and the margin do not fit on the internal SSD: `missing` bytes short.
+/// New in MaxPack: Spanish and English, English for the other languages.
+pub fn no_space(l: Lang, name: &str, missing: u64) -> String {
+    match l {
+        Lang::Es => format!("No cabe {name} en el SSD interno: faltan {} GB", gb_up(missing, ',')),
+        _ => format!("{name} does not fit on the internal SSD: {} GB missing", gb_up(missing, '.')),
+    }
+}
+
+/// `bytes` in GB (2^30) with one decimal and `mark` between, rounded up: a shortage never reads 0.0.
+fn gb_up(bytes: u64, mark: char) -> String {
+    let tenths = (u128::from(bytes) * 10).div_ceil(1 << 30);
+    format!("{}{mark}{}", tenths / 10, tenths % 10)
+}
+
 /// A data directory can't be created at start-up; `err` is the OS error (English).
 pub fn cannot_create(l: Lang, dir: &str, err: &str) -> String {
     match l {

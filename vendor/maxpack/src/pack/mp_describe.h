@@ -17,6 +17,7 @@ typedef struct {
     uint64_t p5z_size;        // tamaño del .p5z (0 si no lo es)
     uint64_t files;           // archivos del dump original
     uint64_t packed_files;    // de ellos, los que van en los packs zstd (0 si no está empaquetado)
+    uint64_t loose_bytes;     // .p5z: lo que la consola saca al jugarlo (papeles 0, 2 y 3); lo demás, 0
     uint64_t volumes;         // volúmenes de los packs, ampr_zstd-NNN.pak (0 si no está empaquetado)
     int has_runtime, has_zstd_runtime, packed;   // packed: ya trae ampr_zstd.index
 } mp_describe;

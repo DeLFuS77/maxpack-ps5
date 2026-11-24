@@ -76,7 +76,7 @@ llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
 {
   echo
   echo "MaxPack engine vendor/maxpack $(cat vendor/maxpack/COMMIT), symbols in maxpack.elf (lld map):"
-  for sym in mp_api_call mp_inst_install; do
+  for sym in mp_api_call mp_inst_install mp_play_open; do
     line=$(grep -E "[[:space:]]$sym\$" "$out/maxpack.map" | head -n 1 || true)
     [[ -n "$line" ]] || { echo "build.sh: $sym is not in maxpack.elf ($out/maxpack.map)" >&2; exit 1; }
     echo "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+/ /g'

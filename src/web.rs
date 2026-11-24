@@ -29,6 +29,11 @@ pub struct Game {
     /// Set with status "error" when the title id is installed on the console
     /// (register::installed_copy): the path that shows it.
     pub installed_copy: Option<String>,
+    /// Set with status "error" for an error the page names in its language: "no_space" (a .p5z's
+    /// loose files do not fit on /data: cache::NoSpace, tried again every pass).
+    pub error_code: Option<&'static str>,
+    /// With "no_space": the bytes missing, the margin included.
+    pub missing_bytes: Option<u64>,
     pub cache_size: u64,
     pub cache_built: Option<u64>,
 }
@@ -136,6 +141,7 @@ fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
         Kind::Folder(Packing::Plain) => ("folder", Some("plain")),
         Kind::Folder(Packing::Zstd) => ("folder", Some("zstd")),
         Kind::Folder(Packing::Lz4) => ("folder", Some("lz4")),
+        Kind::P5z => ("p5z", None),
     };
     serde_json::json!({
         "title_id": g.src.title_id,
@@ -150,6 +156,8 @@ fn game_json(g: &Game, playgo_off: Option<&[String]>) -> serde_json::Value {
         "error": g.error,
         // The path that shows an installed copy of this title id (main::process): the UI says why.
         "installed_copy": g.installed_copy,
+        "error_code": g.error_code,
+        "missing_bytes": g.missing_bytes,
         "cache_size": g.cache_size,
         "cache_built": g.cache_built,
         "backport": g.src.backport.as_ref().map(|b| b.to_string_lossy()),
@@ -753,7 +761,7 @@ fn sizes(state: &State, tid: &str) -> Reply {
     }
     let Some(src) = state.source(tid) else { return not_found() };
     let game = match src.kind {
-        Kind::Pkg => fs::metadata(&src.path).map(|m| m.len()).unwrap_or_else(|e| {
+        Kind::Pkg | Kind::P5z => fs::metadata(&src.path).map(|m| m.len()).unwrap_or_else(|e| {
             log!("{tid}: stat {}: {e}", src.path.display());
             src.size
         }),
@@ -826,8 +834,10 @@ fn safe_delete_source(src: &Source, roots: &[String]) -> Result<(), &'static str
     let meta = fs::symlink_metadata(path).map_err(|_| "source path is missing or inaccessible")?;
     match src.kind {
         Kind::Pkg if meta.is_file() && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pkg")) => Ok(()),
+        Kind::P5z if meta.is_file() && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("p5z")) => Ok(()),
         Kind::Folder(_) if meta.is_dir() => Ok(()),
         Kind::Pkg => Err("source is not a .pkg file"),
+        Kind::P5z => Err("source is not a .p5z file"),
         Kind::Folder(_) => Err("source is not a directory"),
     }
 }
@@ -870,7 +880,7 @@ fn delete(state: &State, tid: &str, body: &[u8]) -> Reply {
     }
     // Source first: if it cannot be removed, the cache (game-written files) and the tile stay.
     let result = match src.kind {
-        Kind::Pkg => fs::remove_file(&src.path),
+        Kind::Pkg | Kind::P5z => fs::remove_file(&src.path),
         Kind::Folder(_) => fs::remove_dir_all(&src.path),
     };
     if let Err(e) = result {
@@ -1080,7 +1090,8 @@ fn image(state: &State, tid: &str, names: &[&str]) -> Reply {
             }
         }
     }
-    // A pkg whose cache is not built (yet, or it failed): straight from the .pkg.
+    // A pkg whose cache is not built (yet, or it failed): straight from the .pkg. A .p5z has no such
+    // preview: its icon shows once its cache is built.
     if let Some(src) = src.filter(|s| s.kind == Kind::Pkg) {
         for name in names {
             match cache::pkg_file(&src.path, &format!("sce_sys/{name}")) {

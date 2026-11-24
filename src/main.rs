@@ -1,4 +1,4 @@
-//! MaxPack (maxpack-ps5): finds FPKG .pkg files and game folders on the internal SSD and USB/extended
+//! MaxPack (maxpack-ps5): finds FPKG .pkg files, .p5z files and game folders on the internal SSD and USB/extended
 //! drives, keeps a per-game cache in /data/maxpack/caches/<TID>, registers each game on the
 //! home screen and overlays its fakelib at launch (DESIGN.md). Web UI on port web::PORT.
 
@@ -14,6 +14,7 @@ mod config;
 mod installer;
 mod launch;
 mod net;
+mod p5z;
 mod register;
 mod scan;
 mod storage;
@@ -64,12 +65,19 @@ fn check_space(state: &State, s: &Settings) {
     }
 }
 
+/// A folder game's backport is a unionfs over its app0 (register.rs); a pkg's or .p5z's is copied
+/// into its cache.
 fn backport_of(src: &Source) -> Option<&std::path::Path> {
     match src.kind {
         Kind::Folder(_) => src.backport.as_deref(),
-        Kind::Pkg => None,
+        Kind::Pkg | Kind::P5z => None,
     }
 }
+
+/// Titles whose last build stopped for space (cache::missing_bytes): tried again every pass, the
+/// tries not logged. Their warning, a log line and a toast, goes once per title and run (SPACE_WARNED).
+static SPACE_SHORT: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+static SPACE_WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// What build_and_register did with a title.
 #[derive(PartialEq)]
@@ -106,10 +114,12 @@ fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, 
         return Ok(Reg::Kept);
     }
     if stale {
-        match fresh {
-            Fresh::Stale(why) => log!("{tid}: cache stale ({why}); rebuilding"),
-            Fresh::Missing => log!("{tid}: no cache; building"),
-            Fresh::Fresh | Fresh::Fakelib(_) | Fresh::Moved(_) => log!("{tid}: rebuild forced"),
+        if !SPACE_SHORT.lock().unwrap_or_else(|e| e.into_inner()).contains(tid) {
+            match fresh {
+                Fresh::Stale(why) => log!("{tid}: cache stale ({why}); rebuilding"),
+                Fresh::Missing => log!("{tid}: no cache; building"),
+                Fresh::Fresh | Fresh::Fakelib(_) | Fresh::Moved(_) => log!("{tid}: rebuild forced"),
+            }
         }
         state.update(&src.path, |g| g.status = "building");
         check_space(state, s);
@@ -133,10 +143,10 @@ fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, 
 
 /// Fresh::Moved: a folder game's /system_ex/app/<TID> stack (nullfs + backport unionfs) is redone
 /// on the new folder first, so a failed relink is retried next scan; then the cache is relinked
-/// (a pkg's app0 is its cache dir: no remount; launch.rs mounts the pkg's folder from the stamp).
+/// (a pkg's or .p5z's app0 is its cache dir: no remount; launch.rs mounts the file's folder from the stamp).
 /// Only reached from the scan loop, which never runs while a game does.
 fn relink_moved(s: &Settings, src: &Source, from: &std::path::Path) -> std::io::Result<()> {
-    if src.kind != Kind::Pkg {
+    if matches!(src.kind, Kind::Folder(_)) {
         register::remount(&src.title_id, &cache::app0(src), backport_of(src))?;
     }
     cache::relink(src, s, from)?;
@@ -179,6 +189,7 @@ fn process(
             src.path.display(), p.display());
         state.update(&src.path, |g| {
             (g.status, g.error, g.installed_copy) = ("error", Some(e), Some(p.to_string_lossy().into_owned()));
+            (g.error_code, g.missing_bytes) = (None, None);
         });
         return;
     }
@@ -244,12 +255,19 @@ fn install_staged(
 }
 
 /// Status, toast (`notify`) and failure record of a processed title. Ok(true): registered now.
+/// A build short of space (cache::NoSpace) is not recorded in `failed`: it is tried again every pass.
 fn finish(
     state: &State, s: &Settings, src: &Source, registered: &mut HashSet<String>, failed: &mut HashMap<PathBuf, String>,
     r: std::io::Result<bool>, notify: bool,
 ) {
     let tid = &src.title_id;
     let (size, built) = (cache::size(tid), cache::built_at(tid));
+    let short = r.as_ref().err().and_then(cache::missing_bytes);
+    {
+        let mut v = SPACE_SHORT.lock().unwrap_or_else(|e| e.into_inner());
+        v.retain(|t| t != tid);
+        v.extend(short.map(|_| tid.clone()));
+    }
     match r {
         Ok(new) => {
             failed.remove(&src.path);
@@ -257,6 +275,7 @@ fn finish(
             state.titles.lock().unwrap().insert(tid.clone());
             state.update(&src.path, |g| {
                 (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("ready", None, None, size, built);
+                (g.error_code, g.missing_bytes) = (None, None);
             });
             if new && notify {
                 toast(s, &i18n::registered(i18n::lang(), &src.title_name));
@@ -264,10 +283,27 @@ fn finish(
         }
         Err(e) => {
             let e = format!("{tid} ({}): {e}", src.path.display());
+            if let Some(missing) = short {
+                failed.remove(&src.path);
+                state.update(&src.path, |g| {
+                    (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
+                    (g.error_code, g.missing_bytes) = (Some("no_space"), Some(missing));
+                });
+                let mut warned = SPACE_WARNED.lock().unwrap_or_else(|e| e.into_inner());
+                if !warned.contains(tid) {
+                    warned.push(tid.clone());
+                    log!("{e}; tried again every pass");
+                    if notify {
+                        toast(s, &i18n::no_space(i18n::lang(), &src.title_name, missing));
+                    }
+                }
+                return;
+            }
             log!("{e}");
             failed.insert(src.path.clone(), inputs_key(src, s));
             state.update(&src.path, |g| {
                 (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
+                (g.error_code, g.missing_bytes) = (None, None);
             });
             if notify {
                 toast(s, &i18n::failed(i18n::lang(), &src.title_name));
@@ -288,12 +324,14 @@ fn publish(state: &State, r: &scan::ScanResult) {
             Some(g) => web::Game { src: src.clone(), ..g.clone() },
             None => web::Game {
                 src: src.clone(), status: "pending", error: None, installed_copy: None, cache_size: 0, cache_built: None,
+                error_code: None, missing_bytes: None,
             },
         });
     }
     for src in &r.duplicates {
         games.push(web::Game {
             src: src.clone(), status: "duplicate", error: None, installed_copy: None, cache_size: 0, cache_built: None,
+            error_code: None, missing_bytes: None,
         });
     }
     for (path, _) in &r.unstable {

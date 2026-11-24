@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use maxpack_logic::dups::{claim, RANK_FOLDER, RANK_PKG};
+use maxpack_logic::dups::{claim, RANK_FOLDER, RANK_P5Z, RANK_PKG};
+use maxpack_logic::p5z::Unplayable;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Packing {
@@ -19,6 +20,8 @@ pub enum Packing {
 pub enum Kind {
     Pkg,
     Folder(Packing),
+    /// A .p5z played without installing it (crate::p5z).
+    P5z,
 }
 
 #[derive(Clone, Debug)]
@@ -30,7 +33,7 @@ pub struct Source {
     pub version: String,
     /// Mount of the drive holding `path` ("/data", "/mnt/usb0").
     pub drive: String,
-    /// .pkg file size; 0 for folders.
+    /// .pkg or .p5z file size; 0 for folders.
     pub size: u64,
     pub backport: Option<PathBuf>,
 }
@@ -44,6 +47,8 @@ pub struct ScanResult {
     pub unstable: Vec<(PathBuf, Option<String>)>,
     /// ShadowMountPlus disk images where a source could be: listed, never mounted (design stage 3).
     pub images: Vec<Image>,
+    /// .p5z files the engine refuses (cut short, damaged, too many volumes): not games.
+    pub unplayable: Vec<(PathBuf, Unplayable)>,
 }
 
 /// A `.ffpkg`, `.exfat`, `.ffpfs` or `.ffpfsc` file (maxpack_logic::images::smp_image_kind).
@@ -111,6 +116,38 @@ fn pkg_param(path: &Path, size: u64, mtime: SystemTime) -> PkgParam {
     result
 }
 
+type P5zParam = Result<(String, String, String), Unplayable>;
+type P5zMemo = HashMap<PathBuf, (u64, SystemTime, P5zParam)>;
+static P5Z_MEMO: OnceLock<Mutex<P5zMemo>> = OnceLock::new();
+
+/// (title id, name, version) of a .p5z from the engine's description; the name is the title id
+/// when the .p5z has none. A refusal of the engine is memoized by (size, mtime), so a copy that
+/// ends later (another size or mtime) is read again; a file that cannot be opened is not.
+fn p5z_param(path: &Path, size: u64, mtime: SystemTime) -> Result<(String, String, String), crate::p5z::OpenError> {
+    use crate::p5z::OpenError;
+    let memo = P5Z_MEMO.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut memo = memo.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((old_size, old_mtime, result)) = memo.get(path) {
+        if *old_size == size && *old_mtime == mtime {
+            return result.clone().map_err(OpenError::Unplayable);
+        }
+    }
+    let result = match crate::p5z::open(path) {
+        Ok(play) => {
+            let i = play.info;
+            let name = if i.name.is_empty() { i.title_id.clone() } else { i.name };
+            Ok((i.title_id, name, i.version))
+        }
+        Err(OpenError::Unplayable(u)) => Err(u),
+        Err(e @ OpenError::Io(_)) => {
+            memo.remove(path);
+            return Err(e);
+        }
+    };
+    memo.insert(path.to_path_buf(), (size, mtime, result.clone()));
+    result.map_err(OpenError::Unplayable)
+}
+
 /// SMP order (resolve_backport_path_for_title): the game's own scan root, the other roots,
 /// then /data/homebrew (SMP's installed backports) even when custom scanpath lines replace it.
 fn backport_for(owner: &Path, roots: &[String], tid: &str) -> Option<PathBuf> {
@@ -138,7 +175,7 @@ fn backport_for(owner: &Path, roots: &[String], tid: &str) -> Option<PathBuf> {
     None
 }
 
-/// Source path (.pkg or folder) -> TID of each cache dir, from the "source" of its `.done` stamp.
+/// Source path (.pkg, .p5z or folder) -> TID of each cache dir, from the "source" of its `.done` stamp.
 fn cached_sources() -> HashMap<PathBuf, String> {
     let Ok(rd) = fs::read_dir(crate::cache::CACHES) else { return HashMap::new() };
     rd.flatten()
@@ -238,11 +275,12 @@ fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, resu
     (top, nested)
 }
 
-/// Finds the sources under `roots`: the .pkg files and game folders (eboot.bin and
+/// Finds the sources under `roots`: the .pkg and .p5z files and game folders (eboot.bin and
 /// sce_sys/param.json) directly in a root, and those one folder below it (see `candidates`).
 pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult {
     let mut result =
-        ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new(), images: Vec::new() };
+        ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new(), images: Vec::new(),
+            unplayable: Vec::new() };
     // Title id -> (rank of the winner, its index in `games`; None while the winner is still being copied).
     let mut seen: HashMap<String, (u8, Option<usize>)> = HashMap::new();
     // A slot is emptied when a later source beats it.
@@ -302,6 +340,36 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
                 None => pkg_param(&path, metadata.len(), mtime),
             };
             (Kind::Pkg, metadata.len(), param)
+        } else if metadata.is_file() && maxpack_logic::p5z::is_p5z_name(&name) {
+            // As a pkg: a half-copied .p5z is not opened, and an earlier cache of it holds its title id.
+            if let Some(age) = still_written(std::slice::from_ref(&path), stability_wait) {
+                let tid = cached.get(&path).cloned();
+                if let Some(t) = &tid {
+                    claim(&mut seen, &mut games, &mut result.duplicates, t, RANK_P5Z, nested, None);
+                }
+                skip_unstable(&mut result, path, tid, age);
+                continue;
+            }
+            let mtime = match metadata.modified() {
+                Ok(mtime) => mtime,
+                Err(e) => {
+                    scan_error(&mut result, path, e);
+                    continue;
+                }
+            };
+            let param = match cached_param(&cached, &path, metadata.len(), mtime) {
+                Some(p) => Ok(p),
+                None => match p5z_param(&path, metadata.len(), mtime) {
+                    Ok(p) => Ok(p),
+                    Err(crate::p5z::OpenError::Unplayable(u)) => {
+                        scan_error(&mut result, path.clone(), format!("cannot be played ({}): {}", u.code(), crate::p5z::reason(&u)));
+                        result.unplayable.push((path, u));
+                        continue;
+                    }
+                    Err(crate::p5z::OpenError::Io(e)) => Err(e.to_string()),
+                },
+            };
+            (Kind::P5z, metadata.len(), param)
         } else if metadata.is_dir() && !is_backports(&path)
             && path.join("eboot.bin").is_file() && path.join("sce_sys/param.json").is_file() {
             // ponytail: only the folder itself, sce_sys/, its param.json and eboot.bin are checked, so
@@ -346,7 +414,12 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
             backport: if backports { backport_for(root, roots, &title_id) } else { None },
             path, kind, title_id, title_name, version, size,
         };
-        let (tid, rank) = (source.title_id.clone(), if source.kind == Kind::Pkg { RANK_PKG } else { RANK_FOLDER });
+        let rank = match source.kind {
+            Kind::Folder(_) => RANK_FOLDER,
+            Kind::Pkg => RANK_PKG,
+            Kind::P5z => RANK_P5Z,
+        };
+        let tid = source.title_id.clone();
         claim(&mut seen, &mut games, &mut result.duplicates, &tid, rank, nested, Some(source));
     }
     result.games = games.into_iter().flatten().collect();

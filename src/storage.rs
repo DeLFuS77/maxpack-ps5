@@ -25,6 +25,16 @@ fn on_name(fs: &libc::statfs) -> String {
     String::from_utf8_lossy(&b).into_owned()
 }
 
+/// Bytes free for the payload (f_bavail) of a statfs.
+fn avail(f: &libc::statfs) -> u64 {
+    f.f_bavail.max(0) as u64 * f.f_bsize as u64
+}
+
+/// Bytes free for the payload on the filesystem holding `path`.
+pub fn free(path: &str) -> std::io::Result<u64> {
+    statfs(path).map(|f| avail(&f)).ok_or_else(std::io::Error::last_os_error)
+}
+
 /// A statfs that reports `path` itself as the mount point (an empty /mnt/usbN reports /mnt).
 fn mounted(path: &str) -> Option<libc::statfs> {
     statfs(path).filter(|fs| on_name(fs) == path)
@@ -33,7 +43,7 @@ fn mounted(path: &str) -> Option<libc::statfs> {
 pub fn drives() -> Vec<Drive> {
     let mk = |mount: String, label: String, kind, fs: Option<libc::statfs>| {
         let (total, free) = fs.map_or((0, 0), |f| {
-            (f.f_blocks as u64 * f.f_bsize as u64, f.f_bavail.max(0) as u64 * f.f_bsize as u64)
+            (f.f_blocks as u64 * f.f_bsize as u64, avail(&f))
         });
         Drive { mount, label, kind, total, free }
     };
