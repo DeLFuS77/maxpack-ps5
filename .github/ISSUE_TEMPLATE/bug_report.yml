@@ -53,7 +53,7 @@ body:
       label: Other mounters running at the same time
       multiple: true
       options:
-        - None
+        - Nothing else
         - ShadowMountPlus
         - Kraken Mount
         - Another one (say which below)
