@@ -486,6 +486,7 @@ pub fn register(title_id: &str, app0: &std::path::Path, sce_sys: &std::path::Pat
 pub fn register_tile(port: u16);
 pub fn tile_staged() -> bool;                             // FW 12+: the tile waits for the pass's install_all
 pub fn is_registered(title_id: &str) -> bool;
+pub fn registered(tids: &[&str]) -> Vec<bool>;            // is_registered for many, in tids order, one app.db read (all false when unreadable)
 pub fn set_snd0info(title_id: &str);                      // app.db snd0info -> /user/appmeta/<TID>/snd0.at9; logs, never fails
 pub fn spawn_snd0info(title_id: &str, delay_ms: u64);    // set_snd0info on its own thread after delay_ms
 pub fn mount(title_id: &str, app0: &std::path::Path, backport: Option<&std::path::Path>) -> std::io::Result<()>;
@@ -546,11 +547,16 @@ minute):
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off),
   hidden: bool (in the `hidden` setting: the page lists it only with "show hidden" on),
   crash: {at, process, status}|null (the last crash, from crashes.json, see Crash report),
-  rebuild_queued: bool (a rebuild asked for, not started yet: the title is in `forced`; the page keeps Rebuild disabled through it and while the game is pending, checking or building)}],
+  rebuild_queued: bool (a rebuild asked for, not started yet: the title is in `forced`; the page keeps Rebuild disabled through it and while the game is pending, checking or building),
+  registered: bool (`register::registered`: the staged `param.json` files and the title id in app.db, one app.db read per request),
+  mounted: bool (`/system_ex/app/<TID>` is a mount point, one mount table per request), source_present: bool (the source path exists),
+  overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
-  without `playgo_off` keeps the current list (the settings form does not send it). A `scanpath` entry that
+  without `playgo_off`, `hidden`, `overlay_off` or `exclude` keeps that current list from the file (the settings form
+  sends `exclude` only); 409 when `overlay_off` names a library game that needs the overlay (a pkg, a `.p5z` or a
+  packed folder, `maxpack_logic::overlay::needed`, the reason as text). A `scanpath` entry that
   may never be a root (`maxpack_logic::roots::never_root`) is 400 JSON `{code:"forbidden_root", path, detail}`
   and nothing is saved; the page says it in its language.
 - `POST /api/playgo/<TID>`, body exactly `on` or `off` -> removes the title from / adds it to `playgo_off`,
@@ -561,6 +567,10 @@ minute):
   the library|shown in the library`, 204; no rescan (nothing but the page changes). 404 for an invalid title id or,
   with `on`, one not in the library (`off` also takes a title that is not there now, so a stale entry can go); 400
   for any other body. A `POST /api/settings` without `hidden` keeps the list, as for `playgo_off`.
+- `POST /api/overlay/<TID>`, body exactly `on` or `off` -> removes the title from / adds it to `overlay_off`
+  (`set_listed`), saves, applies, rescans (a fakelib refresh), logs `<TID>: overlay on|off`, 204; 404 for an invalid
+  or absent library title, 400 for any other body, 409 for `off` on a game that needs the overlay (logged
+  `<TID>: overlay off refused: <path> (<reason>)`).
 - `POST /api/launch/<TID>` -> starts the title for the foreground user as its home-screen tile does
   (`sys::launch_app`: `sceLncUtilLaunchApp` through its NID in libSceSystemService, taken when it returns >= 0 or
   0x80940005; else `sceSystemServiceLaunchApp`), 204 once a launch is taken; the launch watcher then sees the game

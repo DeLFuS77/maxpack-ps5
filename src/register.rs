@@ -559,6 +559,33 @@ pub fn is_registered(title_id: &str) -> bool {
     }
 }
 
+/// is_registered for many titles (/api/state), in `tids` order, with one app.db read and one pass
+/// over it (maxpack_logic::presence::in_app_db). All false when app.db cannot be read (logged once
+/// until it reads again: the page polls this every second or two).
+/// ponytail: app.db is read on every call; it is a few MB at most.
+pub fn registered(tids: &[&str]) -> Vec<bool> {
+    static READ_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let staged: Vec<bool> = tids.iter()
+        .map(|t| Path::new(APP_BASE).join(t).join("sce_sys/param.json").is_file()
+            && Path::new(APPMETA_BASE).join(t).join("param.json").is_file())
+        .collect();
+    if !staged.contains(&true) {
+        return staged;
+    }
+    let db = match fs::read(APP_DB) {
+        Ok(db) => db,
+        Err(e) => {
+            if !READ_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                log!("read {APP_DB}: {e}; titles shown as not registered");
+            }
+            return vec![false; tids.len()];
+        }
+    };
+    READ_FAILED.store(false, std::sync::atomic::Ordering::Relaxed);
+    let wanted: Vec<&str> = tids.iter().zip(&staged).map(|(t, s)| if *s { *t } else { "" }).collect();
+    maxpack_logic::presence::in_app_db(&db, &wanted)
+}
+
 /// Only the nullfs `app0` -> /system_ex/app/<TID> (+ backport unionfs) of `register`, for a
 /// title already registered; a no-op when it is mounted (it is gone after a reboot).
 pub fn mount(title_id: &str, app0: &Path, backport: Option<&Path>) -> io::Result<()> {

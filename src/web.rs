@@ -1,7 +1,7 @@
 //! Tiny HTTP/1.1 server for the web UI opened in the PS5 browser (Connection: close, no keep-alive).
 //! Routes: DESIGN.md "Web API".
 use crate::config::{self, Settings};
-use crate::scan::{Image, Kind, Packing, Source};
+use crate::scan::{kind_names, Image, Kind, Source};
 use crate::{cache, register, storage, sys};
 use maxpack_logic::mounter::MounterState;
 use std::borrow::Cow;
@@ -136,17 +136,6 @@ impl State {
     }
 }
 
-/// /api/state's `kind` and `packing` of a source.
-fn kind_names(kind: Kind) -> (&'static str, Option<&'static str>) {
-    match kind {
-        Kind::Pkg => ("pkg", None),
-        Kind::Folder(Packing::Plain) => ("folder", Some("plain")),
-        Kind::Folder(Packing::Zstd) => ("folder", Some("zstd")),
-        Kind::Folder(Packing::Lz4) => ("folder", Some("lz4")),
-        Kind::P5z => ("p5z", None),
-    }
-}
-
 /// What /api/state says of each game beyond its Game entry.
 struct GameExtra<'a> {
     /// The setting's title ids; None while add_emulators is off (no stub at all, so the UI shows
@@ -154,6 +143,8 @@ struct GameExtra<'a> {
     playgo_off: Option<&'a [String]>,
     /// The `hidden` setting.
     hidden: &'a [String],
+    /// The `overlay_off` setting.
+    overlay_off: &'a [String],
     /// The last crash of each title (crashes.json).
     crashes: &'a std::collections::HashMap<String, maxpack_logic::crash::Crash>,
     /// Title ids whose rebuild was asked for and has not started yet (`forced`).
@@ -191,6 +182,8 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
         "crash": crash,
         // The page keeps Rebuild disabled through it (and while pending, checking or building).
         "rebuild_queued": x.queued.contains(tid),
+        // Listed in overlay_off and a plain folder game (as cache::overlay_off): no overlay at launch.
+        "overlay_off": maxpack_logic::overlay::off(kind, packing, x.overlay_off.iter().any(|t| t == tid)),
     })
 }
 
@@ -467,6 +460,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         }
         ("POST", p) if p.starts_with("/api/playgo/") => post_title_list(state, TitleList::PlaygoOff, &p["/api/playgo/".len()..], body),
         ("POST", p) if p.starts_with("/api/hidden/") => post_title_list(state, TitleList::Hidden, &p["/api/hidden/".len()..], body),
+        ("POST", p) if p.starts_with("/api/overlay/") => post_title_list(state, TitleList::OverlayOff, &p["/api/overlay/".len()..], body),
         ("POST", p) if p.starts_with("/api/rebuild/") => rebuild(state, &p["/api/rebuild/".len()..]),
         ("POST", p) if p.starts_with("/api/delete/") => delete(state, &p["/api/delete/".len()..], body),
         ("POST", p) if p.starts_with("/api/launch/") => launch(state, &p["/api/launch/".len()..]),
@@ -608,25 +602,38 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
             return reply(400, "application/json", body.to_string());
         }
     }
-    let parsed = value.and_then(|v| Ok((config::from_json(&v)?, v.get("playgo_off").is_some(), v.get("hidden").is_some())));
-    let (mut s, has_playgo_off, has_hidden) = match parsed {
+    let parsed = value.and_then(|v| Ok((config::from_json(&v)?, v)));
+    let (mut s, v) = match parsed {
         Ok(s) => s,
         Err(e) => {
             log!("settings rejected: {e}");
             return reply(400, "text/plain", e);
         }
     };
-    // Held across the save: a concurrent /api/playgo or /api/hidden change is not lost.
+    // overlay_off only for a game that can run without MaxPack's overlay (maxpack_logic::overlay).
+    for tid in &s.overlay_off {
+        if let Some(why) = state.source(tid).and_then(|src| { let (k, p) = kind_names(src.kind); maxpack_logic::overlay::needed(k, p) }) {
+            log!("settings rejected: overlay_off {tid}: {why}");
+            return reply(409, "text/plain", format!("{tid}: {why}"));
+        }
+    }
+    // Held across the save: a concurrent /api/playgo, /api/hidden or /api/overlay change is not lost.
     let mut cur = state.settings.lock().unwrap();
     // The settings form does not send the per-game lists: keep them, from the file (a scan pass
-    // may have put an older copy into state.settings).
-    if !has_playgo_off || !has_hidden {
+    // may have put an older copy into state.settings). The same for `exclude` when a body lacks it.
+    if ["playgo_off", "hidden", "overlay_off", "exclude"].iter().any(|k| v.get(k).is_none()) {
         let file = config::load();
-        if !has_playgo_off {
+        if v.get("playgo_off").is_none() {
             s.playgo_off = file.playgo_off;
         }
-        if !has_hidden {
+        if v.get("hidden").is_none() {
             s.hidden = file.hidden;
+        }
+        if v.get("overlay_off").is_none() {
+            s.overlay_off = file.overlay_off;
+        }
+        if v.get("exclude").is_none() {
+            s.exclude = file.exclude;
         }
     }
     if let Err(e) = config::save(&s) {
@@ -647,24 +654,36 @@ enum TitleList {
     PlaygoOff,
     /// POST /api/hidden/<TID>: `on` = hidden in the page's library, `off` = shown.
     Hidden,
+    /// POST /api/overlay/<TID>: `on` = MaxPack's overlay at launch (out of overlay_off), `off` = none.
+    OverlayOff,
 }
 
-/// POST /api/playgo/<TID> or /api/hidden/<TID>, body `on` or `off`. 404 for an invalid title id or
-/// one not in the library (taking a title out of `hidden` also works for one that is not there
-/// now, so a hand-edited or stale entry can go); 400 for any other body.
+/// POST /api/playgo/<TID>, /api/hidden/<TID> or /api/overlay/<TID>, body `on` or `off`. 404 for an
+/// invalid title id or one not in the library (taking a title out of `hidden` also works for one
+/// that is not there now, so a hand-edited or stale entry can go); 400 for any other body; 409 for
+/// an overlay `off` of a game that needs it (a pkg, a .p5z or a packed folder: maxpack_logic::overlay).
 fn post_title_list(state: &State, which: TitleList, tid: &str, body: &[u8]) -> Reply {
     let on = maxpack_logic::titles::switch_body(body);
     let unhide = matches!(which, TitleList::Hidden) && on == Some(false);
-    if !crate::scan::valid_tid(tid) || (state.source(tid).is_none() && !unhide) {
+    let src = crate::scan::valid_tid(tid).then(|| state.source(tid)).flatten();
+    if !crate::scan::valid_tid(tid) || (src.is_none() && !unhide) {
         return not_found();
     }
     let Some(on) = on else { return reply(400, "text/plain", "expected on or off") };
+    if let (TitleList::OverlayOff, false, Some(src)) = (which, on, &src) {
+        let (kind, packing) = kind_names(src.kind);
+        if let Some(why) = maxpack_logic::overlay::needed(kind, packing) {
+            log!("{tid}: overlay off refused: {} ({why})", src.path.display());
+            return reply(409, "text/plain", why);
+        }
+    }
     let mut cur = state.settings.lock().unwrap();
     // From the file, not state.settings: a scan pass may have put an older copy there.
     let mut s = config::load();
     let (list, listed, what) = match which {
         TitleList::PlaygoOff => (&mut s.playgo_off, !on, if on { "PlayGo stub on" } else { "PlayGo stub off" }),
         TitleList::Hidden => (&mut s.hidden, on, if on { "hidden in the library" } else { "shown in the library" }),
+        TitleList::OverlayOff => (&mut s.overlay_off, !on, if on { "overlay on" } else { "overlay off" }),
     };
     maxpack_logic::titles::set_listed(list, tid, listed);
     if let Err(e) = config::save(&s) {
@@ -674,8 +693,8 @@ fn post_title_list(state: &State, which: TitleList, tid: &str, body: &[u8]) -> R
     log!("{tid}: {what}");
     *cur = s;
     drop(cur);
-    // A PlayGo change refreshes fakelib/ on the next pass; hidden changes nothing there.
-    if matches!(which, TitleList::PlaygoOff) {
+    // A PlayGo or overlay change refreshes fakelib/ on the next pass; hidden changes nothing there.
+    if matches!(which, TitleList::PlaygoOff | TitleList::OverlayOff) {
         state.wake();
     }
     no_content()
@@ -716,16 +735,25 @@ fn dbg_file(path: &str, query: &str) -> Reply {
 }
 
 fn api_state(state: &State) -> Vec<u8> {
-    let (playgo_off, hidden) = {
+    let (playgo_off, hidden, overlay_off) = {
         let s = state.settings.lock().unwrap();
-        (s.add_emulators.then(|| s.playgo_off.clone()), s.hidden.clone())
+        (s.add_emulators.then(|| s.playgo_off.clone()), s.hidden.clone(), s.overlay_off.clone())
     };
     // ponytail: crashes.json is read on every state poll (a few hundred bytes per crashed title).
     let crashes = crate::crash::load();
     // A rebuild asked for but not started yet (the pass picks it up, or a game is running).
     let queued = state.forced.lock().unwrap().clone();
-    let x = GameExtra { playgo_off: playgo_off.as_deref(), hidden: &hidden, crashes: &crashes, queued: &queued };
-    let games: Vec<_> = state.games.lock().unwrap().iter().map(|g| game_json(g, &x)).collect();
+    let x = GameExtra { playgo_off: playgo_off.as_deref(), hidden: &hidden, overlay_off: &overlay_off, crashes: &crashes,
+        queued: &queued };
+    // A copy: presence reads app.db, the mount table and the sources without holding the lock.
+    let games = state.games.lock().unwrap().clone();
+    let games: Vec<_> = games.iter().zip(presence(&games)).map(|(g, [registered, mounted, present])| {
+        let mut v = game_json(g, &x);
+        v["registered"] = registered.into();
+        v["mounted"] = mounted.into();
+        v["source_present"] = present.into();
+        v
+    }).collect();
     let all = storage::drives();
     let drives: Vec<_> = all
         .iter()
@@ -776,6 +804,32 @@ fn api_state(state: &State) -> Vec<u8> {
         "log": tail,
     });
     v.to_string().into_bytes()
+}
+
+/// Per game: [registered (register::registered: the staged files and the title id in app.db), mounted
+/// (/system_ex/app/<TID> is a mount point), source present (its path exists)], from one app.db read
+/// and one mount table for all of them.
+fn presence(games: &[Game]) -> Vec<[bool; 3]> {
+    let tids: Vec<&str> = games.iter().map(|g| g.src.title_id.as_str()).collect();
+    let registered = register::registered(&tids);
+    static FAILED: AtomicBool = AtomicBool::new(false);
+    let mounts: HashSet<String> = match mount_table() {
+        Ok(m) => {
+            FAILED.store(false, Ordering::Relaxed);
+            m.into_iter().map(|(on, _, _)| on).collect()
+        }
+        Err(e) => {
+            // Once until it reads again: the page polls this every second or two.
+            if !FAILED.swap(true, Ordering::Relaxed) {
+                log!("title status: getfsstat: {e}; titles shown as not mounted");
+            }
+            HashSet::new()
+        }
+    };
+    games.iter().zip(registered).map(|(g, registered)| {
+        let tid = &g.src.title_id;
+        [registered, mounts.contains(&maxpack_logic::presence::title_mount(tid)), g.src.path.exists()]
+    }).collect()
 }
 
 /// The last LOG_TAIL bytes of maxpack.log (sys.rs rotates it at ~4 MiB), from a line start.
