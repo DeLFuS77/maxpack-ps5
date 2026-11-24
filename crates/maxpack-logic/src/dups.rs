@@ -68,5 +68,10 @@ mod tests {
         assert_eq!(run(&[("p", RANK_PKG, false, true), ("z", RANK_P5Z, false, true)]), (vec!["p"], vec!["z"]));
         assert_eq!(run(&[("z", RANK_P5Z, false, true), ("f", RANK_FOLDER, true, true)]), (vec!["z"], vec!["f"]));
         assert_eq!(run(&[("z1", RANK_P5Z, false, true), ("z2", RANK_P5Z, false, true)]), (vec!["z1"], vec!["z2"]));
+        // A .p5z tried again next pass (scan.rs: it cannot be opened now, or a first "damaged") holds
+        // its title as one still being copied: another .p5z of it stays a duplicate, a folder wins.
+        assert_eq!(run(&[("z1", RANK_P5Z, false, false), ("z2", RANK_P5Z, false, true)]), (vec![], vec!["z2"]));
+        assert_eq!(run(&[("z1", RANK_P5Z, false, false), ("z2", RANK_P5Z, true, true)]), (vec![], vec!["z2"]));
+        assert_eq!(run(&[("z1", RANK_P5Z, false, false), ("f", RANK_FOLDER, false, true)]), (vec!["f"], vec![]));
     }
 }

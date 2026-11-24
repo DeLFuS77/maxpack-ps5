@@ -20,12 +20,13 @@ use kraken_mount_pkg::{Entry, Pkg, PRead};
 use maxpack_logic::cache::{below, AMPR_STATE, BUILT, FAKELIB, FAKELIB2, LIB_DIRS, P5Z_IMAGE, PKG_IMAGE};
 pub use maxpack_logic::cache::{DONE, P5Z_MOUNT_DIR, PKG_MOUNT_DIR};
 use maxpack_logic::fresh::{self, Input};
-use maxpack_logic::p5z::{image_text, loose_dest, space_short, LooseDest};
+use maxpack_logic::p5z::{image_text, loose_dest, space_short, BuildRefusals, LooseDest, NeedMemo, Refusal};
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Error, ErrorKind, Result, Write};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 pub const CACHES: &str = "/data/maxpack/caches";
@@ -1041,9 +1042,10 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
 /// index, no re-registration. ponytail: a launch reads fakelib/ while this runs only if a game
 /// starts mid-refresh (the scan loop is paused while one runs).
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
-    log!("{}: refreshing {}", src.title_id, dir(&src.title_id).join(FAKELIB).display());
     let pkg = if src.kind == Kind::Pkg { Some(open(&src.path)?) } else { None };
-    let play = if src.kind == Kind::P5z { Some(crate::p5z::open(&src.path)?) } else { None };
+    // A TryAgain here goes back to main.rs as it is, tried again next pass, quietly.
+    let play = if src.kind == Kind::P5z { Some(open_p5z(src)?) } else { None };
+    log!("{}: refreshing {}", src.title_id, dir(&src.title_id).join(FAKELIB).display());
     let inside = pkg.as_ref().map(|(io, p)| Inside::Pkg(io, p)).or(play.as_ref().map(Inside::P5z));
     compose_fakelib(src, s, inside)
         .and_then(|()| {
@@ -1085,8 +1087,77 @@ pub fn missing_bytes(e: &Error) -> Option<u64> {
     e.get_ref()?.downcast_ref::<NoSpace>().map(|n| n.missing)
 }
 
+/// A .p5z build or fakelib refresh stopped because the engine could not open the .p5z just now
+/// (`open_p5z`): a read error, or a first "damaged" verdict for that file. The caller (main.rs)
+/// does not memoize it: it is tried again next pass.
+#[derive(Debug)]
+pub struct TryAgain(String);
+
+impl std::fmt::Display for TryAgain {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for TryAgain {}
+
+/// Whether `e` is a build's or a fakelib refresh's TryAgain.
+pub fn try_again(e: &Error) -> bool {
+    e.get_ref().is_some_and(|i| i.is::<TryAgain>())
+}
+
+/// `e` with `what` before its message, still a NoSpace or a TryAgain when it was one.
+fn context(e: Error, what: &str) -> Error {
+    let kind = e.kind();
+    match e.get_ref().and_then(|i| i.downcast_ref::<NoSpace>()) {
+        Some(n) => Error::new(kind, NoSpace { missing: n.missing, msg: format!("{what}: {}", n.msg) }),
+        None if try_again(&e) => Error::new(kind, TryAgain(format!("{what}: {e}"))),
+        None => Error::new(kind, format!("{what}: {e}")),
+    }
+}
+
+/// The engine's provisional refusals of a .p5z in builds and fakelib refreshes, by path
+/// (maxpack_logic::p5z::BuildRefusals; the scan keeps its own).
+static REFUSALS: Mutex<BuildRefusals<PathBuf, SystemTime>> = Mutex::new(BuildRefusals::new());
+
+/// crate::p5z::open in a build or a fakelib refresh, under the scan's rule: a read error, or a first
+/// "damaged" for this (path, size, mtime), is a TryAgain (main.rs tries again next pass, not
+/// memoized), and only the same verdict at the next try for the same size and mtime fails the build
+/// as usual (memoized until the inputs change); too many volumes fails it at once.
+fn open_p5z(src: &Source) -> Result<crate::p5z::Play> {
+    use crate::p5z::OpenError;
+    let again = |why: &dyn std::fmt::Display| Error::other(TryAgain(format!("cannot be read now, tried again next pass: {why}")));
+    // The file the engine opens: a refusal is kept for this size and mtime.
+    let state = fs::metadata(&src.path).and_then(|m| Ok((m.len(), m.modified()?)));
+    let (size, mtime) = match state {
+        Ok(s) => s,
+        Err(e) => {
+            REFUSALS.lock().unwrap_or_else(|e| e.into_inner()).forget(&src.path);
+            return Err(again(&e));
+        }
+    };
+    let opened = crate::p5z::open(&src.path);
+    let mut refusals = REFUSALS.lock().unwrap_or_else(|e| e.into_inner());
+    let (verdict, why) = match opened {
+        Ok(play) => {
+            refusals.forget(&src.path);
+            return Ok(play);
+        }
+        Err(OpenError::Io(e)) => (None, e.to_string()),
+        Err(OpenError::Unplayable(u)) => {
+            let why = format!("cannot be played: {}", crate::p5z::reason(&u));
+            (Some(u), why)
+        }
+    };
+    match refusals.judge(src.path.clone(), size, mtime, verdict) {
+        Refusal::Retry => Err(again(&why)),
+        Refusal::Believe => Err(bad(why)),
+    }
+}
+
 /// Always rebuilds `src`'s cache. Errors carry the title id and source path and are logged, but a
-/// NoSpace (kept as such for missing_bytes), which main.rs logs once. A failed build leaves no
+/// NoSpace (kept as such for missing_bytes), which main.rs logs once, and a TryAgain (try_again),
+/// which main.rs logs when its reason changes. A failed build leaves no
 /// `.done` and a `.built` of what it could not remove (normally empty): the next build's
 /// clear_build removes only that, never the game's files.
 pub fn build(src: &Source, s: &Settings) -> Result<()> {
@@ -1112,15 +1183,10 @@ pub fn build(src: &Source, s: &Settings) -> Result<()> {
         log!("{}: cache built in {:.1} s", src.title_id, t0.elapsed().as_secs_f64());
     }
     r.map_err(|e| {
-        let what = format!("{} ({}): cache build", src.title_id, src.path.display());
-        let e = match e.get_ref().and_then(|i| i.downcast_ref::<NoSpace>()) {
-            Some(n) => Error::new(e.kind(), NoSpace { missing: n.missing, msg: format!("{what}: {}", n.msg) }),
-            None => {
-                let e = Error::new(e.kind(), format!("{what}: {e}"));
-                log!("{e}");
-                e
-            }
-        };
+        let e = context(e, &format!("{} ({}): cache build", src.title_id, src.path.display()));
+        if missing_bytes(&e).is_none() && !try_again(&e) {
+            log!("{e}");
+        }
         // Without `.done` the cache is unusable: free what this build wrote.
         remove_created(&d, &before);
         // What is left is the game's files: say so in `.built`, or the next clear_build (a NoSpace
@@ -1239,19 +1305,28 @@ fn copy_backport(src: &Source, dir: &Path, keep: impl Fn(&str) -> bool) -> Resul
 /// where ng reads them through maxpack.image. No index of ours: the .p5z ships ampr_zstd.index and
 /// ampr_emu.index among its loose files.
 fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: &[Input], before: &HashSet<PathBuf>) -> Result<()> {
-    let play = crate::p5z::open(&src.path)?;
+    // The .p5z as this try finds it: a need measured before is kept for this size and mtime only.
+    let state = fs::metadata(&src.path).and_then(|m| Ok((m.len(), m.modified()?))).ok();
+    let known = state.and_then(|(size, mtime)| NEEDS.lock().unwrap_or_else(|e| e.into_inner()).get(&src.path, size, &mtime));
+    if let Some(need) = known {
+        // Short of space at the last try, and the same file: until it fits, a retry measures only
+        // the free space (the .p5z, maybe on USB, is not opened and validated again every pass).
+        fits(dir, need)?;
+    }
+    let play = open_p5z(src)?;
     // First: a file name the contract cannot carry (not UTF-8, or a control byte) is a build failure.
     let image = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE}: {e}")))?;
     let loose: Vec<_> = play.info.loose.iter().map(|l| (l, loose_dest(&l.path))).collect();
     let need = loose.iter().filter(|(_, d)| *d != LooseDest::Skip).fold(0u64, |a, (l, _)| a.saturating_add(l.size));
-    // After clear_build (build): what this cache held before is free again.
-    let free = crate::storage::free(&dir.to_string_lossy())
-        .map_err(|e| Error::new(e.kind(), format!("statfs {}: {e}", dir.display())))?;
-    if let Some(missing) = space_short(free, need) {
-        let margin = maxpack_logic::p5z::SPACE_MARGIN >> 20;
-        let msg = format!("its loose files ({need} bytes) and a {margin} MiB margin do not fit in the {free} bytes free on /data: {missing} bytes missing");
-        return Err(Error::new(ErrorKind::StorageFull, NoSpace { missing, msg }));
+    let space = fits(dir, need);
+    {
+        let mut needs = NEEDS.lock().unwrap_or_else(|e| e.into_inner());
+        match (&space, state) {
+            (Err(e), Some((size, mtime))) if missing_bytes(e).is_some() => needs.set(src.path.clone(), size, mtime, need),
+            _ => needs.forget(&src.path),
+        }
     }
+    space?;
     log!("{}: building cache {} from {}", src.title_id, dir.display(), src.path.display());
     let skipped: Vec<&str> = loose.iter().filter(|(_, d)| *d == LooseDest::Skip).map(|(l, _)| l.path.as_str()).collect();
     if let Some(first) = skipped.first() {
@@ -1277,6 +1352,20 @@ fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: 
     fs::create_dir_all(dir.join(P5Z_MOUNT_DIR))?;
     fs::write(dir.join(P5Z_IMAGE), image)?;
     finish(dir, src, s, start, inputs, before)
+}
+
+/// The loose bytes of each .p5z short of space (maxpack_logic::p5z::NeedMemo), for build_p5z's retries.
+static NEEDS: Mutex<NeedMemo<PathBuf, SystemTime>> = Mutex::new(NeedMemo::new());
+
+/// Ok when `need` loose bytes and SPACE_MARGIN fit in the free space of `dir`'s drive (/data), else
+/// NoSpace. Measured after clear_build (build): what this cache held before is free again.
+fn fits(dir: &Path, need: u64) -> Result<()> {
+    let free = crate::storage::free(&dir.to_string_lossy())
+        .map_err(|e| Error::new(e.kind(), format!("statfs {}: {e}", dir.display())))?;
+    let Some(missing) = space_short(free, need) else { return Ok(()) };
+    let margin = maxpack_logic::p5z::SPACE_MARGIN >> 20;
+    let msg = format!("its loose files ({need} bytes) and a {margin} MiB margin do not fit in the {free} bytes free on /data: {missing} bytes missing");
+    Err(Error::new(ErrorKind::StorageFull, NoSpace { missing, msg }))
 }
 
 fn build_inner(src: &Source, s: &Settings, before: &HashSet<PathBuf>) -> Result<()> {

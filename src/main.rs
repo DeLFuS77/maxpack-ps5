@@ -74,10 +74,13 @@ fn backport_of(src: &Source) -> Option<&std::path::Path> {
     }
 }
 
-/// Titles whose last build stopped for space (cache::missing_bytes): tried again every pass, the
-/// tries not logged. Their warning, a log line and a toast, goes once per title and run (SPACE_WARNED).
-static SPACE_SHORT: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Titles whose last build is tried again every pass, the tries not logged: one short of space
+/// (cache::missing_bytes), or one whose .p5z the engine could not open just now (cache::try_again).
+/// The space warning, a log line and a toast, goes once per title and run (SPACE_WARNED); a failed
+/// open is logged when its message changes (OPEN_LOGGED: title id, message), with no toast.
+static RETRYING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 static SPACE_WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+static OPEN_LOGGED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
 
 /// What build_and_register did with a title.
 #[derive(PartialEq)]
@@ -96,9 +99,12 @@ enum Reg {
 /// Builds when stale or forced, then registers.
 fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, forced: bool) -> std::io::Result<Reg> {
     let tid = &src.title_id;
+    let retrying = RETRYING.lock().unwrap_or_else(|e| e.into_inner()).contains(tid);
     if let (false, Fresh::Fakelib(why)) = (forced, fresh) {
         // Only fakelib/ is behind: recompose it, then go on as a fresh cache (mount or register).
-        log!("{tid}: {why}; refreshing fakelib only");
+        if !retrying {
+            log!("{tid}: {why}; refreshing fakelib only");
+        }
         cache::refresh_fakelib(src, s)?;
     }
     let stale = forced || !matches!(fresh, Fresh::Fresh | Fresh::Fakelib(_));
@@ -114,7 +120,7 @@ fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, 
         return Ok(Reg::Kept);
     }
     if stale {
-        if !SPACE_SHORT.lock().unwrap_or_else(|e| e.into_inner()).contains(tid) {
+        if !retrying {
             match fresh {
                 Fresh::Stale(why) => log!("{tid}: cache stale ({why}); rebuilding"),
                 Fresh::Missing => log!("{tid}: no cache; building"),
@@ -255,7 +261,8 @@ fn install_staged(
 }
 
 /// Status, toast (`notify`) and failure record of a processed title. Ok(true): registered now.
-/// A build short of space (cache::NoSpace) is not recorded in `failed`: it is tried again every pass.
+/// A build short of space (cache::NoSpace) or whose .p5z the engine could not open just now
+/// (cache::TryAgain) is not recorded in `failed`: it is tried again every pass.
 fn finish(
     state: &State, s: &Settings, src: &Source, registered: &mut HashSet<String>, failed: &mut HashMap<PathBuf, String>,
     r: std::io::Result<bool>, notify: bool,
@@ -263,11 +270,17 @@ fn finish(
     let tid = &src.title_id;
     let (size, built) = (cache::size(tid), cache::built_at(tid));
     let short = r.as_ref().err().and_then(cache::missing_bytes);
+    let again = r.as_ref().err().is_some_and(cache::try_again);
     {
-        let mut v = SPACE_SHORT.lock().unwrap_or_else(|e| e.into_inner());
+        let mut v = RETRYING.lock().unwrap_or_else(|e| e.into_inner());
         v.retain(|t| t != tid);
-        v.extend(short.map(|_| tid.clone()));
+        v.extend((short.is_some() || again).then(|| tid.clone()));
     }
+    // Taken out: put back below only while the open keeps failing.
+    let open_logged = {
+        let mut v = OPEN_LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        v.iter().position(|(t, _)| t == tid).map(|i| v.remove(i).1)
+    };
     match r {
         Ok(new) => {
             failed.remove(&src.path);
@@ -297,6 +310,19 @@ fn finish(
                         toast(s, &i18n::no_space(i18n::lang(), &src.title_name, missing));
                     }
                 }
+                return;
+            }
+            if again {
+                // As the scan's: not memoized, no toast; logged when the message changes.
+                failed.remove(&src.path);
+                state.update(&src.path, |g| {
+                    (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
+                    (g.error_code, g.missing_bytes) = (None, None);
+                });
+                if open_logged.as_deref() != Some(e.as_str()) {
+                    log!("{e}");
+                }
+                OPEN_LOGGED.lock().unwrap_or_else(|e| e.into_inner()).push((tid.clone(), e));
                 return;
             }
             log!("{e}");

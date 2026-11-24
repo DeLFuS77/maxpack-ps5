@@ -40,8 +40,9 @@ Lo que añade MaxPack:
   sueltos más 256 MiB: si no cabe, el aviso dice cuánto falta y el juego se monta solo al liberarlo. Un
   `.p5z` dañado o con más de 256 volúmenes no es un juego: sale en «Archivos .p5z que no se pueden
   jugar». Para eso, el motor tiene que decir «dañado» dos pasadas seguidas sobre el mismo archivo: un
-  fallo de lectura de un momento (un USB que se reinicia) solo se reintenta. Si el mismo juego está
-  también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como duplicado. El nombre del archivo
+  fallo de lectura de un momento (un USB que se reinicia) solo se reintenta, también al construir su
+  caché. Si el mismo juego está también en carpeta o en `.pkg`, gana esa copia y el `.p5z` sale como
+  duplicado. El nombre del archivo
   puede llevar tildes, ™, ’ o japonés, como los que pone MaxPack en el PC; solo no valen los caracteres
   de control. Siempre va con nuestra ampr-emu-ng, la única que conoce este modo.
 - **La caché y el reloj**: cada caché apunta el tamaño y la fecha de los archivos de los que sale

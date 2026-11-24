@@ -4,6 +4,7 @@
 
 use crate::cache::{reserved, LIB_DIRS, P5Z_MOUNT_DIR};
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// Most volumes one game file may have (the limit of the `maxpack.image` contract).
 pub const MAX_VOLUMES: usize = 256;
@@ -201,6 +202,84 @@ pub fn refusal<M: PartialEq>(previous: Option<&(u64, M, Unplayable)>, size: u64,
     }
 }
 
+/// The scan's rule (`refusal`) for the engine's open of a .p5z during a build or a fakelib refresh
+/// (the scan keeps its own refusals, pass by pass): the last try's provisional refusal of each path.
+pub struct BuildRefusals<K, M> {
+    last: BTreeMap<K, (u64, M, Unplayable)>,
+}
+
+impl<K, M> BuildRefusals<K, M> {
+    pub const fn new() -> Self {
+        BuildRefusals { last: BTreeMap::new() }
+    }
+}
+
+impl<K: Ord, M: PartialEq> BuildRefusals<K, M> {
+    /// What a build makes of the engine's failure to open the .p5z at `key` (its size and mtime
+    /// now). `verdict` None: the file could not be read, tried again (Retry) and never believed;
+    /// it also drops the last refusal, so a damaged verdict after it is a first one. Else `refusal`
+    /// against the last try's: a Retry is kept for the next try, a Believe drops it (the build is
+    /// memoized then, and a later try, a forced rebuild, starts over).
+    pub fn judge(&mut self, key: K, size: u64, mtime: M, verdict: Option<Unplayable>) -> Refusal {
+        let Some(verdict) = verdict else {
+            self.last.remove(&key);
+            return Refusal::Retry;
+        };
+        let r = refusal(self.last.get(&key), size, &mtime, &verdict);
+        match r {
+            Refusal::Retry => {
+                self.last.insert(key, (size, mtime, verdict));
+            }
+            Refusal::Believe => {
+                self.last.remove(&key);
+            }
+        }
+        r
+    }
+
+    /// Drops the last refusal of `key`: the .p5z opened (that refusal was not the file), or it
+    /// cannot even be stat'ed now (a read error).
+    pub fn forget(&mut self, key: &K) {
+        self.last.remove(key);
+    }
+}
+
+/// The loose bytes a .p5z needs (its loose files `loose_dest` writes), kept by path for that very
+/// file (the same size and mtime) while it is short of space: a retry then measures only the free
+/// space, and opens and validates the .p5z again once it fits. Any other size or mtime drops it.
+pub struct NeedMemo<K, M> {
+    need: BTreeMap<K, (u64, M, u64)>,
+}
+
+impl<K, M> NeedMemo<K, M> {
+    pub const fn new() -> Self {
+        NeedMemo { need: BTreeMap::new() }
+    }
+}
+
+impl<K: Ord, M: PartialEq> NeedMemo<K, M> {
+    /// The need kept for the file at `key` when it still has this size and mtime; a memo of
+    /// another size or mtime is dropped.
+    pub fn get(&mut self, key: &K, size: u64, mtime: &M) -> Option<u64> {
+        match self.need.get(key) {
+            Some((s, m, need)) if *s == size && m == mtime => Some(*need),
+            Some(_) => {
+                self.need.remove(key);
+                None
+            }
+            None => None,
+        }
+    }
+
+    pub fn set(&mut self, key: K, size: u64, mtime: M, need: u64) {
+        self.need.insert(key, (size, mtime, need));
+    }
+
+    pub fn forget(&mut self, key: &K) {
+        self.need.remove(key);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +426,63 @@ mod tests {
         // Too many volumes comes from a description that opened and read fine: believed at once.
         assert_eq!(refusal(None, 10, &5, &many), Believe);
         assert_eq!(refusal(before(10, 5, &damaged("crc")).as_ref(), 10, &5, &many), Believe);
+    }
+
+    /// The scan's rule for the engine's open during a build: a read error is tried again, a damaged
+    /// verdict is believed only when the next try says the same for the same file.
+    #[test]
+    fn build_refusals_sequences() {
+        use Refusal::*;
+        let d = |s: &str| Some(Unplayable::Damaged(s.to_string()));
+        let mut r = BuildRefusals::new();
+        // A read error: tried again, never believed.
+        assert_eq!(r.judge("a", 10, 5, None), Retry);
+        assert_eq!(r.judge("a", 10, 5, None), Retry);
+        // Damaged twice for the same file: believed the second time.
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Retry);
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Believe);
+        // Believed (main.rs then memoizes the build): a later try, a forced rebuild, starts over.
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Retry);
+        // A read error or an open that worked in between: the next damaged is a first one again.
+        assert_eq!(r.judge("a", 10, 5, None), Retry);
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Retry);
+        r.forget(&"a");
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Retry);
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Believe);
+        // Another verdict, size or mtime: a first one again.
+        assert_eq!(r.judge("a", 10, 5, d("crc")), Retry);
+        assert_eq!(r.judge("a", 10, 5, d("short")), Retry);
+        assert_eq!(r.judge("a", 11, 5, d("short")), Retry);
+        assert_eq!(r.judge("a", 11, 6, d("short")), Retry);
+        assert_eq!(r.judge("a", 11, 6, d("short")), Believe);
+        // Each path on its own.
+        assert_eq!(r.judge("b", 1, 1, d("crc")), Retry);
+        assert_eq!(r.judge("c", 1, 1, d("crc")), Retry);
+        assert_eq!(r.judge("b", 1, 1, d("crc")), Believe);
+        // Too many volumes: believed at once.
+        assert_eq!(r.judge("d", 1, 1, Some(Unplayable::TooManyVolumes(300))), Believe);
+    }
+
+    #[test]
+    fn need_memo_table() {
+        let mut m = NeedMemo::new();
+        assert_eq!(m.get(&"a", 10, &5), None);
+        m.set("a", 10, 5, 1000);
+        // Kept while the file is the same.
+        assert_eq!(m.get(&"a", 10, &5), Some(1000));
+        assert_eq!(m.get(&"a", 10, &5), Some(1000));
+        assert_eq!(m.get(&"b", 10, &5), None);
+        // Another size or mtime drops it, also for the old one.
+        assert_eq!(m.get(&"a", 11, &5), None);
+        assert_eq!(m.get(&"a", 10, &5), None);
+        m.set("a", 10, 5, 1000);
+        assert_eq!(m.get(&"a", 10, &6), None);
+        assert_eq!(m.get(&"a", 10, &5), None);
+        m.set("a", 10, 5, 1000);
+        m.set("a", 10, 5, 2000);
+        assert_eq!(m.get(&"a", 10, &5), Some(2000));
+        m.forget(&"a");
+        assert_eq!(m.get(&"a", 10, &5), None);
     }
 
     #[test]

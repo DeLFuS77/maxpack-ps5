@@ -28,7 +28,8 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   engine out of memory) looks the same, so the first one for a (path, size, mtime) is a scan error that is tried
   again next pass (`cannot be read now, tried again next pass: <reason>`; not memoized, not listed, no toast), and
   only the same verdict in the next pass for the same size and mtime is memoized, listed and toasted. More than 256
-  volumes comes from a description that read fine: believed at once. A `.p5z` still being copied is skipped like a
+  volumes comes from a description that read fine: believed at once. Meanwhile it holds its title (Flow, Stability),
+  and the engine's open in a build follows the same rule (Cache). A `.p5z` still being copied is skipped like a
   pkg (`stability_wait_seconds`).
 - Any drive. The cache is always on the internal SSD.
 
@@ -119,7 +120,15 @@ is ignored as a whole). The web UI edits the same file.
   free space of `/data`, else the build stops with `cache::NoSpace { missing }` (`cache::missing_bytes`). `main.rs` does
   not memoize it (no `failed` entry) and tries again every pass, so the game builds by itself once the space is there:
   the game shows status `error` with `error_code` `no_space` and `missing_bytes`, and one toast (`i18n::no_space`) and
-  one log line per run say how much is missing. The extracted `sce_sys/param.json` must carry the title id the
+  one log line per run say how much is missing. Meanwhile the loose bytes measured are kept for that (path, size,
+  mtime) (`maxpack_logic::p5z::NeedMemo`): a retry measures only the free space, and the `.p5z` (maybe on USB) is
+  opened and validated again only once it fits; any other size or mtime drops the memo.
+  The engine's open in a build or a fakelib refresh follows the scan's rule (`cache::open_p5z`,
+  `maxpack_logic::p5z::BuildRefusals`): a read error, or a first "damaged" verdict for a (path, size, mtime), stops it
+  with `cache::TryAgain` (`cannot be read now, tried again next pass: <reason>`), which `main.rs` does not memoize either
+  (no `failed` entry, no toast, status `error`; logged when its message changes); only the same verdict at the next try
+  for the same size and mtime (a read error or a good open in between starts over), or more than 256 volumes, fails the
+  build as usual, memoized until the inputs change. The extracted `sce_sys/param.json` must carry the title id the
   `.p5z`'s description gave, else the build fails. The stamp's `kind` is `p5z` and `.done` carries `p5z_id` (FNV-1a 64
   of the size as 8 bytes little-endian, the 64-byte header and the 32-byte footer, `p5z::id`; the identity `is_move`
   compares; a golden value is tested, so a change of it, which would make no cache relink when its `.p5z` moves, fails).
@@ -266,6 +275,8 @@ registration and cache stay, and a new one shows up once it is stable. A Purge w
 source is being copied (purge empties kept caches, and an unstable one would not rebuild that pass). A clock in the future counts as stable.
 An unstable source reserves its title id for duplicate detection (a pkg: the title id of an earlier cache of that path; a
 folder: its `param.json`, else that cache), so a copy in flight that would win keeps the other copy out (an unstable loser reserves nothing).
+A `.p5z` the scan tries again next pass (it cannot be opened now, or a first "damaged" verdict) reserves the title id of
+an earlier cache of that path the same way: another `.p5z` of that title cannot take it, and rebuild its cache, for that one pass.
 Auto-remove (`auto_remove_missing`, SMP auto_remove_missing_games): after each full scan pass (timers
 start only after the first one, so a drive mounted late is not missing; not while paused), a built cache
 (`.done`) whose stamp source is gone (ENOENT/ENOTDIR only) starts a timer in memory (a restart starts over).
@@ -303,7 +314,9 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change or a rebuild is forced. Duplicate title ids: a folder beats a pkg, which beats a .p5z
+only when its inputs change or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
+`.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
+Duplicate title ids: a folder beats a pkg, which beats a .p5z
 (`maxpack_logic::dups::claim`; ranks `RANK_FOLDER` < `RANK_PKG` < `RANK_P5Z`), then the first scan root wins; the others
 show `duplicate`. A `.p5z` installed with the Install tab is thus superseded by its folder and shows as a duplicate; the
 cache, whose stamp now differs in its kind, is rebuilt as the folder's, which removes the loose files the `.p5z` had
@@ -420,6 +433,8 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fa
 pub fn check(src: &Source, s: &Settings) -> Fresh;
 pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
+pub struct TryAgain(String);                                        // a .p5z build or refresh stopped at the engine's open, tried again next pass (inside an io::Error)
+pub fn try_again(e: &std::io::Error) -> bool;                      // e is a TryAgain
 pub use maxpack_logic::cache::{DONE, PKG_MOUNT_DIR, P5Z_MOUNT_DIR}; // the cache dir's names are maxpack_logic::cache's
 pub fn mount_source(tid: &str) -> Option<(&'static str, String)>;  // pkg or .p5z: (folder below /app0: "kraken" | "p5z", the file)
 pub fn build(src: &Source, s: &Settings) -> std::io::Result<()>;   // always rebuilds

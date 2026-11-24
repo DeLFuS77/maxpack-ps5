@@ -386,7 +386,16 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
                         result.unplayable.push((path, u));
                         continue;
                     }
-                    Err(crate::p5z::OpenError::Io(e)) => Err(e.to_string()),
+                    Err(crate::p5z::OpenError::Io(e)) => {
+                        // Tried again next pass (a file that cannot be opened now, or a first
+                        // "damaged"): as one still being copied, it holds the title of an earlier
+                        // cache of this path, so another .p5z of that title cannot take it (and
+                        // rebuild its cache) for this one pass.
+                        if let Some(t) = cached.get(&path) {
+                            claim(&mut seen, &mut games, &mut result.duplicates, t, RANK_P5Z, nested, None);
+                        }
+                        Err(e.to_string())
+                    }
                 },
             };
             (Kind::P5z, metadata.len(), param)
