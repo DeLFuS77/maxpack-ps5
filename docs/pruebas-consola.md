@@ -517,3 +517,19 @@ la prueba con él en marcha).
   - Esperado: se vuelve a enlazar como en 6.5 (`moved … relinking`, sin `building cache`), la línea 2
     de `maxpack.image` es `p5z/` y el nombre nuevo tal cual, el aviso dice «(p5z) running» y el juego
     arranca. Si sale «ampr-emu-ng: p5z: bad maxpack.image», para y guarda `maxpack.image` y el registro.
+- [ ] **6.13. Velocidad: la carpeta empaquetada contra el `.p5z`.**
+  - Mejor con un juego que, empaquetado, pase de 4 GB: así su `.p5z` tiene varios volúmenes (en
+    `maxpack.image`, una línea por volumen, como en 6.1).
+  - Saca en el PC la carpeta empaquetada de ese mismo `.p5z`:
+    `maxpack unpack "<juego>.p5z" --folder -o "<carpeta>"`.
+  - Los dos van a la misma unidad (por ejemplo, `homebrew/` del mismo USB), pero no a la vez: si están
+    los dos, gana la carpeta (como en 6.7).
+  - Primero la carpeta. Cuando salga en el menú, cronometra:
+    - la carga inicial: desde que pulsas el icono hasta el menú principal del juego;
+    - una carga de partida: desde que eliges la partida hasta que puedes jugar.
+  - Después, saca la carpeta de la raíz y pon el `.p5z`. Cuando salga en el menú (en `/api/state`, su
+    `kind` es `"p5z"`), cronometra lo mismo, con la misma partida.
+  - Haz cada medida tres veces y apúntalas todas, con la unidad, el tamaño del `.p5z` y cuántos
+    volúmenes tiene.
+  - Esperado: tiempos parecidos con la carpeta y con el `.p5z`. Si el `.p5z` tarda claramente más,
+    apunta los tiempos y guarda el registro.
