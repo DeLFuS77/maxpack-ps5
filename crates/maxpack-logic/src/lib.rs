@@ -2,13 +2,16 @@
 pub mod cache;
 pub mod crash;
 pub mod dups;
+pub mod exclude;
 pub mod fresh;
 pub mod http;
 pub mod images;
 pub mod inst;
 pub mod mounter;
+pub mod overlay;
 pub mod p5z;
 pub mod play;
+pub mod presence;
 pub mod report;
 pub mod roots;
 pub mod sony;
