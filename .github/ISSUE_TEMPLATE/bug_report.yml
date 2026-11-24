@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in MaxPack for the console does not work as it should. English or Spanish.
+title: "Short summary of the problem"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Reports in English or Spanish are welcome.
+        If it is about how one game runs, use the "Game report" form instead. Search open and
+        closed issues first; if it is there, add a comment.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected to see instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: MaxPack version
+      description: Shown in Settings > About and at the top of the page, for example 1.0.0.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Console firmware
+      description: Settings > System > System Software.
+      placeholder: "13.60"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mounters
+    attributes:
+      label: Other mounters running at the same time
+      multiple: true
+      options:
+        - None
+        - ShadowMountPlus
+        - Kraken Mount
+        - Another one (say which below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: The page's "Copy report" text
+      description: Open the game's sheet on MaxPack's page and press "Copy report" (it has the version, the firmware, the source, the last crash and the last log lines). Paste it here. If the problem is not about one game, say so.
+      render: text
+
+  - type: textarea
+    id: log
+    attributes:
+      label: maxpack.log excerpt
+      description: The lines around the problem from `/data/maxpack/maxpack.log` (also at the bottom of the page). Please keep it to what matters; attach the whole file if it is long.
+      render: text
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else

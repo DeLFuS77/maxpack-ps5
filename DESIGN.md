@@ -596,7 +596,7 @@ minute):
 - `GET /api/report/<TID>` -> plain text for an issue (`maxpack_logic::report::text`): MaxPack's version, the
   firmware (`sys::firmware`, else "unknown: please fill in"), who mounts (`waiting`), the game (name, title id,
   version, source path, kind, drive, status and error, hidden, and "MaxPack overlay: off" for an `overlay_off` game), the backport, ampr-emu-ng (`/api/ampr` kind and
-  version), the PlayGo stub (on, off, or not added), the last crash, a ready row for `docs/compatibilidad.md`
+  version), the PlayGo stub (on, off, or not added), the last crash, a ready row for `docs/compatibility.md`
   (`compat_row`: result and date left as `?`, since the console's clock is often wrong; a `|` in the name escaped),
   and the last 40 lines of the log tail (64 KiB) that contain the title id; 404 for an invalid or absent library
   title. The game sheet's "Copy report" copies it.

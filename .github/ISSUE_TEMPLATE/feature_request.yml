@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an idea for MaxPack for the console. English or Spanish.
+title: "Short summary of the idea"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Search open and closed issues first; if it is there, add a comment.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve
+      description: What you want to do and cannot, or do with too much trouble.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: How you imagine it working. Alternatives you thought of are welcome too.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
