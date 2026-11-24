@@ -190,24 +190,49 @@ button.shoulder:hover { color: var(--fg); }
 /* On one row with the filters: the meters give up width first when many drives are mounted. */
 .storage-pill .meter { min-width: 1.5rem; }
 .meter { width: 7rem; height: 0.4rem; border-radius: 999px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
-.meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8fb0ff, #fff); }
+/* A meter's fill is as wide as the meter and scaled to its share (scaleX), so it only ever transforms. */
+.meter i {
+  display: block; width: 100%; height: 100%; border-radius: 999px; background: var(--grad);
+  -webkit-transform-origin: 0 0; transform-origin: 0 0;
+}
+[dir="rtl"] .meter i { -webkit-transform-origin: 100% 0; transform-origin: 100% 0; }
+
+/* ---------- The game in focus, large, as the TV home screen shows it (renderHero) ---------- */
+.hero { padding: 0.4rem 0 1.4rem; min-height: 6.8rem; }
+.hero h2 {
+  font: 800 3.1rem/1.08 var(--display); letter-spacing: -0.035em; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 0 0.2rem 1.6rem rgba(0, 0, 0, 0.35);
+}
+.hero p { margin-top: 0.5rem; font-size: 1.05rem; color: var(--muted); }
+.hero h2, .hero p {
+  -webkit-transition: opacity 0.2s, -webkit-transform 0.2s ease-out; transition: opacity 0.2s, transform 0.2s ease-out;
+}
+.hero.swap h2, .hero.swap p { opacity: 0; -webkit-transform: translateY(0.6rem); transform: translateY(0.6rem); }
 
 /* ---------- Game cards: 6 per row on a 1920 TV, two rows fill the screen ---------- */
 .grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--gap); }
 .card {
   position: relative; display: block; width: 100%; height: auto; padding: 0; margin: 0;
-  border-radius: 16px; overflow: hidden; text-align: left; cursor: pointer;
-  background: #222; -webkit-backdrop-filter: none; backdrop-filter: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), var(--glass-edge), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1rem 3rem rgba(0, 0, 0, 0.85);
-  -webkit-transition: -webkit-transform 0.18s ease; transition: transform 0.18s ease;
-  /* Safari clips the blurred children to the radius only with a mask or transform. */
-  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  border-radius: 16px; text-align: left; cursor: pointer; background: #1a2233;
+  box-shadow: 0 1rem 2.4rem rgba(0, 0, 0, 0.55);
+  -webkit-transition: -webkit-transform 0.35s var(--ease), opacity 0.35s; transition: transform 0.35s var(--ease), opacity 0.35s;
 }
 /* ponytail: padding-bottom keeps the card square (aspect-ratio needs Safari 15). */
 .card:before { content: ""; display: block; padding-bottom: 100%; }
-.card:hover, .card:focus { -webkit-transform: scale(1.03); transform: scale(1.03); }
-.card:focus { outline: 0.22rem solid #fff; outline-offset: 0.25rem; }
-.cover { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; }
+/* The card in focus (the D-pad's focus, or the cursor the PS5 moves: focusGame) grows, with a white
+   ring and a halo in its game's hue (--h) under it; ring and halo only fade. The others dim a little. */
+.card:focus { outline: none; }
+.card:focus, .card.focus { -webkit-transform: scale(1.08); transform: scale(1.08); z-index: 2; }
+.card .ring, .card .glow {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: inherit; opacity: 0;
+  -webkit-transition: opacity 0.35s; transition: opacity 0.35s; pointer-events: none;
+}
+.card .ring { z-index: 3; box-shadow: 0 0 0 0.19rem #fff, 0 0 0 0.5rem rgba(255, 255, 255, 0.18); }
+.card .glow { z-index: -1; box-shadow: 0 1.2rem 3.6rem 0.4rem hsla(var(--h, 214), 90%, 55%, 0.55); }
+.card:focus .ring, .card.focus .ring, .card:focus .glow, .card.focus .glow { opacity: 1; }
+.grid.dim .card:not(.focus) { opacity: 0.85; }
+.cover { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; border-radius: inherit; }
 /* No art yet: coverStyle() in the script paints a gradient in the game's hue; its initials sit on top. */
 .cover .ini {
   position: absolute; left: 0; right: 0; top: 22%; text-align: center;
@@ -222,6 +247,7 @@ button.shoulder:hover { color: var(--fg); }
 }
 .info {
   position: absolute; left: 0; right: 0; bottom: 0; padding: 2.2rem 1rem 1rem;
+  border-radius: 0 0 16px 16px;
   background: linear-gradient(180deg, rgba(5, 8, 18, 0), rgba(5, 8, 18, 0.82) 48%, rgba(5, 8, 18, 0.9));
 }
 .info h3 {
@@ -311,6 +337,9 @@ button.close .icon { width: 1.3rem; height: 1.3rem; }
 }
 @media (max-width: 860px) {
   :root { --gutter: 16px; --gap: 12px; }
+  /* A phone has no cursor to follow: no large name, no dimming. */
+  .hero { display: none; }
+  .grid.dim .card:not(.focus) { opacity: 1; }
   .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   /* dump-forge's narrow header: brand + actions on one row, the tabs full width under them. */
   .topbar-in {
@@ -546,6 +575,7 @@ button.inst-item[aria-checked="true"] { background: rgba(255, 255, 255, 0.2); bo
 
 <main>
 <section id="library" role="tabpanel" aria-labelledby="tab-library">
+  <div class="hero" id="hero" aria-hidden="true" hidden><h2 id="hero-name"></h2><p id="hero-meta"></p></div>
   <div class="filters">
     <div class="seg-wrap">
       <button class="shoulder glass" type="button" tabindex="-1" data-step="-1" aria-label="Previous filter (L2)" data-i18n-aria="prevFilter">L2</button>
@@ -1959,6 +1989,118 @@ function gameHue(id) {
   for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return h;
 }
+// The hue of a game's art, from its icon drawn 8x8 (RGBA): the circular mean of the hues of its
+// coloured pixels (saturation above .25, lightness .15 to .85), weighted by saturation. null for grey art.
+function dominantHue(data) {
+  var x = 0, y = 0, sat = 0, n = 0;
+  for (var i = 0; i + 3 < data.length; i += 4) {
+    var r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+    if (!d || l < 0.15 || l > 0.85) continue;
+    var s = d / (1 - Math.abs(2 * l - 1));
+    if (s <= 0.25) continue;
+    var h = max === r ? (g - b) / d : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    x += Math.cos(h * Math.PI / 3) * s;
+    y += Math.sin(h * Math.PI / 3) * s;
+    sat += s;
+    n++;
+  }
+  if (!n) return null;
+  return { h: (Math.round(Math.atan2(y, x) * 180 / Math.PI) + 360) % 360, s: sat / n };
+}
+// title id -> the hue of its art, once its icon loaded and could be read.
+var hueCache = {};
+function gameColor(g) { return hueCache[g.title_id] != null ? hueCache[g.title_id] : gameHue(g.title_id); }
+function learnHue(tid, img) {
+  if (hueCache[tid] != null) return;
+  var got = null;
+  try {
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 8;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, 8, 8);
+    got = dominantHue(ctx.getImageData(0, 0, 8, 8).data);
+  } catch (e) { /* An image the canvas cannot read: the hue of its title id stays. */ }
+  if (!got) return;
+  hueCache[tid] = got.h;
+  var g = focusId && findGame(focusId), c = focusId && cardsById[focusId];
+  if (g && g.title_id === tid) {
+    if (wide()) setAmbient(got.h);
+    if (c) c.el.style.setProperty('--h', got.h);
+  }
+}
+
+// ---- The ambient light: the page in the colour of the game in focus ----
+// Two layers (.ambient i): the hidden one gets the new colour and fades in over the other.
+var ambientLayer = 0, ambientHue = 214;
+function ambientBg(h) {
+  return 'radial-gradient(70% 90% at 30% 0%, hsla(' + h + ', 85%, 55%, 0.55), transparent 70%), ' +
+    'radial-gradient(50% 60% at 85% 10%, hsla(' + (h + 40) + ', 90%, 50%, 0.35), transparent 70%)';
+}
+// hue: degrees, or null for MaxPack blue.
+function setAmbient(hue) {
+  var h = hue == null ? 214 : hue, layers = document.querySelectorAll('.ambient i');
+  if (h === ambientHue || layers.length < 2) return;
+  ambientHue = h;
+  ambientLayer = 1 - ambientLayer;
+  layers[ambientLayer].style.background = ambientBg(h);
+  layers[ambientLayer].classList.add('on');
+  layers[1 - ambientLayer].classList.remove('on');
+}
+// The card in focus: the one with the D-pad's focus or under the cursor the PS5 moves (the page
+// leaves the arrows to the PS5 there), whichever came last. Its game lights the page and shows large.
+var focusId = null, heroTimer = null;
+function cardOf(node) {
+  for (; node && node !== $('grid'); node = node.parentNode)
+    if (node.classList && node.classList.contains('card')) return node;
+  return null;
+}
+function focusGame(id) {
+  var g = findGame(id), c = cardsById[id];
+  if (!g || !c) return;
+  var old = focusId && cardsById[focusId];
+  if (old && old !== c) old.el.classList.remove('focus');
+  c.el.classList.add('focus');
+  $('grid').classList.add('dim');
+  if (focusId === id) return;
+  focusId = id;
+  setAmbient(wide() ? gameColor(g) : null);
+  renderHero();
+}
+// A phone (no cursor to follow) keeps MaxPack blue and no large name.
+function wide() { return !window.matchMedia || !window.matchMedia('(max-width: 860px)').matches; }
+function blurGame() {
+  $('grid').classList.remove('dim');
+  var c = focusId && cardsById[focusId];
+  if (c) c.el.classList.remove('focus');
+}
+// [name, its line] of the game in focus, else of the first card; null with no card.
+function heroText() {
+  var g = focusId && findGame(focusId), first = $('grid').firstChild;
+  if (!g && first) g = findGame(first.getAttribute('data-key'));
+  if (!g) return null;
+  var status = statusLabel(LABEL[g.status] ? g.status : 'pending');
+  if (isRunning(g)) status = t('statusRunning', { status: status });
+  return [gameName(g), [g.title_id, g.version, badgeText(g), status].filter(Boolean).join(' · ')];
+}
+// A new game fades its name out and the new one in; the same game only updates its line.
+function renderHero() {
+  var hero = $('hero'), text = heroText(), name = $('hero-name');
+  hero.hidden = !text;
+  if (!text || heroTimer) return;
+  if (!name.textContent || name.textContent === text[0]) {
+    setText(name, text[0]);
+    setText($('hero-meta'), text[1]);
+    return;
+  }
+  hero.classList.add('swap');
+  heroTimer = setTimeout(function () {
+    heroTimer = null;
+    var now = heroText();
+    if (now) { setText(name, now[0]); setText($('hero-meta'), now[1]); }
+    hero.classList.remove('swap');
+  }, 200);
+}
 function makeCover() {
   var cover = el('div', 'cover'), ini = el('div', 'ini'), img = el('img');
   img.alt = '';
@@ -1977,7 +2119,7 @@ function updateCover(c, g) {
     c.failed = false;
     c.img.style.display = 'none';
     var img = c.img, tid = encodeURIComponent(g.title_id), version = '?v=' + encodeURIComponent(key);
-    img.onload = function () { img.style.display = 'block'; };
+    img.onload = function () { img.style.display = 'block'; learnHue(g.title_id, img); };
     // icon0.png (512x512, the home-screen tile) fits the square frames of cards and the sheet;
     // pic0.png (16:9, 3840x2160, often 10+ MB) is only the fallback when a game has no icon.
     img.onerror = function () {
@@ -2062,7 +2204,9 @@ function renderStorage(drives) {
     var pill = box.children[i];
     var used = d.total ? Math.max(0, Math.min(100, 100 * (d.total - d.free) / d.total)) : 0;
     setText(pill.children[0], driveLabel(d.mount));
-    pill.children[1].firstChild.style.width = used.toFixed(1) + '%';
+    var share = 'scaleX(' + (used / 100).toFixed(3) + ')';
+    pill.children[1].firstChild.style.webkitTransform = share;
+    pill.children[1].firstChild.style.transform = share;
     setText(pill.children[2], t('driveFree', { free: fmtSize(d.free), total: fmtSize(d.total) }));
     var btn = pill.children[3];
     if (btn) {
@@ -2108,6 +2252,7 @@ function makeCard(id) {
   button.onclick = function () { openModal(id, button); };
   cover.badge = el('span', 'badge');
   cover.el.appendChild(cover.badge);
+  button.appendChild(el('span', 'glow'));
   button.appendChild(cover.el);
   var info = el('div', 'info');
   var name = el('h3'), sub = el('p');
@@ -2117,6 +2262,7 @@ function makeCard(id) {
   var status = el('span', 'status-pill'), running = el('span', 'running-pill');
   button.appendChild(status);
   button.appendChild(running);
+  button.appendChild(el('span', 'ring'));
   return { el: button, cover: cover, name: name, sub: sub, status: status, running: running };
 }
 function updateCard(c, g) {
@@ -2132,6 +2278,7 @@ function updateCard(c, g) {
   setText(c.running, t('running'));
   c.running.hidden = !isRunning(g);
   updateCover(c.cover, g);
+  c.el.style.setProperty('--h', gameColor(g));
 }
 function renderGrid(games) {
   var grid = $('grid'), seen = {}, count = 0;
@@ -2152,6 +2299,9 @@ function renderGrid(games) {
       delete cardsById[id];
     }
   });
+  // The game in focus left the grid (filtered out, deleted): the light goes back to MaxPack blue.
+  if (focusId && !seen[focusId]) { focusId = null; grid.classList.remove('dim'); setAmbient(null); }
+  renderHero();
   var empty = $('empty'), any = games.some(function (g) { return g && g.title_id; });
   // While start-up waits (kstuff, ShadowMount+) the banner explains the empty library.
   empty.hidden = count > 0 || !!(state && state.waiting);
@@ -2617,6 +2767,10 @@ var shoulders = document.querySelectorAll('.shoulder[data-step]');
 for (var s = 0; s < shoulders.length; s++)
   shoulders[s].onclick = function () { stepFilter(+this.getAttribute('data-step')); };
 $('modal').onclick = function (e) { if (e.target === this) closeModal(); };
+$('grid').addEventListener('mouseover', function (e) { var c = cardOf(e.target); if (c) focusGame(c.getAttribute('data-key')); });
+$('grid').addEventListener('focusin', function (e) { var c = cardOf(e.target); if (c) focusGame(c.getAttribute('data-key')); });
+$('grid').addEventListener('mouseleave', function () { if (!cardOf(document.activeElement)) blurGame(); });
+$('grid').addEventListener('focusout', function (e) { if (!cardOf(e.relatedTarget)) blurGame(); });
 
 // ---- chunk 4: Install, the phase-2 installer (/api/inst/<x> is its own /api/<x>) ----
 // Its answers: 200 {ok:true, ...} or {ok:false, code, detail} (detail in Spanish, from the engine);
