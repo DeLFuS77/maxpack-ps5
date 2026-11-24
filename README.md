@@ -160,6 +160,9 @@ the M.2 drive or the internal SSD, and it shows up as **one more game**, ready t
 - **Rebuild cache** redoes what MaxPack keeps for the game; **Delete** removes the game from the
   drive after asking you.
 - **Storage** shows what the game, its DLC, its saves and its cache take.
+- **Fakelib** chooses what goes into the game's `fakelib/`: **Full** (the default), **Emulators only** or
+  **Off** (only ampr-emu-ng, when the game needs it). If a game shows a black screen or stalls while
+  checking add-ons, try **Emulators only**, then **Off**.
 - **MaxPack libraries at launch** can be turned off for an unpacked folder game that must run as it
   is.
 

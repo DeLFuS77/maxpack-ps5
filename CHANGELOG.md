@@ -3,6 +3,17 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
+## Unreleased
+
+### Added
+
+- **Fakelib** per game, in the game's sheet: **Full** (as before), **Emulators only** (none of the libraries the
+  dump or the backport ships in `fakelib/`, only the bundled emulators the game needs and ampr-emu-ng) or **Off**
+  (only ampr-emu-ng, and only for a `.pkg`, a `.p5z` or a packed folder, which cannot run without it). For a game
+  that shows a black screen or stalls while checking add-ons, with no files to delete over FTP. Stored in
+  `config.toml` as `fakelib_emulators` and `fakelib_off`; `POST /api/fakelib/<TID>`; only that game's `fakelib/` is
+  recomposed, and existing caches are not refreshed by the update.
+
 ## 1.0.0
 
 The first public release of MaxPack for the console. It is based on

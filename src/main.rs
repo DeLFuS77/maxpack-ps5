@@ -46,11 +46,13 @@ fn toast(s: &Settings, msg: &str) {
 }
 
 /// What a failed game's retry waits for: another stamp, or any build input (pkg/folder files,
-/// backport, ampr dir) appearing, vanishing or changing mtime, or the game's PlayGo switch.
+/// backport, ampr dir) appearing, vanishing or changing mtime, or the game's PlayGo, overlay or
+/// fakelib mode switch.
 fn inputs_key(src: &Source, s: &Settings) -> String {
     let mut k = cache::stamp(src, s).to_string();
     k += &format!("|playgo_off={}", s.playgo_off.contains(&src.title_id));
     k += &format!("|overlay_off={}", cache::overlay_off(src, s));
+    k += &format!("|fakelib_mode={}", cache::fakelib_mode(src, s).name());
     for p in cache::inputs(src, s) {
         let mtime = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
         k += &format!("|{}={mtime:?}", p.display());

@@ -1,6 +1,7 @@
 //! The per-game report (`GET /api/report/<TID>`, the page's "Copy report"): plain text to paste into
 //! an issue, with a ready row for `docs/compatibility.md`. See DESIGN.md "Web API".
 use crate::crash::Crash;
+use crate::fakelib::Mode;
 
 /// maxpack.log lines (those with the title id) at the end of a report.
 pub const LOG_LINES: usize = 40;
@@ -28,10 +29,12 @@ pub struct Report<'a> {
     pub hidden: bool,
     /// No MaxPack overlay at launch (`overlay_off`, a plain folder game): no fakelib, ampr-emu-ng or sandbox mounts.
     pub overlay_off: bool,
+    /// The title's fakelib mode (`fakelib_emulators`, `fakelib_off`): what its cache's fakelib/ is made of.
+    pub fakelib: Mode,
     pub backport: Option<&'a str>,
     /// /api/ampr kind and version ("bundled v0.5.0-maxpack.3").
     pub ampr: &'a str,
-    /// "on", "off" or "not added (add_emulators off)".
+    /// "on", "off", "not added (add_emulators off)" or "not added (fakelib mode off)".
     pub playgo: &'a str,
     pub crash: Option<&'a Crash>,
     /// The log tail the lines with the title id are taken from.
@@ -117,8 +120,14 @@ pub fn text(r: &Report) -> String {
     if r.overlay_off {
         lines.push("MaxPack overlay: off (overlay_off: the game runs as registered, without MaxPack's fakelib, ampr-emu-ng, emulators or sandbox mounts)".into());
     }
+    lines.push(format!("Backport: {}", r.backport.unwrap_or("none")));
+    match r.fakelib {
+        Mode::Full => {}
+        Mode::Emulators => lines.push("Fakelib mode: emulators only (the game's and backport's fakelib not used)".into()),
+        Mode::Off if crate::fakelib::needs_ng(r.kind, r.packing) => lines.push("Fakelib mode: off (only ampr-emu-ng)".into()),
+        Mode::Off => lines.push("Fakelib mode: off (empty: nothing at launch)".into()),
+    }
     lines.extend([
-        format!("Backport: {}", r.backport.unwrap_or("none")),
         format!("ampr-emu-ng: {}", r.ampr),
         format!("PlayGo stub: {}", r.playgo),
         format!("Last crash: {crash}"),
@@ -144,7 +153,7 @@ mod tests {
             version: "1.0.0", firmware: Some("13.60"), waiting: None,
             title_id: "PPSA12544", title_name: "Hollow Knight: Silksong", game_version: "01.000.010",
             path: "/data/homebrew/Hollow Knight Silksong", kind: "folder", packing: Some("zstd"), drive: "/data",
-            status: "ready", error: None, hidden: false, overlay_off: false, backport: None,
+            status: "ready", error: None, hidden: false, overlay_off: false, fakelib: Mode::Full, backport: None,
             ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
         }
     }
@@ -257,6 +266,22 @@ maxpack.log, last 40 lines with PPSA12544:\n\
         assert!(t.contains(line), "{t}");
         // Right after the status, before the libraries it does not get.
         assert!(t.find(line).unwrap() < t.find("ampr-emu-ng: bundled").unwrap(), "{t}");
+    }
+
+    #[test]
+    fn a_fakelib_mode_other_than_full_says_so() {
+        let line = |r: &Report| text(r).lines().find(|l| l.starts_with("Fakelib")).map(str::to_owned);
+        assert_eq!(line(&silksong("", None)), None);
+        let r = Report { title_name: "Starfall Odyssey", fakelib: Mode::Emulators, ..silksong("", None) };
+        assert_eq!(line(&r).as_deref(), Some("Fakelib mode: emulators only (the game's and backport's fakelib not used)"));
+        let r = Report { kind: "pkg", packing: None, fakelib: Mode::Off, ..r };
+        assert_eq!(line(&r).as_deref(), Some("Fakelib mode: off (only ampr-emu-ng)"));
+        let r = Report { kind: "folder", packing: Some("plain"), fakelib: Mode::Off, ..r };
+        assert_eq!(line(&r).as_deref(), Some("Fakelib mode: off (empty: nothing at launch)"));
+        // Beside the other libraries: after the backport, before ampr-emu-ng.
+        let t = text(&r);
+        assert!(t.find("Backport:").unwrap() < t.find("Fakelib mode:").unwrap(), "{t}");
+        assert!(t.find("Fakelib mode:").unwrap() < t.find("ampr-emu-ng: bundled").unwrap(), "{t}");
     }
 
     #[test]

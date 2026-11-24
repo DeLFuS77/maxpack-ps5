@@ -6,8 +6,9 @@
 //! there) and maxpack.image (where ng finds each volume inside the .p5z); no index of ours.
 //! fakelib/ (every kind) = the game's or backport's libs, then /data/maxpack/ampr/* copied on
 //! top (inject_ampr; always for a pkg or a .p5z); in between, the bundled DLC (dlc_emu) and PlayGo (pgo_stub)
-//! emulators when the game needs one and ships none (add_emulators; no pgo_stub for playgo_off). A change of the ampr files,
-//! inject_ampr or the emulator inputs only recomposes fakelib/ (refresh_fakelib), no full rebuild.
+//! emulators when the game needs one and ships none (add_emulators; no pgo_stub for playgo_off). The per-title
+//! fakelib mode (fakelib_emulators, fakelib_off) leaves out the game's libs, or all but ampr-emu-ng. A change of the
+//! ampr files, inject_ampr, the emulator inputs or the mode only recomposes fakelib/ (refresh_fakelib), no full rebuild.
 //! /app0 is writable: files the game writes here stay across rebuilds (`.built` lists what a build
 //! made, a rebuild removes only that); purge() deletes them too.
 //! /data/maxpack/ampr is never copied here: launch.rs mounts it as its own layer.
@@ -19,6 +20,7 @@ use kraken_mount_pkg::{Entry, Pkg, PRead};
 // maxpack_logic::cache, which reserves every one of them from a .p5z's loose files (loose_dest).
 use maxpack_logic::cache::{below, AMPR_STATE, BUILT, FAKELIB, FAKELIB2, LIB_DIRS, P5Z_IMAGE, PKG_IMAGE};
 pub use maxpack_logic::cache::{DONE, P5Z_MOUNT_DIR, PKG_MOUNT_DIR};
+use maxpack_logic::fakelib;
 use maxpack_logic::fresh::{self, Input};
 use maxpack_logic::p5z::{image_text, loose_dest, space_short, BuildRefusals, LooseDest, NeedMemo, Refusal};
 use std::collections::{BTreeMap, HashSet};
@@ -584,7 +586,7 @@ fn same_files(src: &Source, s: &Settings, old: &serde_json::Value) -> bool {
 }
 
 /// The ampr files fakelib/ should carry: {name: [size, mtime]} of /data/maxpack/ampr's
-/// regular files (libkernel.sprx never copied), or null when `injects_ampr` is false.
+/// regular files (libkernel.sprx never copied), or null when fakelib/ gets none (`injects_ampr`).
 fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value {
     if !injects_ampr(src, s) {
         return serde_json::Value::Null;
@@ -602,9 +604,23 @@ fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value {
 
 /// Whether fakelib/ gets the ampr dir's files: with inject_ampr, and always for a pkg (#73) or a
 /// .p5z: pkg and p5z modes exist only in our ampr-emu-ng, the game's own libSceAmpr.sprx cannot
-/// read the file named in kraken.image or maxpack.image.
+/// read the file named in kraken.image or maxpack.image. The fakelib mode changes it
+/// (maxpack_logic::fakelib::sources): without the game's lib dir a packed folder gets ours too, and
+/// in Off a plain folder gets none.
 fn injects_ampr(src: &Source, s: &Settings) -> bool {
-    s.inject_ampr || matches!(src.kind, Kind::Pkg | Kind::P5z)
+    fakelib_sources(src, s).ampr
+}
+
+/// The title's fakelib mode: the fakelib_emulators and fakelib_off settings (maxpack_logic::fakelib).
+pub fn fakelib_mode(src: &Source, s: &Settings) -> fakelib::Mode {
+    fakelib::mode_of(&src.title_id, &s.fakelib_emulators, &s.fakelib_off)
+}
+
+/// What this title's fakelib/ is composed from, for its mode, kind and the settings.
+fn fakelib_sources(src: &Source, s: &Settings) -> fakelib::Sources {
+    let (kind, packing) = crate::scan::kind_names(src.kind);
+    let sw = fakelib::Switches { add_emulators: s.add_emulators, inject_ampr: s.inject_ampr, playgo_off: playgo_off(src, s) };
+    fakelib::sources(fakelib_mode(src, s), kind, packing, sw)
 }
 
 /// libkernel.sprx from the ampr dir would replace the system one for every game: never copied.
@@ -709,10 +725,11 @@ fn eboot(src: &Source) -> PathBuf {
     }
 }
 
-/// What the emulator choice depends on, stat only (no eboot read): null without add_emulators.
+/// What the emulator choice depends on, stat only (no eboot read): null without add_emulators, and in
+/// the fakelib mode Off (no emulators either way).
 /// ponytail: a pkg's own dlc_emu.ini is not here; a pkg change rebuilds through the stamp.
 fn emu_state(src: &Source, s: &Settings) -> serde_json::Value {
-    if !s.add_emulators {
+    if !fakelib_sources(src, s).emulators {
         return serde_json::Value::Null;
     }
     let eboot = fs::metadata(eboot(src)).ok().map(|m| (m.len(), m.modified().map(secs).unwrap_or(0)));
@@ -746,13 +763,14 @@ pub fn overlay_off(src: &Source, s: &Settings) -> bool {
     maxpack_logic::overlay::off(kind, packing, s.overlay_off.iter().any(|t| *t == src.title_id))
 }
 
-/// The AMPR_STATE contents for `src` now. "overlay_off" only when set, so a cache written before
-/// the setting existed stays fresh.
+/// The AMPR_STATE contents for `src` now. "overlay_off" only when set, and the fakelib mode only when
+/// not full (fakelib::record), so a cache written before either setting existed stays fresh.
 fn fakelib_state(src: &Source, s: &Settings) -> serde_json::Value {
     let mut state = serde_json::json!({"ampr": ampr_state(src, s), "emus": emu_state(src, s)});
     if overlay_off(src, s) {
         state["overlay_off"] = true.into();
     }
+    fakelib::record(&mut state, fakelib_mode(src, s));
     state
 }
 
@@ -870,10 +888,13 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
         .unwrap_or_default();
     // An older `.ampr` (ampr files only, no "emus") differs too: every cache refreshes once, which
     // also drops a libSceSaveData.native.sprx that an older build copied (keep_game_lib).
-    // Only "ampr", "emus" and "overlay_off" count: the "playgo" memo never triggers a refresh.
+    // Only "ampr", "emus", "overlay_off" and the fakelib mode count: the "playgo" memo never triggers a
+    // refresh. A `.ampr` without the mode (older builds, or full) reads as full (fakelib::recorded).
     let new = fakelib_state(src, s);
-    if ["ampr", "emus", "overlay_off"].iter().any(|&k| had.get(k) != new.get(k)) {
-        return Fresh::Fakelib(format!("{AMPR_DIR}, inject_ampr, the bundled emulators, playgo_off or overlay_off changed"));
+    if ["ampr", "emus", "overlay_off"].iter().any(|&k| had.get(k) != new.get(k))
+        || fakelib::recorded(&had) != fakelib::recorded(&new)
+    {
+        return Fresh::Fakelib(format!("{AMPR_DIR}, inject_ampr, the bundled emulators, playgo_off, overlay_off or the fakelib mode changed"));
     }
     Fresh::Fresh
 }
@@ -973,8 +994,11 @@ enum Inside<'a> {
 /// release (add_emus: OLD_EMUS, then upgraded; the dlc_emu set as one unit); then the ampr files on
 /// top (inject_ampr, always for a pkg or a .p5z), except over the game's own newer ampr-emu-ng (never
 /// for a .p5z). All 0777. A title in overlay_off (`overlay_off`) stops at the empty fakelib/.
+/// The fakelib mode (`fakelib_sources`) leaves out the backport's and the game's lib dir (Emulators,
+/// Off) and the emulators (Off), and decides the ampr files with the kind; one log line when not full.
 /// Writes AMPR_STATE. Freshness needs no new state: the game's libs
-/// are inputs (pkg, .p5z: stamp), AMPR_DIR is ampr_state, the bundled versions are emu_state.
+/// are inputs (pkg, .p5z: stamp), AMPR_DIR is ampr_state, the bundled versions are emu_state, the
+/// mode is fakelib::record's key.
 fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result<()> {
     let dir = dir(&src.title_id);
     let fakelib = dir.join(FAKELIB);
@@ -994,7 +1018,13 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         }
         return fs::write(dir.join(AMPR_STATE), state.to_string());
     }
-    if let Some(bp) = bp_lib(src) {
+    let uses = fakelib_sources(src, s);
+    if let Some(note) = fakelib::note(fakelib_mode(src, s), uses) {
+        log!("{}: fakelib: {note}", src.title_id);
+    }
+    if !uses.game_libs {
+        // Emulators, Off: nothing of the backport's or the game's lib dir (its other files are not affected).
+    } else if let Some(bp) = bp_lib(src) {
         copy_flat(&bp, &fakelib, keep_fakelib)?;
     } else if let Some(Inside::Pkg(io, p)) = inside {
         // SMP order inside the game: fakelib2/ (used as-is) wins over fakelib/.
@@ -1045,16 +1075,16 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
     if had.get("playgo").is_some() {
         state["playgo"] = had["playgo"].clone();
     }
-    if s.add_emulators {
+    if uses.emulators {
         let dlc = dlc_ini_on_disk(src)
             || match inside {
                 Some(Inside::Pkg(_, p)) => p.files().any(|e| !e.is_dir && e.path == DLC_INI),
                 Some(Inside::P5z(play)) => play.info.loose.iter().any(|l| l.path == DLC_INI),
                 None => false,
             };
-        add_emus(&src.title_id, &fakelib, dlc, playgo_off(src, s), || wants_playgo_memo(src, &had, &mut state))?;
+        add_emus(&src.title_id, &fakelib, dlc, !uses.pgo_stub, || wants_playgo_memo(src, &had, &mut state))?;
     }
-    if injects_ampr(src, s) {
+    if uses.ampr {
         // No ng downgrade: the game's own newer ampr-emu-ng stays. Never in a .p5z game: the game's
         // own ng has no p5z mode, ours always goes on top.
         let keep = src.kind != Kind::P5z && keep_game_ng(&src.title_id, &fakelib);

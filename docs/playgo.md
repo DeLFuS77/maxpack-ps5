@@ -71,6 +71,10 @@ MaxPack stores the choice in `/data/maxpack/config.toml` as a list of title IDs,
 stub is neither added nor upgraded (log line `fakelib: PlayGo stub off (playgo_off)`); a
 `libScePlayGo.sprx` that the game or backport ships stays as it is. The DLC emulator is not affected.
 
+If the black screen stays, the cause may be a library the game's dump or backport ships in `fakelib/`. Set
+"Fakelib" in the same sheet to "Emulators only" (none of those libraries, only the bundled emulators the game
+needs; the PlayGo switch still applies), then to "Off" (only ampr-emu-ng: no PlayGo stub either).
+
 ## Turn it off for all games
 
 Set `add_emulators = false` in `/data/maxpack/config.toml`, or clear the "Add the bundled DLC

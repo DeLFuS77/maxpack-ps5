@@ -830,6 +830,13 @@ button.inst-item[aria-checked="true"] {
       <label class="row m-row" id="m-playgo-row" hidden><span><span class="lbl" data-i18n="playgoStub">PlayGo stub</span>
         <span class="hint" data-i18n="playgoHint">Turn off if the game stays on a black screen; turn on if it asks to finish the download.</span></span>
         <input type="checkbox" id="m-playgo"></label>
+      <label class="row m-row" id="m-fakelib-row" hidden><span><span class="lbl" data-i18n="fakelibLbl">Fakelib</span>
+        <span class="hint" data-i18n="fakelibHint">If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".</span></span>
+        <select id="m-fakelib">
+          <option value="full" data-i18n="fakelibFull">Full</option>
+          <option value="emulators" data-i18n="fakelibEmulators">Emulators only</option>
+          <option value="off" data-i18n="fakelibOff">Off</option>
+        </select></label>
       <label class="row m-row" id="m-overlay-row" hidden><span><span class="lbl" data-i18n="overlayLbl">MaxPack libraries at launch</span>
         <span class="hint" data-i18n="overlayHint">Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.</span></span>
         <input type="checkbox" id="m-overlay"></label>
@@ -947,6 +954,9 @@ var MSG = {
     overlayHint: 'Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.',
     overlayOffNote: 'Runs without MaxPack\'s libraries: as registered, with no ampr-emu-ng, emulators or sandbox mounts.',
     overlayStaleNote: 'This game is set to run without MaxPack\'s libraries, but this copy cannot (a pkg, a .p5z or a packed folder needs them), so it keeps them. Turn the switch on to clear that setting.',
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".',
+    fakelibFull: 'Full', fakelibEmulators: 'Emulators only', fakelibOff: 'Off',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
     sizesNone: 'Sizes unavailable', sizesLoading: 'Loading sizes...',
@@ -1205,6 +1215,9 @@ var MSG = {
     overlayHint: "Отключайте только для игры, которой нужно работать без них (игра Playden): тогда у неё не будет ampr-emu-ng, эмуляторов, а также /data и USB в песочнице.",
     overlayOffNote: "Работает без библиотек MaxPack: как зарегистрирована, без ampr-emu-ng, эмуляторов и монтирований в песочнице.",
     overlayStaleNote: "Для этой игры выбран запуск без библиотек MaxPack, но эта копия так не может (pkg, .p5z или упакованной папке они нужны), поэтому библиотеки остаются. Включите переключатель, чтобы снять эту настройку.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'Если игра показывает чёрный экран или зависает на проверке дополнений, попробуйте «Только эмуляторы», затем «Выкл.».',
+    fakelibFull: 'Полностью', fakelibEmulators: 'Только эмуляторы', fakelibOff: 'Выкл.',
     deleteP5z: "Файл .p5z и его кеш будут удалены с накопителя: {path}. Это нельзя отменить.",
     excludePaths: "Исключённые пути",
     excludePathsHint: "По одному в строке. Сканирование их не открывает: игра там не отображается и не регистрируется (уже добавленная на главный экран остаётся).",
@@ -1445,6 +1458,9 @@ var MSG = {
     overlayHint: "仅对必须脱离这些库运行的游戏关闭（Playden 游戏）：关闭后该游戏没有 ampr-emu-ng、没有模拟器，沙盒中也没有 /data 或 USB。",
     overlayOffNote: "不使用 MaxPack 的库运行：保持注册时的状态，没有 ampr-emu-ng、模拟器和沙盒挂载。",
     overlayStaleNote: "此游戏被设置为不使用 MaxPack 的库运行，但这份副本做不到（pkg、.p5z 或打包文件夹需要这些库），因此仍会使用。打开开关即可清除该设置。",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: '如果游戏黑屏，或在检查附加内容时卡住，请先试“仅模拟器”，再试“关闭”。',
+    fakelibFull: '完整', fakelibEmulators: '仅模拟器', fakelibOff: '关闭',
     deleteP5z: "将从驱动器删除 .p5z 文件及其缓存：{path}。此操作无法撤销。",
     excludePaths: "排除的路径",
     excludePathsHint: "每行一个。扫描不会打开这些路径：其中的游戏不会被列出或注册（已在主屏幕上的会保留）。",
@@ -1685,6 +1701,9 @@ var MSG = {
     overlayHint: "Nur für ein Spiel ausschalten, das ohne sie laufen muss (ein Playden-Titel): Es bekommt dann kein ampr-emu-ng, keine Emulatoren und kein /data oder USB in seiner Sandbox.",
     overlayOffNote: "Läuft ohne die Bibliotheken von MaxPack: wie registriert, ohne ampr-emu-ng, Emulatoren oder Sandbox-Mounts.",
     overlayStaleNote: "Dieses Spiel ist so eingestellt, dass es ohne die Bibliotheken von MaxPack läuft, aber diese Kopie kann das nicht (ein pkg, eine .p5z oder ein gepackter Ordner braucht sie), daher behält sie sie. Schalte den Schalter ein, um die Einstellung zu löschen.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'Zeigt das Spiel einen schwarzen Bildschirm oder hängt es bei der Prüfung der Erweiterungen, versuche „Nur Emulatoren“, dann „Aus“.',
+    fakelibFull: 'Vollständig', fakelibEmulators: 'Nur Emulatoren', fakelibOff: 'Aus',
     deleteP5z: "Die .p5z-Datei und ihr Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.",
     excludePaths: "Ausgeschlossene Pfade",
     excludePathsHint: "Einer pro Zeile. Der Scan öffnet sie nie: Ein Spiel dort wird weder aufgelistet noch registriert (eines, das schon auf dem Startbildschirm ist, bleibt).",
@@ -1859,6 +1878,9 @@ var MSG = {
     overlayHint: 'Apágalo solo para un juego que deba ir sin ellas (un título de Playden): entonces no lleva ampr-emu-ng, ni emuladores, ni /data ni USB en su sandbox.',
     overlayOffNote: 'Va sin las librerías de MaxPack: tal como está registrado, sin ampr-emu-ng, emuladores ni montajes en su sandbox.',
     overlayStaleNote: 'Este juego está puesto para ir sin las librerías de MaxPack, pero esta copia no puede (un .pkg, un .p5z o una carpeta empaquetada las necesita), así que las lleva. Enciende el interruptor para quitar ese ajuste.',
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'Si el juego se queda en pantalla negra o se atasca al comprobar el contenido adicional, prueba «Solo emuladores» y luego «Desactivado».',
+    fakelibFull: 'Completo', fakelibEmulators: 'Solo emuladores', fakelibOff: 'Desactivado',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
     sizesNone: 'Tamaños no disponibles', sizesLoading: 'Cargando tamaños...',
@@ -2110,6 +2132,9 @@ var MSG = {
     overlayHint: "À désactiver uniquement pour un jeu qui doit tourner sans elles (un titre Playden) : il n'aura alors ni ampr-emu-ng, ni émulateurs, ni /data ou USB dans son bac à sable.",
     overlayOffNote: "Tourne sans les bibliothèques de MaxPack : tel qu'enregistré, sans ampr-emu-ng, émulateurs ni montages du bac à sable.",
     overlayStaleNote: "Ce jeu est réglé pour tourner sans les bibliothèques de MaxPack, mais cette copie ne le peut pas (un pkg, un .p5z ou un dossier empaqueté en a besoin) : elle les garde. Activez l'interrupteur pour effacer ce réglage.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: "Si le jeu reste sur un écran noir ou se bloque pendant la vérification des contenus additionnels, essayez « Émulateurs seulement », puis « Désactivé ».",
+    fakelibFull: 'Complet', fakelibEmulators: 'Émulateurs seulement', fakelibOff: 'Désactivé',
     deleteP5z: "Le fichier .p5z et son cache seront supprimés du disque : {path}. Action irréversible.",
     excludePaths: "Chemins exclus",
     excludePathsHint: "Un par ligne. L'analyse ne les ouvre jamais : un jeu qui s'y trouve n'est ni listé ni enregistré (celui déjà sur l'écran d'accueil y reste).",
@@ -2350,6 +2375,9 @@ var MSG = {
     overlayHint: "これらなしで動かす必要があるゲーム（Playden のタイトル）だけオフにしてください。オフにすると、ampr-emu-ng もエミュレーターも、サンドボックス内の /data や USB も使えません。",
     overlayOffNote: "MaxPack のライブラリなしで動作します。登録されたままの状態で、ampr-emu-ng、エミュレーター、サンドボックスのマウントはありません。",
     overlayStaleNote: "このゲームは MaxPack のライブラリなしで動かす設定ですが、このコピーでは動かせない（pkg、.p5z、パック済みフォルダーには必要）ため、ライブラリを使います。スイッチをオンにすると、この設定を解除できます。",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'ゲームが黒い画面のままになる、または追加コンテンツの確認で止まる場合は、「エミュレーターのみ」、次に「オフ」を試してください。',
+    fakelibFull: 'フル', fakelibEmulators: 'エミュレーターのみ', fakelibOff: 'オフ',
     deleteP5z: ".p5z ファイルとそのキャッシュをドライブから削除します: {path}。元に戻せません。",
     excludePaths: "除外するパス",
     excludePathsHint: "1 行に 1 つ。スキャンはこれらを開きません。そこにあるゲームは一覧にも登録にも表示されません（すでにホーム画面にあるものは残ります）。",
@@ -2590,6 +2618,9 @@ var MSG = {
     overlayHint: "Desative só para um jogo que precise rodar sem elas (um título Playden): ele fica sem ampr-emu-ng, sem emuladores e sem /data ou USB no sandbox.",
     overlayOffNote: "Roda sem as bibliotecas do MaxPack: como registrado, sem ampr-emu-ng, emuladores ou montagens do sandbox.",
     overlayStaleNote: "Este jogo está configurado para rodar sem as bibliotecas do MaxPack, mas esta cópia não consegue (um pkg, um .p5z ou uma pasta empacotada precisa delas), então as mantém. Ative a chave para limpar essa configuração.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'Se o jogo ficar na tela preta ou travar ao verificar os conteúdos adicionais, tente “Só emuladores” e depois “Desligado”.',
+    fakelibFull: 'Completo', fakelibEmulators: 'Só emuladores', fakelibOff: 'Desligado',
     deleteP5z: "O arquivo .p5z e o cache dele serão excluídos do drive: {path}. Não é possível desfazer.",
     excludePaths: "Caminhos excluídos",
     excludePathsHint: "Um por linha. A varredura nunca os abre: um jogo ali não é listado nem registrado (um que já esteja na tela inicial continua).",
@@ -2830,6 +2861,9 @@ var MSG = {
     overlayHint: "Disattiva solo per un gioco che deve girare senza di esse (un titolo Playden): non avrà ampr-emu-ng, emulatori né /data o USB nella sandbox.",
     overlayOffNote: "Gira senza le librerie di MaxPack: com'è registrato, senza ampr-emu-ng, emulatori o montaggi della sandbox.",
     overlayStaleNote: "Questo gioco è impostato per girare senza le librerie di MaxPack, ma questa copia non può (un pkg, un .p5z o una cartella impacchettata ne ha bisogno), quindi le mantiene. Attiva l'interruttore per cancellare l'impostazione.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: "Se il gioco resta su schermo nero o si blocca durante il controllo dei contenuti aggiuntivi, prova «Solo emulatori», poi «Disattivato».",
+    fakelibFull: 'Completo', fakelibEmulators: 'Solo emulatori', fakelibOff: 'Disattivato',
     deleteP5z: "Il file .p5z e la sua cache verranno eliminati dall'unità: {path}. L'operazione non è reversibile.",
     excludePaths: "Percorsi esclusi",
     excludePathsHint: "Uno per riga. La scansione non li apre mai: un gioco lì dentro non viene elencato né registrato (uno già nella schermata iniziale resta).",
@@ -3070,6 +3104,9 @@ var MSG = {
     overlayHint: "라이브러리 없이 실행해야 하는 게임(Playden 타이틀)에만 끄세요. 끄면 ampr-emu-ng, 에뮬레이터가 없고 샌드박스에서 /data나 USB도 쓸 수 없습니다.",
     overlayOffNote: "MaxPack 라이브러리 없이 실행됩니다. 등록된 그대로이며 ampr-emu-ng, 에뮬레이터, 샌드박스 마운트가 없습니다.",
     overlayStaleNote: "이 게임은 MaxPack 라이브러리 없이 실행하도록 설정되어 있지만, 이 사본은 그럴 수 없어(pkg, .p5z 또는 패킹된 폴더에는 필요) 라이브러리를 계속 사용합니다. 스위치를 켜면 이 설정이 지워집니다.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: '게임이 검은 화면에서 멈추거나 추가 콘텐츠를 확인하다가 멈추면 “에뮬레이터만”을, 그다음 “끄기”를 시도하세요.',
+    fakelibFull: '전체', fakelibEmulators: '에뮬레이터만', fakelibOff: '끄기',
     deleteP5z: ".p5z 파일과 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.",
     excludePaths: "제외할 경로",
     excludePathsHint: "한 줄에 하나씩. 스캔은 이 경로를 열지 않으므로 그 안의 게임은 목록에 표시되거나 등록되지 않습니다(이미 홈 화면에 있는 게임은 유지됩니다).",
@@ -3310,6 +3347,9 @@ var MSG = {
     overlayHint: "عطّله فقط للعبة يجب أن تعمل بدونها (لعبة من Playden): ستفقد حينئذٍ ampr-emu-ng والمحاكيات، ولن يتوفر /data أو USB في بيئتها المعزولة.",
     overlayOffNote: "تعمل بدون مكتبات MaxPack: كما سُجّلت، بلا ampr-emu-ng أو محاكيات أو نقاط تركيب في البيئة المعزولة.",
     overlayStaleNote: "هذه اللعبة مضبوطة لتعمل بدون مكتبات MaxPack، لكن هذه النسخة لا تستطيع ذلك (تحتاجها حزمة pkg أو ملف .p5z أو مجلد معبّأ)، فتحتفظ بها. فعّل المفتاح لمسح هذا الإعداد.",
+    fakelibLbl: 'Fakelib',
+    fakelibHint: 'إذا بقيت اللعبة على شاشة سوداء أو توقفت أثناء التحقق من المحتوى الإضافي، فجرّب «المحاكيات فقط» ثم «إيقاف».',
+    fakelibFull: 'كامل', fakelibEmulators: 'المحاكيات فقط', fakelibOff: 'إيقاف',
     deleteP5z: "سيُحذف ملف .p5z وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.",
     excludePaths: "المسارات المستثناة",
     excludePathsHint: "مسار واحد في كل سطر. لا يفتحها المسح أبدًا: لا تُعرض اللعبة الموجودة فيها ولا تُسجَّل (وتبقى التي على الشاشة الرئيسية).",
@@ -4096,13 +4136,18 @@ function renderModal() {
   // The report follows the game: fetched again when its status, crash, hidden or overlay state changes, and
   // when it starts or stops running (the exit lines of a run that left no dump are in the log tail).
   var rsig = dup ? '' : g.title_id + '|' + g.status + '|' + JSON.stringify(g.crash || null) + '|' + !!g.hidden +
-    '|' + !!g.overlay_off + '|' + isRunning(g);
+    '|' + !!g.overlay_off + '|' + (g.fakelib_mode || 'full') + '|' + isRunning(g);
   if (rsig && rsig !== reportSig) { reportSig = rsig; loadReport(g.title_id, ++reportRequest); }
   // The PlayGo switch: only for a game whose eboot imports PlayGo, or one turned off already.
   var pg = $('m-playgo');
   $('m-playgo-row').hidden = !(g.playgo === true || g.playgo_off);
   if (!pg._busy) pg.checked = !g.playgo_off;
   pg.disabled = !!pg._busy || g.status === 'duplicate' || g.status === 'building';
+  // The fakelib mode (maxpack_logic::fakelib): what the cache's fakelib/ is made of, for every library copy.
+  var fl = $('m-fakelib');
+  $('m-fakelib-row').hidden = dup;
+  if (!fl._busy) fl.value = g.fakelib_mode === 'emulators' || g.fakelib_mode === 'off' ? g.fakelib_mode : 'full';
+  fl.disabled = !!fl._busy || g.status === 'building';
   // MaxPack's overlay: only a plain folder game can run without it (a pkg, a .p5z or a packed folder
   // is read through ampr-emu-ng, which comes in it; the payload refuses those, maxpack_logic::overlay).
   // A title still listed whose copy now needs it (packed since, or a pkg or .p5z took over) shows the
@@ -4300,6 +4345,29 @@ $('m-playgo').onchange = async function () {
   if (modalOpen() && openTid === id) {
     renderModal();
     if (!box.disabled && !$('m-playgo-row').hidden) box.focus();
+  }
+  schedule(300);
+};
+$('m-fakelib').onchange = async function () {
+  var box = this, g = openTid && findGame(openTid);
+  if (!g) return;
+  var id = gameId(g), mode = box.value;
+  box._busy = true;
+  box.disabled = true;
+  try {
+    var r = await fetch('/api/fakelib/' + encodeURIComponent(g.title_id), { method: 'POST', body: mode });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    // Until the next state arrives, draw the new value.
+    g.fakelib_mode = mode;
+    modalActionError = '';
+    if (state && state.paused) { queued = true; setBanner('paused', true, pausedText); }
+  } catch (e) {
+    if (modalOpen() && openTid === id) modalActionError = e.message;
+  }
+  box._busy = false;
+  if (modalOpen() && openTid === id) {
+    renderModal();
+    if (!box.disabled && !$('m-fakelib-row').hidden) box.focus();
   }
   schedule(300);
 };
@@ -5317,10 +5385,11 @@ function moveInSettings(t, key) {
   else if (list[i + (key === 'ArrowUp' ? -1 : 1)]) list[i + (key === 'ArrowUp' ? -1 : 1)].focus();
   return true;
 }
-// The game sheet's controls in page order: its enabled buttons and the PlayGo and overlay switches when shown.
+// The game sheet's controls in page order: its enabled buttons, the PlayGo switch, the fakelib selector and the
+// overlay switch when shown.
 function modalControls() {
-  return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled]), #modal textarea'))
-    .filter(function (c) { return c.id === 'm-playgo' || c.id === 'm-overlay' ? !$(c.id + '-row').hidden : !c.hidden; });
+  return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled]), #modal select:not([disabled]), #modal textarea'))
+    .filter(function (c) { return /^m-(playgo|fakelib|overlay)$/.test(c.id) ? !$(c.id + '-row').hidden : !c.hidden; });
 }
 function moveInModal(key) {
   var list = modalControls();

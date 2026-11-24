@@ -655,6 +655,21 @@ note it in [`compatibility.md`](compatibility.md) (7.3's report has the row read
   - In `/api/state`, each game carries `registered`, `mounted`, `source_present` and `overlay_off`: a
     ready, mounted game shows `registered: true` and `mounted: true`; after unplugging its USB drive,
     `source_present: false` until the pass removes it.
+- [ ] **7.13. The fakelib mode of a game.**
+  - Take a `.pkg` or `.p5z` game whose dump ships its own `fakelib/` (a backport with one works too). Open its sheet,
+    set "Fakelib" to "Off". Expected: in the log, `<TID>: fakelib mode off` and, on the next pass,
+    `<TID>: fakelib: mode off (only ampr-emu-ng)` followed by no `fakelib: added` line;
+    `/data/maxpack/caches/<TID>/fakelib/` holds only `libSceAmpr.sprx`; `config.toml` has the title id in
+    `fakelib_off`; `/api/state` shows
+    `"fakelib_mode": "off"`; "Copy report" has `Fakelib mode: off (only ampr-emu-ng)`.
+  - Launch it. Expected: `overlay MOUNTED` as usual, and the game reads its files (ampr-emu-ng's line on screen).
+    Note whether it gets further than in "Full" (the main menu, past the add-on check).
+  - Set it to "Emulators only". Expected: `fakelib: mode emulators (the game's and backport's fakelib not used)`, and
+    `fakelib/` holds the bundled emulators the game needs (`fakelib: added ...`) and `libSceAmpr.sprx`, none of the
+    dump's own libraries; the title id moved from `fakelib_off` to `fakelib_emulators`.
+  - Set it back to "Full". Expected: no `fakelib: mode` line, `fakelib/` as before (the dump's libraries again), the
+    title id in neither list. Other games' caches are not refreshed by any of this, nor by the update itself (no
+    `refreshing fakelib only` line for them after installing this version).
 
 ## 8. The self-update
 

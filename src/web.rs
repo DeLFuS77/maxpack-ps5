@@ -145,6 +145,9 @@ struct GameExtra<'a> {
     hidden: &'a [String],
     /// The `overlay_off` setting.
     overlay_off: &'a [String],
+    /// The `fakelib_emulators` and `fakelib_off` settings.
+    fakelib_emulators: &'a [String],
+    fakelib_off: &'a [String],
     /// The last crash of each title (crashes.json).
     crashes: &'a std::collections::HashMap<String, maxpack_logic::crash::Crash>,
     /// Title ids whose rebuild was asked for and has not started yet (`forced`).
@@ -186,6 +189,8 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
         "overlay_off": maxpack_logic::overlay::off(kind, packing, x.overlay_off.iter().any(|t| t == tid)),
         // Listed, whatever this copy is: the page shows the switch for a stale entry too, to clear it.
         "overlay_off_listed": x.overlay_off.iter().any(|t| t == tid),
+        // What its fakelib/ is composed from (maxpack_logic::fakelib): "full", "emulators" or "off".
+        "fakelib_mode": maxpack_logic::fakelib::mode_of(tid, x.fakelib_emulators, x.fakelib_off).name(),
     })
 }
 
@@ -495,6 +500,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         ("POST", p) if p.starts_with("/api/playgo/") => post_title_list(state, TitleList::PlaygoOff, &p["/api/playgo/".len()..], body),
         ("POST", p) if p.starts_with("/api/hidden/") => post_title_list(state, TitleList::Hidden, &p["/api/hidden/".len()..], body),
         ("POST", p) if p.starts_with("/api/overlay/") => post_title_list(state, TitleList::OverlayOff, &p["/api/overlay/".len()..], body),
+        ("POST", p) if p.starts_with("/api/fakelib/") => post_fakelib(state, &p["/api/fakelib/".len()..], body),
         ("POST", p) if p.starts_with("/api/rebuild/") => rebuild(state, &p["/api/rebuild/".len()..]),
         ("POST", p) if p.starts_with("/api/delete/") => delete(state, &p["/api/delete/".len()..], body),
         ("POST", p) if p.starts_with("/api/launch/") => launch(state, &p["/api/launch/".len()..]),
@@ -671,11 +677,12 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
             return reply(409, "text/plain", format!("{tid}: {why}"));
         }
     }
-    // Held across the save: a concurrent /api/playgo, /api/hidden or /api/overlay change is not lost.
+    // Held across the save: a concurrent /api/playgo, /api/hidden, /api/overlay or /api/fakelib change is not lost.
     let mut cur = state.settings.lock().unwrap();
     // The settings form does not send the per-game lists: keep them, from the file (a scan pass
     // may have put an older copy into state.settings). The same for `exclude` when a body lacks it.
-    if ["playgo_off", "hidden", "overlay_off", "exclude"].iter().any(|k| v.get(k).is_none()) {
+    const KEPT: [&str; 6] = ["playgo_off", "hidden", "overlay_off", "fakelib_emulators", "fakelib_off", "exclude"];
+    if KEPT.iter().any(|k| v.get(k).is_none()) {
         let file = config::load();
         if v.get("playgo_off").is_none() {
             s.playgo_off = file.playgo_off;
@@ -686,9 +693,20 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
         if v.get("overlay_off").is_none() {
             s.overlay_off = file.overlay_off;
         }
+        if v.get("fakelib_emulators").is_none() {
+            s.fakelib_emulators = file.fakelib_emulators;
+        }
+        if v.get("fakelib_off").is_none() {
+            s.fakelib_off = file.fakelib_off;
+        }
         if v.get("exclude").is_none() {
             s.exclude = file.exclude;
         }
+    }
+    // A title is in one fakelib list at most (a body or the file's other list may name it too): off wins.
+    let both = maxpack_logic::fakelib::exclusive(&mut s.fakelib_emulators, &s.fakelib_off);
+    if !both.is_empty() {
+        log!("settings: {both:?} in both fakelib_emulators and fakelib_off: taken as fakelib_off");
     }
     if let Err(e) = config::save(&s) {
         log!("settings: save {}: {e}", config::CONFIG_PATH);
@@ -754,6 +772,31 @@ fn post_title_list(state: &State, which: TitleList, tid: &str, body: &[u8]) -> R
     no_content()
 }
 
+/// POST /api/fakelib/<TID>, body `full`, `emulators` or `off`: the title's fakelib mode
+/// (maxpack_logic::fakelib), kept in `fakelib_emulators` / `fakelib_off` (in one of them at most; full
+/// in neither). 404 for an invalid title id or one not in the library, 400 for any other body. The
+/// next pass recomposes its fakelib/ (Fresh::Fakelib), as a PlayGo change does.
+fn post_fakelib(state: &State, tid: &str, body: &[u8]) -> Reply {
+    if !crate::scan::valid_tid(tid) || state.source(tid).is_none() {
+        return not_found();
+    }
+    let Some(mode) = maxpack_logic::fakelib::body(body) else { return reply(400, "text/plain", "expected full, emulators or off") };
+    let mut cur = state.settings.lock().unwrap();
+    // From the file, not state.settings: a scan pass may have put an older copy there.
+    let mut s = config::load();
+    maxpack_logic::fakelib::set_mode(&mut s.fakelib_emulators, &mut s.fakelib_off, tid, mode);
+    let what = format!("fakelib mode {}", mode.name());
+    if let Err(e) = config::save(&s) {
+        log!("{tid}: {what}: save {}: {e}", config::CONFIG_PATH);
+        return reply(500, "text/plain", e.to_string());
+    }
+    log!("{tid}: {what}");
+    *cur = s;
+    drop(cur);
+    state.wake();
+    no_content()
+}
+
 /// Serves an absolute path under /data (no traversal above /data). Whole file: first 256 KiB as
 /// text. With ?off=N&len=M: those bytes (M <= 16 MiB) as octet-stream, read in place, so large
 /// files can be pulled in pieces.
@@ -789,16 +832,17 @@ fn dbg_file(path: &str, query: &str) -> Reply {
 }
 
 fn api_state(state: &State) -> Vec<u8> {
-    let (playgo_off, hidden, overlay_off) = {
+    let (playgo_off, hidden, overlay_off, fakelib_emulators, fakelib_off) = {
         let s = state.settings.lock().unwrap();
-        (s.add_emulators.then(|| s.playgo_off.clone()), s.hidden.clone(), s.overlay_off.clone())
+        (s.add_emulators.then(|| s.playgo_off.clone()), s.hidden.clone(), s.overlay_off.clone(),
+            s.fakelib_emulators.clone(), s.fakelib_off.clone())
     };
     // ponytail: crashes.json is read on every state poll (a few hundred bytes per crashed title).
     let crashes = crate::crash::load();
     // A rebuild asked for but not started yet (the pass picks it up, or a game is running).
     let queued = state.forced.lock().unwrap().clone();
-    let x = GameExtra { playgo_off: playgo_off.as_deref(), hidden: &hidden, overlay_off: &overlay_off, crashes: &crashes,
-        queued: &queued };
+    let x = GameExtra { playgo_off: playgo_off.as_deref(), hidden: &hidden, overlay_off: &overlay_off,
+        fakelib_emulators: &fakelib_emulators, fakelib_off: &fakelib_off, crashes: &crashes, queued: &queued };
     // A copy: presence reads app.db, the mount table and the sources without holding the lock.
     let games = state.games.lock().unwrap().clone();
     let games: Vec<_> = games.iter().zip(presence(&games)).map(|(g, [registered, mounted, present])| {
@@ -972,8 +1016,11 @@ fn report(state: &State, tid: &str) -> Reply {
     let waiting = state.mounter.lock().unwrap().api_waiting();
     let ampr = crate::ampr_status();
     let ampr = format!("{} {}", ampr["kind"].as_str().unwrap_or("?"), ampr["version"].as_str().unwrap_or("")).trim_end().to_string();
+    let fakelib = crate::cache::fakelib_mode(&g.src, &s);
     let playgo = if !s.add_emulators {
         "not added (add_emulators off)"
+    } else if fakelib == maxpack_logic::fakelib::Mode::Off {
+        "not added (fakelib mode off)"
     } else if s.playgo_off.iter().any(|t| t == tid) {
         "off"
     } else {
@@ -989,7 +1036,7 @@ fn report(state: &State, tid: &str) -> Reply {
         version: env!("CARGO_PKG_VERSION"), firmware: firmware.as_deref(), waiting: waiting.as_deref(),
         title_id: tid, title_name: &g.src.title_name, game_version: &g.src.version, path: &path, kind, packing,
         drive: &g.src.drive, status: g.status, error: g.error.as_deref(), hidden: s.hidden.iter().any(|t| t == tid), overlay_off: crate::cache::overlay_off(&g.src, &s),
-        backport: backport.as_deref(), ampr: &ampr, playgo, crash: crash.as_ref(), log: &log,
+        fakelib, backport: backport.as_deref(), ampr: &ampr, playgo, crash: crash.as_ref(), log: &log,
     });
     reply(200, "text/plain; charset=utf-8", text)
 }

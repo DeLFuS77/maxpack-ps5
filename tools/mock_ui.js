@@ -32,7 +32,8 @@
 // the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
 // for 3 s), the overlay switch (POST /api/overlay: only "Plain Racer", a plain folder game, shows it;
 // "Shell Title" has it off; "Packed Example", a .p5z, is still listed from before, so its sheet shows
-// the switch to clear it; turning a non-plain game off answers 409 as the payload does), and the Excluded paths
+// the switch to clear it; turning a non-plain game off answers 409 as the payload does), the Fakelib selector
+// (POST /api/fakelib: every game shows it; "Starfall Odyssey", a pkg, is set to Off), and the Excluded paths
 // of Settings. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
@@ -113,6 +114,8 @@ const BUILT = Math.floor(Date.now() / 1000) - 3600;
 // The page's switches and actions, as the payload keeps them.
 const hidden = new Set(['PPSA02345']);
 const overlayOff = new Set(['PPSA06100', 'PPSA07100']);
+// The fakelib mode of each title not in "full" (fakelib_emulators, fakelib_off).
+const fakelibMode = new Map([['PPSA10001', 'off']]);
 const queued = new Set();
 let running = null; // { tid, until }
 function runningNow() {
@@ -136,6 +139,7 @@ function games() {
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
     registered: status === 'ready', mounted: status === 'ready', source_present: true,
     overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid), overlay_off_listed: overlayOff.has(tid),
+    fakelib_mode: fakelibMode.get(tid) || 'full',
   }, extra || {});
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
@@ -151,6 +155,8 @@ function games() {
       size: 33 * GB, cache_built: null, cache_size: 0, error_code: 'no_space', missing_bytes: Math.round(3.84 * GB),
       error: 'PPSA07200 (/mnt/usb0/homebrew/Roomless Example.p5z): no space' }),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
+    // A pkg whose fakelib mode is Off: its fakelib/ holds only ampr-emu-ng.
+    g('PPSA10001', 'Starfall Odyssey', 'pkg', null, 'ready', { path: '/data/homebrew/Starfall Odyssey.pkg', playgo: true }),
     // A dump whose title id is installed on the console: left alone, the sheet says why.
     g('PPSA06000', 'Installed Twin', 'folder', 'plain', 'error', { cache_built: null, cache_size: 0,
       error: 'PPSA06000 (/data/homebrew/PPSA06000): an installed copy of this title exists (/user/app/PPSA06000/app.pkg): MaxPack does not register or mount this copy',
@@ -390,7 +396,11 @@ http.createServer((req, res) => {
       const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
-        ['Backport: none', 'ampr-emu-ng: bundled v0.5.1-maxpack.1', 'PlayGo stub: on',
+        ['Backport: none'],
+        // maxpack_logic::report::text: a fakelib mode other than full.
+        g.fakelib_mode === 'emulators' ? ["Fakelib mode: emulators only (the game's and backport's fakelib not used)"] :
+          g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})`] : [],
+        ['ampr-emu-ng: bundled v0.5.1-maxpack.1', `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : 'on'}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in the result and the date):',
           `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 1.0.0 | ? | ? |`, '',
@@ -447,6 +457,13 @@ http.createServer((req, res) => {
       if (chunks === 'off' && !(g.kind === 'folder' && g.packing === 'plain'))
         return send(res, 409, 'text/plain', 'not a plain folder game');
       if (chunks === 'off') overlayOff.add(g.title_id); else overlayOff.delete(g.title_id);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/fakelib/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/fakelib/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      if (!['full', 'emulators', 'off'].includes(chunks)) return send(res, 400, 'text/plain', 'expected full, emulators or off');
+      if (chunks === 'full') fakelibMode.delete(g.title_id); else fakelibMode.set(g.title_id, chunks);
       return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p.startsWith('/api/rebuild/')) {

@@ -84,6 +84,8 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `playgo_off` | [] | array of title ids (`playgo_off = ["PPSA01556"]`) that get no bundled PlayGo stub: pgo_stub is neither added nor upgraded, a `libScePlayGo.sprx` the game or backport ships stays as shipped; the dlc_emu set is unaffected. Per game from the UI (`POST /api/playgo/<TID>`); a change only refreshes `fakelib/` |
 | `hidden` | [] | array of title ids the page's library does not show unless its "show hidden" switch is on (a per-browser choice). Page only: a hidden game is still built, registered, mounted and on the home screen, and `/api/state` still lists it (`hidden: true`). Per game from the game sheet (`POST /api/hidden/<TID>`); the settings form keeps the list |
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
+| `fakelib_emulators` | [] | array of title ids whose fakelib mode is `emulators`: their cache's `fakelib/` gets nothing from the game's or the backport's lib dir, only the bundled emulators they need (`add_emulators`, `playgo_off` as usual) and ampr-emu-ng (see Cache). For a game that shows a black screen with the libraries its dump or backport ships. Per game from the game sheet (`POST /api/fakelib/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/` |
+| `fakelib_off` | [] | array of title ids whose fakelib mode is `off`: their `fakelib/` gets only ampr-emu-ng, and that only for a pkg, a `.p5z` or a zstd or LZ4 folder (a plain folder gets an empty `fakelib/`, so its launch mounts nothing, as `overlay_off`). For a game that still stalls with the emulators. A title is in one of the two lists at most (`maxpack_logic::fakelib::set_mode`); one listed in both by hand is `off` and the next save drops it from `fakelib_emulators` (`fakelib::exclusive`, logged). In neither: `full`, the composition as it always was. Like `fakelib_emulators` otherwise |
 | `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub (a hand-placed `libSceAmpr.sprx` is kept) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
@@ -95,7 +97,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
-Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `exclude`, `playgo_off`, `hidden`, `overlay_off`) that is not
+Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `exclude`, `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`) that is not
 a valid value is logged and skipped, the other items stay (an array that does not parse, such as one with a number in it,
 is ignored as a whole). The web UI edits the same file.
 
@@ -181,20 +183,35 @@ is ignored as a whole). The web UI edits the same file.
   A plain folder title in `overlay_off` (`cache::overlay_off`) stops right after `fakelib/` is emptied (no base, no
   emulators, no ampr), logged `<TID>: fakelib: overlay off (overlay_off)`; `.ampr` is written with `"overlay_off": true`
   and the earlier "playgo" memo kept. Launch then mounts nothing (empty `fakelib/`).
+  The fakelib mode (`fakelib_emulators`, `fakelib_off`; `cache::fakelib_mode`) decides which of these steps run
+  (`maxpack_logic::fakelib::sources`, from the mode, the kind and packing, `add_emulators`, `inject_ampr` and
+  `playgo_off`): `full` (a title in neither list) runs them all, as this list says. `emulators` skips the base (nothing from the
+  backport's or the game's lib dir; the backport's other files are copied or overlaid as always), runs the emulators step
+  (same rules; `playgo_off` still applies) and gets ampr-emu-ng as `full` does, and also without `inject_ampr` for a zstd
+  or LZ4 folder, whose own `libSceAmpr.sprx` read its packs and is no longer there. `off` skips the base and the
+  emulators and gets ampr-emu-ng only for a game that cannot run without it (`fakelib::needs_ng`: a pkg, a `.p5z`, a
+  zstd or LZ4 folder), whatever `inject_ampr` says; a plain folder gets an empty `fakelib/` (launch then mounts
+  nothing, as for `overlay_off`). Each composition in a mode other than `full` logs one line:
+  `<TID>: fakelib: mode emulators (the game's and backport's fakelib not used)`, `<TID>: fakelib: mode off (only
+  ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`. `overlay_off` comes first: such a title stops at the empty
+  `fakelib/` whatever its mode.
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
   `.pkg` named in `kraken.image`) or a .p5z game (a game's own ng has no p5z mode, so `keep_game_ng` does not apply:
   ours is always on top), every file of `/data/maxpack/ampr/` (not `libkernel.sprx`) is copied on top,
   so ours wins over the game's own `libSceAmpr.sprx`, except a game's or backport's ampr-emu-ng strictly newer than
   ours (the `ampr-emu-ng X.Y.Z` identity in both files; ours without one counts as older), which is kept and logged
   `<TID>: fakelib: kept the game's ampr-emu-ng <v> (newer than <v>)` (no ng downgrade, also over a hand-placed copy). `.ampr` records what fakelib was composed from: `{"ampr": {name: [size, mtime]} or null,
-  "emus": null without `add_emulators`, else the dlc_emu and pgo_stub versions, whether a `dlc_emu.ini` is on
+  "emus": null without `add_emulators` or in the fakelib mode `off`, else the dlc_emu and pgo_stub versions, whether a `dlc_emu.ini` is on
   disk (folder or backport root), the eboot's [size, mtime] and "playgo_off" (the title is in `playgo_off`), "playgo": [eboot size, mtime secs, imports PlayGo]}`
   (a pkg's own `dlc_emu.ini` is not in it, a pkg change rebuilds through the stamp). "playgo" memoizes the PlayGo
   import search: `eboot.bin` is read again only when its (size, mtime) differs (a read error is not memoized), and
   `check` never compares it. An older `.ampr` without `emus` differs, so every cache refreshes `fakelib/` once; that
   one-time refresh also drops a `libSceSaveData.native.sprx` an older build copied (no separate check for such files).
   `"overlay_off": true` is in `.ampr` only for a title `cache::overlay_off` takes (an older `.ampr` stays fresh).
-  When "ampr", "emus" or "overlay_off" differ (the ampr dir, `inject_ampr`, the emulator inputs or `overlay_off` changed) or `.done` still has a
+  `"fakelib_mode": "emulators"|"off"` is in `.ampr` only for a mode other than `full` (`fakelib::record`); a `.ampr`
+  without it (every cache built before the setting, and every `full` one) reads as `full` (`fakelib::recorded`), so the
+  upgrade refreshes no cache.
+  When "ampr", "emus" or "overlay_off" differ, or the recorded fakelib mode does (the ampr dir, `inject_ampr`, the emulator inputs, `overlay_off` or the mode changed), or `.done` still has a
   `game_fakelib` other than `full` (a cache built before the setting was removed), `check` says `Fakelib` and only `fakelib/` is
   recomposed (`refresh_fakelib`, which then rewrites `.done` with its own mtime and its inputs record), no extraction or re-registration. `fakelib/` is not in the AMPR index.
 - A folder game's cache is only `fakelib/`, `.ampr`, `.built`, `.done`: nothing of the game is copied.
@@ -325,8 +342,8 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its `playgo_off` membership and
-`cache::overlay_off`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
+only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its `playgo_off` membership,
+`cache::overlay_off` and `cache::fakelib_mode`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
 `.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
 Duplicate title ids: a folder beats a pkg, which beats a .p5z
 (`maxpack_logic::dups::claim`; ranks `RANK_FOLDER` < `RANK_PKG` < `RANK_P5Z`), then the first scan root wins; the others
@@ -402,7 +419,8 @@ of the stamp's source). Not adopted: a sandbox with our nullfs mounts and no ove
 failed overlay mounts them anyway), since ShadowMountPlus and the upstream project make the same mounts from the same
 sources and nothing in the mount table tells them apart; its teardown can still hang if the payload died in that game.
 When a session's cleanup ends, `register::spawn_snd0info(<TID>, 0)` (own thread).
-No overlay when neither layer applies, and with an empty `fakelib/` (an `overlay_off` title) no sandbox mount at all.
+No overlay when neither layer applies, and with an empty `fakelib/` (an `overlay_off` title, or a plain folder in the
+fakelib mode `off`) no sandbox mount at all.
 
 ## Crash report (`src/crash.rs`, `maxpack_logic::crash`)
 When an app crashes, the console writes `/user/devlog/system/sce_coredumps.0/<TID>_<n>/` with
@@ -430,7 +448,8 @@ and the report (`GET /api/report/<TID>`) names it. Ported from the upstream proj
 pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings { pub scan_paths: Vec<String>, pub exclude: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
-  pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub overlay_off: Vec<String>, pub ampr_auto_update: bool,
+  pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub overlay_off: Vec<String>,
+  pub fakelib_emulators: Vec<String>, pub fakelib_off: Vec<String>, pub ampr_auto_update: bool,
   pub backports: bool, pub scan_interval_secs: u64, pub stability_wait_secs: u64, pub low_space_gb: u64,
   pub auto_remove_missing: bool, pub auto_remove_delay_secs: u64, pub notify: bool, pub log: bool, pub debug: bool }
 impl Default for Settings
@@ -477,6 +496,7 @@ pub fn relink(src: &Source, s: &Settings, from: &std::path::Path) -> std::io::Re
 pub fn pkg_id(pkg: &std::path::Path) -> std::io::Result<String>;   // sampled identity, see Cache
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fakelib: fakelib/ only
 pub fn overlay_off(src: &Source, s: &Settings) -> bool;                 // listed in overlay_off and a plain folder: empty fakelib/
+pub fn fakelib_mode(src: &Source, s: &Settings) -> maxpack_logic::fakelib::Mode; // from fakelib_emulators / fakelib_off; Full in neither
 pub fn check(src: &Source, s: &Settings) -> Fresh;
 pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
@@ -548,7 +568,7 @@ minute):
   `Sec-Fetch-Site: cross-site` is refused, and an `Origin`, when sent, must be `http://` (or `https://`) plus
   this very Host (`null` is refused). No Origin passes: browsers send one on every cross-origin POST, so only
   something that is not another site's page (curl, `web::take_port`'s loopback quit) sends none. Chosen over
-  requiring `application/json` on every POST: the page's text bodies (`delete`, `eject`, `playgo`, `quit`), the
+  requiring `application/json` on every POST: the page's text bodies (`delete`, `eject`, `playgo`, `fakelib`, `quit`), the
   loopback quit of a newer copy and older copies' quit requests keep working unchanged.
 - `GET /` ui.html (`__VERSION__` filled in); `GET /app-icon.png` the app icon (`ps5/icon0.png`);
   `GET /maxpack.appcache` the AppCache manifest (version + page hash). These three are `no-cache`,
@@ -564,12 +584,14 @@ minute):
   registered: bool (`register::registered`: the staged `param.json` files and the title id in app.db; app.db is read and scanned again only when its length or mtime, or the titles asked, changed: `maxpack_logic::presence::DbMemo`),
   mounted: bool (`/system_ex/app/<TID>` is a mount point, one mount table per request), source_present: bool (the source path exists),
   overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`),
-  overlay_off_listed: bool (listed in `overlay_off`, whatever this copy is: true with `overlay_off` false is a stale entry)}],
+  overlay_off_listed: bool (listed in `overlay_off`, whatever this copy is: true with `overlay_off` false is a stale entry),
+  fakelib_mode: "full"|"emulators"|"off" (the title's fakelib mode, `maxpack_logic::fakelib::mode_of` of the two lists)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
-  without `playgo_off`, `hidden`, `overlay_off` or `exclude` keeps that current list from the file (the settings form
-  sends `exclude` only); 409 when `overlay_off` names a library game that needs the overlay (a pkg, a `.p5z` or a
+  without `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off` or `exclude` keeps that current list
+  from the file (the settings form sends `exclude` only); then a title in both fakelib lists is kept in `fakelib_off`
+  only (`fakelib::exclusive`, logged); 409 when `overlay_off` names a library game that needs the overlay (a pkg, a `.p5z` or a
   packed folder, `maxpack_logic::overlay::needed`, the reason as text). A `scanpath` entry that
   may never be a root (`maxpack_logic::roots::never_root`) is 400 JSON `{code:"forbidden_root", path, detail}`
   and nothing is saved; the page says it in its language.
@@ -585,6 +607,11 @@ minute):
   (`set_listed`), saves, applies, rescans (a fakelib refresh), logs `<TID>: overlay on|off`, 204; 404 for an invalid
   or absent library title, 400 for any other body, 409 for `off` on a game that needs the overlay (logged
   `<TID>: overlay off refused: <path> (<reason>)`).
+- `POST /api/fakelib/<TID>`, body exactly `full`, `emulators` or `off` (`maxpack_logic::fakelib::body`) -> puts the
+  title in `fakelib_emulators` or `fakelib_off` and out of the other, or out of both for `full`
+  (`fakelib::set_mode`), saves, applies, rescans (a fakelib refresh before the next launch; while a game runs the
+  pass waits for its exit, as for PlayGo), logs `<TID>: fakelib mode <mode>`, 204; 404 for an invalid or absent
+  library title, 400 for any other body.
 - `POST /api/launch/<TID>` -> starts the title for the foreground user as its home-screen tile does
   (`sys::launch_app`: `sceLncUtilLaunchApp` through its NID in libSceSystemService, taken when it returns >= 0 or
   0x80940005; else `sceSystemServiceLaunchApp`), 204 once a launch is taken; the launch watcher then sees the game
@@ -595,7 +622,9 @@ minute):
   Origin and Host checks above: another site's page cannot start a game.
 - `GET /api/report/<TID>` -> plain text for an issue (`maxpack_logic::report::text`): MaxPack's version, the
   firmware (`sys::firmware`, else "unknown: please fill in"), who mounts (`waiting`), the game (name, title id,
-  version, source path, kind, drive, status and error, hidden, and "MaxPack overlay: off" for an `overlay_off` game), the backport, ampr-emu-ng (`/api/ampr` kind and
+  version, source path, kind, drive, status and error, hidden, and "MaxPack overlay: off" for an `overlay_off` game), the backport,
+  the fakelib mode when not `full` (`Fakelib mode: emulators only (...)`, `Fakelib mode: off (only ampr-emu-ng)` or
+  `(empty: nothing at launch)` for a plain folder), ampr-emu-ng (`/api/ampr` kind and
   version), the PlayGo stub (on, off, or not added), the last crash, a ready row for `docs/compatibility.md`
   (`compat_row`: result and date left as `?`, since the console's clock is often wrong; a `|` in the name escaped),
   and the last 40 lines of the log tail (64 KiB) that contain the title id; 404 for an invalid or absent library
@@ -758,7 +787,7 @@ back to English). While `waiting` is `other:<process>` the banner says MaxPack o
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
-rebuild, a plain folder game with its overlay off, the Excluded paths, an install that does not fit on the internal SSD,
+rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says).
 
 ## Library page (`src/ui.html`)
@@ -771,11 +800,16 @@ them dimmed with "Hidden" on their badge (a per-browser choice, `localStorage` `
 says which filter left nothing. The game sheet's buttons: Play (`POST /api/launch`: a ready title while no game runs
 and MaxPack mounts; after a launch it stays off up to 10 s, until the watcher reports the game), Rebuild cache (off while
 `rebuild_queued` or pending, checking or building), Copy report (the report is fetched when the sheet opens and when
-the game's status, crash, hidden or overlay state changes or it starts or stops running, so a run that left no dump
+the game's status, crash, hidden, overlay state or fakelib mode changes or it starts or stops running, so a run that left no dump
 still has its exit lines, and the copy happens inside the press: `execCommand('copy')` on the
 sheet's text box, else the clipboard API; when neither can, the text stays shown and selected), Hide / Show in the
 library (`POST /api/hidden`), and Delete set apart. A recorded crash adds "Last crash" to the fields and a hint.
-Under the PlayGo switch, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries
+Under the PlayGo switch, every library copy (not a duplicate) has "Fakelib", a select of Full, Emulators only and Off
+(`POST /api/fakelib`, `fakelib_mode`; off while the game builds or the change is sent; a failed change shows its error
+and the select goes back to the mode in the state), with one hint: if the game shows a black screen or stalls while
+checking add-ons, try "Emulators only", then "Off". A select keeps the row's look and the D-pad's list of the sheet's
+controls (arrows move between controls; the PS5 browser opens its own picker).
+Under it, a plain folder game (kind `folder`, packing `plain`; not a duplicate) has "MaxPack libraries
 at launch" (`POST /api/overlay`, `overlay_off`): on by default; off, the sheet notes that the game runs as registered.
 A pkg, a `.p5z` or a packed folder does not show it (the payload refuses turning it off for them), except while the
 title is still listed in `overlay_off` from an earlier copy (`overlay_off_listed`: packed since, or a pkg or `.p5z` took

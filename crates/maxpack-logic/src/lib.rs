@@ -3,6 +3,7 @@ pub mod cache;
 pub mod crash;
 pub mod dups;
 pub mod exclude;
+pub mod fakelib;
 pub mod fresh;
 pub mod http;
 pub mod images;
