@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
+use maxpack_logic::dups::{claim, RANK_FOLDER, RANK_PKG};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Packing {
     Plain,
@@ -176,31 +178,6 @@ fn scan_error(result: &mut ScanResult, path: PathBuf, error: impl std::fmt::Disp
     result.errors.push((path, message));
 }
 
-/// Duplicate rule: a folder beats a pkg; within a kind the first source in scan order wins and
-/// the others go to `duplicates`. A source still being copied (`source` None) claims its title id
-/// the same way, so a mid-copy winner keeps the other copy out of the library (an unstable
-/// loser claims nothing); it itself goes only to `unstable`. A `nested` source (one folder below
-/// a root, scanned after every root's own entries) never beats a holder: an old copy kept in a
-/// subfolder cannot take over a game that already runs from a root.
-fn claim<T>(seen: &mut HashMap<String, (bool, Option<usize>)>, games: &mut Vec<Option<T>>,
-            duplicates: &mut Vec<T>, tid: &str, pkg: bool, nested: bool, source: Option<T>) {
-    match seen.get(tid) {
-        Some(_) if nested => duplicates.extend(source),
-        // The holder wins unless it is a pkg and this is a folder.
-        Some(&(held_pkg, _)) if !held_pkg || pkg => duplicates.extend(source),
-        held => {
-            if let Some(&(_, Some(i))) = held {
-                duplicates.extend(games[i].take());
-            }
-            let slot = source.map(|s| {
-                games.push(Some(s));
-                games.len() - 1
-            });
-            seen.insert(tid.to_string(), (pkg, slot));
-        }
-    }
-}
-
 /// Last logged scan error per path.
 static LOGGED: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
 
@@ -266,8 +243,8 @@ fn candidates(root: &Path, roots: &[String], listed: &mut HashSet<PathBuf>, resu
 pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResult {
     let mut result =
         ScanResult { games: Vec::new(), duplicates: Vec::new(), errors: Vec::new(), unstable: Vec::new(), images: Vec::new() };
-    // Title id -> (winner is a pkg, its index in `games`; None while the winner is still being copied).
-    let mut seen: HashMap<String, (bool, Option<usize>)> = HashMap::new();
+    // Title id -> (rank of the winner, its index in `games`; None while the winner is still being copied).
+    let mut seen: HashMap<String, (u8, Option<usize>)> = HashMap::new();
     // A slot is emptied when a later source beats it.
     let mut games: Vec<Option<Source>> = Vec::new();
     let cached = cached_sources();
@@ -308,7 +285,7 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
             if let Some(age) = still_written(std::slice::from_ref(&path), stability_wait) {
                 let tid = cached.get(&path).cloned();
                 if let Some(t) = &tid {
-                    claim(&mut seen, &mut games, &mut result.duplicates, t, true, nested, None);
+                    claim(&mut seen, &mut games, &mut result.duplicates, t, RANK_PKG, nested, None);
                 }
                 skip_unstable(&mut result, path, tid, age);
                 continue;
@@ -336,7 +313,7 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
                     .and_then(|json| parse_param(&json).ok()).map(|(tid, _, _)| tid)
                     .or_else(|| cached.get(&path).cloned());
                 if let Some(t) = &tid {
-                    claim(&mut seen, &mut games, &mut result.duplicates, t, false, nested, None);
+                    claim(&mut seen, &mut games, &mut result.duplicates, t, RANK_FOLDER, nested, None);
                 }
                 skip_unstable(&mut result, path, tid, age);
                 continue;
@@ -369,8 +346,8 @@ pub fn scan(roots: &[String], backports: bool, stability_wait: u64) -> ScanResul
             backport: if backports { backport_for(root, roots, &title_id) } else { None },
             path, kind, title_id, title_name, version, size,
         };
-        let (tid, pkg) = (source.title_id.clone(), source.kind == Kind::Pkg);
-        claim(&mut seen, &mut games, &mut result.duplicates, &tid, pkg, nested, Some(source));
+        let (tid, rank) = (source.title_id.clone(), if source.kind == Kind::Pkg { RANK_PKG } else { RANK_FOLDER });
+        claim(&mut seen, &mut games, &mut result.duplicates, &tid, rank, nested, Some(source));
     }
     result.games = games.into_iter().flatten().collect();
     result.games.sort_by(|a, b| a.title_name.cmp(&b.title_name));

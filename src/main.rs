@@ -392,23 +392,7 @@ fn mark_version(mark: &str, len: usize, crc: u32) -> Option<Option<&str>> {
     (l.parse::<usize>().ok()? == len && u32::from_str_radix(c, 16).ok()? == crc).then_some(v)
 }
 
-/// `vX.Y.Z` (leading v optional), optionally followed by MaxPack's own build suffix `-maxpack.N`
-/// (our build of upstream X.Y.Z, same sprx identity), which compares equal to X.Y.Z; None = unknown.
-pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
-    let v = v.trim();
-    let v = match v.rsplit_once("-maxpack.") {
-        Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
-        _ => v,
-    };
-    let mut it = v.strip_prefix('v').unwrap_or(v).split('.').map(|p| p.parse::<u32>().ok());
-    let r = (it.next()??, it.next()??, it.next()??);
-    it.next().is_none().then_some(r)
-}
-
-/// `a` newer than `b`; an unknown version is older than any.
-pub(crate) fn newer(a: Option<&str>, b: Option<&str>) -> bool {
-    a.and_then(parse_version) > b.and_then(parse_version)
-}
+pub(crate) use maxpack_logic::version::{newer, parse_version};
 
 #[derive(Debug, PartialEq)]
 enum Installed<'a> {
