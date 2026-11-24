@@ -61,3 +61,12 @@ licence, and replaces the earlier test builds (0.1.x and 0.2.x).
 [drakmor](https://github.com/drakmor) (ShadowMountPlus, dlc_emu, pgo_stub) and the
 [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) authors. See the README and
 `THIRD_PARTY_NOTICES`.
+
+### Legal
+
+MaxPack is for backups of games you own. It includes no games, firmware, keys or other copyrighted
+content, does not help to obtain them and does not bypass encryption, keys or DRM; piracy is not
+supported. It is provided "as is", without warranty, under the GPL-3.0-or-later: use it at your own
+risk. The authors are not responsible for data loss, lost saves, damage to the console or storage,
+bans or any other problem. MaxPack is not affiliated with or endorsed by Sony Interactive
+Entertainment. Full text: [Legal and disclaimer](README.md#legal-and-disclaimer).
