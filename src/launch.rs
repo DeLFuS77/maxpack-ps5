@@ -766,8 +766,9 @@ impl Watcher {
         self.running.lock().unwrap().insert(tid.to_string());
         if let Some(mut old) = self.sessions.remove(name) {
             tlog!("{tid} stale session on {name}, unmounting it first");
-            old.recheck_exits();
+            // The mounts first: left in the sandbox they hang its teardown. The dump folder after.
             old.unmount_pass(false);
+            old.recheck_exits();
         }
         let mut s = Session::new(tid);
         if let Some(why) = self.not_mounting() {
@@ -936,11 +937,9 @@ impl Watcher {
         let status = maxpack_logic::crash::exit_status(status);
         for (name, s) in self.sessions.iter_mut().filter(|(_, s)| s.pid == Some(pid)) {
             tlog!("{} exit pid={pid} sandbox={name}: {status}", s.tid);
-            if !crate::crash::check(&s.tid, pid, &status, "at exit") {
-                s.exits.push((pid, status.clone(), now));
-            }
             // Our nullfs mounts inside the sandbox block ShellCore's teardown (the close hangs, then the
-            // console powers off): they go now. Only the overlay waits for an exit-spawned ELF.
+            // console powers off): they go now, before anything else. Only the overlay waits for an
+            // exit-spawned ELF.
             let wait = match s.unmount_data(0) {
                 None => EXIT_GRACE_MS,
                 Some(code) => {
@@ -948,6 +947,11 @@ impl Watcher {
                     0
                 }
             };
+            // A crash is ours to record only for a launch we overlaid (DESIGN "Crash report": a game it
+            // mounted): not one another mounter ran, nor one with an empty fakelib (overlay_off).
+            if !s.srcs.is_empty() && !crate::crash::check(&s.tid, pid, &status, "at exit") {
+                s.exits.push((pid, status.clone(), now));
+            }
             s.grace = (wait > 0).then_some(now + wait);
             s.cleanup.get_or_insert((now + wait + CLEANUP_TIMEOUT_MS, now + wait.min(RETRY_MS)));
         }

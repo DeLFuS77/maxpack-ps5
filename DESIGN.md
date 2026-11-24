@@ -400,9 +400,12 @@ No overlay when neither layer applies, and with an empty `fakelib/` (an `overlay
 When an app crashes, the console writes `/user/devlog/system/sce_coredumps.0/<TID>_<n>/` with
 `prosperocore-<n>-0x<pid>-<process>.prosperodmp` inside, and deletes the folder seconds later. No thread or watch of
 its own: the launch watcher's NOTE_EXIT for a game it mounted (an exit-spawned ELF included) logs the exit status
-from the event's data (a wait(2) status) on the `exit pid=...` line (`exited with N`, `killed by signal N`), then
-reads that folder once for `<TID>_*` folders holding a dump with that pid. If none is there yet, it looks once more
-when that session's cleanup ends (0.4 to 3 s later, or when a stale session is replaced), and logs
+from the event's data (a wait(2) status) on the `exit pid=...` line (`exited with N`, `killed by signal N`), then,
+once the sandbox's nullfs mounts are gone (they must go first, see Launch), reads that folder once for `<TID>_*`
+folders holding a dump with that pid. A launch it did not overlay (another mounter ran it, or its `fakelib/` is
+empty: `overlay_off`) gets the exit line only: no crash is recorded for it, since the page would blame our dump, ng or
+PlayGo stub. If none is there yet, it looks once more when that session's cleanup ends (0.4 to 3 s later, or when a
+stale session is replaced, after its unmount), and logs
 `pid=... killed by signal N; no crash dump in ...` when a killed game left none. A match logs `<TID>: crashed
 (<process>, <status>), dump found at exit|<ms> ms after exit; the console's crash dump: <folder path>` and is kept as
 the title's last crash in `/data/maxpack/crashes.json` (`{"<TID>": {at, process, folder, status}}`, keys sorted,
