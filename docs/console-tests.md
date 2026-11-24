@@ -575,7 +575,8 @@ note it in [`compatibility.md`](compatibility.md) (7.3's report has the row read
   - On the sheet, press "Copy report" from the PC or the phone. Expected: "Report copied." and, when
     pasted, the report: MaxPack's version, **the console's firmware** (check it in Settings > System),
     the mounter, the game, source, status, ampr-emu-ng, the PlayGo stub, last crash, the row for
-    `compatibility.md` and the last 40 log lines with its `TITLE_ID`.
+    `compatibility.md` (no game name or title ID in it: format, drive, firmware, MaxPack's version and
+    the Fakelib mode, and `?` for the rest) and the last 40 log lines with its `TITLE_ID`.
   - From the PS5's browser: if it cannot copy, the text is shown selected below, to copy by hand.
     Also at `http://<console-ip>:8095/api/report/<TID>`.
   - If the firmware shows as `(unknown: please fill in)`, note it: the console did not give it.

@@ -1,6 +1,6 @@
 name: Game report
-description: Report how a game runs with MaxPack, working or not. It feeds the compatibility list. English or Spanish.
-title: "[PPSAxxxxx] Game name: short result"
+description: Report how a game runs with MaxPack, working or not, without naming it. It feeds the compatibility list. English or Spanish.
+title: "[Game report] Format, drive: short result"
 labels: ["game report"]
 body:
   - type: markdown
@@ -9,66 +9,62 @@ body:
         Thanks for testing. Reports that a game works are just as useful as reports that it does not.
         One game per issue, and the results go to the
         [compatibility list](https://github.com/DeLFuS77/maxpack-ps5/blob/main/docs/compatibility.md).
-        Search open and closed issues for the title ID first; if it is there, add a comment.
-        On MaxPack's page, the game's "Copy report" button gives most of these fields ready.
+
+        **You don't need to name the game.** The list identifies games only by their numbers (sizes,
+        volumes and setup), with no game name and no title ID, so please leave both out of the title,
+        the fields and the notes.
+
+        On MaxPack's page, the game's **Copy report** button ends with the row for the list, ready and
+        without the name: paste it below and fill in each `?`.
+
+  - type: textarea
+    id: row
+    attributes:
+      label: Row from Copy report
+      description: The last row of the game's "Copy report", with each `?` filled in. Only that row; the rest of the report names the game.
+      placeholder: "| 7.8 → 2.3 GiB (−70 %) | p5z | 1 | internal SSD | 13.60 | MaxPack 1.0.0 | Full | Plays, saves and loads | 2026-11-24 |  |"
+      render: markdown
 
   - type: input
-    id: title
+    id: sizes
     attributes:
-      label: Game name
-      placeholder: "Starfall Odyssey"
-    validations:
-      required: true
-
-  - type: input
-    id: ppsa
-    attributes:
-      label: Title ID (PPSA)
-      description: The one in `sce_sys/param.json`.
-      placeholder: "PPSA01234"
-    validations:
-      required: true
-
-  - type: input
-    id: game_version
-    attributes:
-      label: Game version
-      description: '`contentVersion` in `param.json`.'
-      placeholder: "01.000.010"
-    validations:
-      required: true
+      label: Original → .p5z (or folder)
+      description: The game's size before and after packing, in GiB as the console page shows them.
+      placeholder: "7.8 → 2.3 GiB"
 
   - type: dropdown
-    id: source
+    id: format
     attributes:
-      label: Source
+      label: Format
       description: How the game is on the drive.
       options:
-        - Folder (unpacked)
-        - Folder packed with zstd
-        - Folder packed with LZ4
-        - FPKG (.pkg)
-        - .p5z (played without installing)
-        - .p5z installed with MaxPack
+        - p5z (played without installing)
+        - zstd folder
+        - LZ4 folder
+        - pkg (debug FPKG)
+        - plain folder (unpacked)
+        - Installed with MaxPack's Install tab
     validations:
       required: true
+
+  - type: input
+    id: volumes
+    attributes:
+      label: Volumes
+      description: For a .p5z, how many volumes it has (`maxpack info` on the PC shows it). Leave empty for the other formats.
+      placeholder: "9"
 
   - type: dropdown
     id: drive
     attributes:
       label: Drive
+      description: Where the game is. Say how it is connected in the notes when it matters (an M.2 SSD in a USB-C enclosure is a USB SSD).
       options:
         - Internal SSD
-        - Extended M.2
-        - USB drive
-    validations:
-      required: true
-
-  - type: input
-    id: version
-    attributes:
-      label: MaxPack version
-      placeholder: "1.0.0"
+        - M.2 SSD (console slot)
+        - USB SSD
+        - USB HDD
+        - Other (say which in the notes)
     validations:
       required: true
 
@@ -76,7 +72,31 @@ body:
     id: firmware
     attributes:
       label: Console firmware
+      description: Settings > System > System Software.
       placeholder: "13.60"
+    validations:
+      required: true
+
+  - type: input
+    id: mounter
+    attributes:
+      label: Loader/mounter and version
+      description: The one that mounted the game.
+      placeholder: "MaxPack 1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: fakelib
+    attributes:
+      label: Fakelib mode
+      description: The Fakelib setting on the game's sheet.
+      options:
+        - Full
+        - Emulators only
+        - "Off"
+        - none (MaxPack libraries at launch off)
+        - Another mounter's own mode (say which in the notes)
     validations:
       required: true
 
@@ -98,8 +118,17 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: date
+    attributes:
+      label: Date of the test
+      description: The real date, YYYY-MM-DD (the clock of an offline console is often years behind).
+      placeholder: "2026-11-24"
+    validations:
+      required: true
+
   - type: textarea
     id: notes
     attributes:
       label: Notes
-      description: How far you played, what fails, anything odd. For a failure, paste the page's "Copy report" text or the maxpack.log lines for the game.
+      description: How far you played, what fails, what you tried before it worked, anything odd. No game name or title ID. For a failure you want looked into, the page's full Copy report and the maxpack.log lines go in a Bug report instead (they name the game).

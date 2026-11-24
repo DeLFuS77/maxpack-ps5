@@ -134,7 +134,7 @@ from its `.p5z`, without unpacking it:
 
 Every game tried, with firmware, mounter and result, goes into the
 [compatibility list](docs/compatibility.md). Tried one? Open the game's sheet, press **Copy report** (it
-has the row ready) and paste it in a
+ends with the row, which names no game) and paste that row in a
 [Game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml), whether it
 worked or not. How much MaxPack for the PC saves on other games, measured on the PC, is in the
 [engine's report](https://github.com/DeLFuS77/maxpack/blob/main/docs/reports/phase1.md).
@@ -280,13 +280,14 @@ The whole flow, from packing on the PC:
 
 ### A sheet for every game
 
-<p align="center"><img src="docs/img/console-game.jpg" alt="A .p5z game's sheet: Play, Rebuild cache, Copy report, Hide, Delete, and its details and storage"></p>
+<p align="center"><img src="docs/img/console-game.jpg" alt="A game's sheet: Play, Rebuild cache, Copy report, Hide, Delete, its details, the PlayGo stub and Fakelib (here Off), and its storage"></p>
 
 - **Play** starts the game on the console, even from your phone. It is off while another game runs,
   while the game is not Ready, or while another mounter is running.
 - **Copy report** gives a ready-to-paste text for an issue: MaxPack's version, the firmware, the
   mounter, the game, its source and state, ampr-emu-ng, the **last crash** if the game closed by
-  itself, the last lines of the log and a row for the [compatibility list](docs/compatibility.md).
+  itself, the last lines of the log and a row for the [compatibility list](docs/compatibility.md)
+  (the row names no game).
 - **Rebuild cache** redoes what MaxPack keeps for the game; **Delete** removes the game from the
   drive after asking you.
 - **Storage** shows what the game, its DLC, its saves and its cache take.
@@ -564,8 +565,9 @@ MaxPack has run on one console so far, so every report from another firmware, ga
 and a game that works is as useful to know as one that does not. English or Spanish are both fine.
 
 - **Tried a game?** Open a
-  [Game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml). The
-  game's **Copy report** fills most of it, and the result goes into the
+  [Game report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=game_report.yml); you do
+  not need to name the game. The row at the end of its **Copy report** fills most of it, and the result
+  goes into the
   [compatibility list](docs/compatibility.md).
 - **Found a bug?** Open a
   [Bug report](https://github.com/DeLFuS77/maxpack-ps5/issues/new?template=bug_report.yml) and paste

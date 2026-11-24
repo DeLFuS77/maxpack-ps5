@@ -41,14 +41,47 @@ pub struct Report<'a> {
     pub log: &'a str,
 }
 
-/// The source kind as /api/state names it: (the report's words, the compatibility list's words).
+/// The source kind as /api/state names it: (the report's words, the compatibility list's Format).
 pub fn kind_text(kind: &str, packing: Option<&str>) -> (&'static str, &'static str) {
     match (kind, packing) {
         ("pkg", _) => ("pkg", "pkg"),
         ("p5z", _) => ("p5z", "p5z"),
-        (_, Some("zstd")) => ("folder (zstd)", "carpeta zstd"),
-        (_, Some("lz4")) => ("folder (lz4)", "carpeta lz4"),
-        _ => ("folder", "carpeta"),
+        (_, Some("zstd")) => ("folder (zstd)", "zstd folder"),
+        (_, Some("lz4")) => ("folder (lz4)", "LZ4 folder"),
+        _ => ("folder", "plain folder"),
+    }
+}
+
+/// A compatibility-row cell: empty is `?`, a `|` is escaped and a control character (a line break or a
+/// tab) is a space, so the row stays one markdown line.
+fn cell(s: &str) -> String {
+    if s.is_empty() {
+        return "?".into();
+    }
+    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().replace('|', "\\|")
+}
+
+/// The compatibility list's Drive for the mount of a game's drive (`Source::drive`). `/mnt/ext1` is the
+/// M.2 slot, `/mnt/ext0` USB extended storage; on USB the console does not say whether the drive is an
+/// SSD or a hard drive, so the row asks. Any other mount is shown as it is.
+pub fn drive_text(drive: &str) -> String {
+    let usb = drive.strip_prefix("/mnt/usb").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    match drive {
+        "/data" => "internal SSD".into(),
+        "/mnt/ext1" => "M.2 SSD (console slot)".into(),
+        "/mnt/ext0" => "USB SSD or HDD? (extended storage)".into(),
+        _ if usb => "USB SSD or HDD?".into(),
+        _ => cell(drive),
+    }
+}
+
+/// The compatibility list's Fakelib mode, with the page's words; a game without the overlay gets none.
+fn fakelib_text(r: &Report) -> &'static str {
+    match r.fakelib {
+        _ if r.overlay_off => "none (MaxPack libraries at launch off)",
+        Mode::Full => "Full",
+        Mode::Emulators => "Emulators only",
+        Mode::Off => "Off",
     }
 }
 
@@ -75,18 +108,17 @@ pub fn utc(secs: u64) -> String {
     format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}Z", rem / 3600, rem / 60 % 60, rem % 60)
 }
 
-/// A row of `docs/compatibility.md` with the result and the date left to fill in ("?"): the
-/// console's clock is often years behind, so the date is not taken from it. A `|` is escaped and a
-/// control character (a line break or a tab in a param.json name) is a space, so the row stays one line.
+/// A row of `docs/compatibility.md`, in its column order: Original → `.p5z`, Format, Volumes, Drive,
+/// Firmware, Loader/mounter, Fakelib mode, Result, Date, Notes. The list names no game, so the row has
+/// no name, title id or game version. What the report does not know is left as `?` to fill in: the
+/// sizes, a `.p5z`'s volumes (a folder or a pkg has none: `—`), the result and the date (the console's
+/// clock is often years behind, so the date is not taken from it). Notes are left empty.
 pub fn compat_row(r: &Report) -> String {
-    let cell = |s: &str| if s.is_empty() {
-        "?".to_string()
-    } else {
-        s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().replace('|', "\\|")
-    };
+    let volumes = if r.kind == "p5z" { "?" } else { "—" };
     let cells = [
-        cell(r.title_id), cell(r.title_name), cell(r.game_version), kind_text(r.kind, r.packing).1.to_string(),
-        cell(r.firmware.unwrap_or("")), format!("MaxPack {}", r.version), "?".into(), "?".into(),
+        "?".into(), kind_text(r.kind, r.packing).1.to_string(), volumes.into(), drive_text(r.drive),
+        cell(r.firmware.unwrap_or("")), format!("MaxPack {}", r.version), fakelib_text(r).into(), "?".into(), "?".into(),
+        String::new(),
     ];
     format!("| {} |", cells.join(" | "))
 }
@@ -132,7 +164,7 @@ pub fn text(r: &Report) -> String {
         format!("PlayGo stub: {}", r.playgo),
         format!("Last crash: {crash}"),
         String::new(),
-        "Row for docs/compatibility.md (fill in the result and the date):".into(),
+        "Row for docs/compatibility.md (fill in each ?; it names no game):".into(),
         compat_row(r),
         String::new(),
         format!("maxpack.log, last {LOG_LINES} lines with {}:", r.title_id),
@@ -162,10 +194,24 @@ mod tests {
     fn kinds() {
         assert_eq!(kind_text("pkg", None), ("pkg", "pkg"));
         assert_eq!(kind_text("p5z", None), ("p5z", "p5z"));
-        assert_eq!(kind_text("folder", Some("plain")), ("folder", "carpeta"));
-        assert_eq!(kind_text("folder", Some("zstd")), ("folder (zstd)", "carpeta zstd"));
-        assert_eq!(kind_text("folder", Some("lz4")), ("folder (lz4)", "carpeta lz4"));
-        assert_eq!(kind_text("folder", None), ("folder", "carpeta"));
+        assert_eq!(kind_text("folder", Some("plain")), ("folder", "plain folder"));
+        assert_eq!(kind_text("folder", Some("zstd")), ("folder (zstd)", "zstd folder"));
+        assert_eq!(kind_text("folder", Some("lz4")), ("folder (lz4)", "LZ4 folder"));
+        assert_eq!(kind_text("folder", None), ("folder", "plain folder"));
+    }
+
+    #[test]
+    fn drives() {
+        assert_eq!(drive_text("/data"), "internal SSD");
+        assert_eq!(drive_text("/mnt/ext1"), "M.2 SSD (console slot)");
+        // On USB the report cannot tell an SSD from a hard drive: the row asks.
+        assert_eq!(drive_text("/mnt/ext0"), "USB SSD or HDD? (extended storage)");
+        assert_eq!(drive_text("/mnt/usb0"), "USB SSD or HDD?");
+        assert_eq!(drive_text("/mnt/usb7"), "USB SSD or HDD?");
+        // Any other mount is shown as it is, and none at all as ?.
+        assert_eq!(drive_text("/mnt/usbx"), "/mnt/usbx");
+        assert_eq!(drive_text("/mnt/ext2"), "/mnt/ext2");
+        assert_eq!(drive_text(""), "?");
     }
 
     #[test]
@@ -189,20 +235,38 @@ mod tests {
 
     #[test]
     fn the_compatibility_row() {
+        // Original -> .p5z, Format, Volumes, Drive, Firmware, Loader/mounter, Fakelib mode, Result, Date, Notes.
         let r = starfall("", None);
-        assert_eq!(compat_row(&r), "| PPSA10001 | Starfall Odyssey | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
-        // A | in a name would split the cell; no firmware and no version show as ?.
-        let r = Report { title_name: "A | B", firmware: None, game_version: "", kind: "p5z", packing: None, ..starfall("", None) };
-        assert_eq!(compat_row(&r), "| PPSA10001 | A \\| B | ? | p5z | ? | MaxPack 1.0.0 | ? | ? |");
+        assert_eq!(compat_row(&r), "| ? | zstd folder | — | internal SSD | 13.60 | MaxPack 1.0.0 | Full | ? | ? |  |");
+        // A .p5z has volumes, to fill in; no firmware shows as ?.
+        let r = Report { firmware: None, kind: "p5z", packing: None, drive: "/mnt/ext1", fakelib: Mode::Emulators, ..starfall("", None) };
+        assert_eq!(compat_row(&r), "| ? | p5z | ? | M.2 SSD (console slot) | ? | MaxPack 1.0.0 | Emulators only | ? | ? |  |");
+        let r = Report { kind: "pkg", packing: None, drive: "/mnt/usb0", fakelib: Mode::Off, ..starfall("", None) };
+        assert_eq!(compat_row(&r), "| ? | pkg | — | USB SSD or HDD? | 13.60 | MaxPack 1.0.0 | Off | ? | ? |  |");
+        // Without the overlay there is no fakelib at all, whatever its mode says.
+        let r = Report { kind: "folder", packing: Some("plain"), overlay_off: true, fakelib: Mode::Off, ..starfall("", None) };
+        assert_eq!(compat_row(&r), "| ? | plain folder | — | internal SSD | 13.60 | MaxPack 1.0.0 | none (MaxPack libraries at launch off) | ? | ? |  |");
+    }
+
+    #[test]
+    fn the_row_names_no_game() {
+        // The list identifies a game by its numbers only: no name, no title id, no game version.
+        let r = Report { kind: "p5z", packing: None, ..starfall("", None) };
+        let row = compat_row(&r);
+        for game in ["Starfall", "PPSA10001", "01.000.010", "/data/homebrew"] {
+            assert!(!row.contains(game), "{game:?} in {row:?}");
+        }
+        // The rest of the report still has them, for the issue.
+        assert!(text(&r).contains("Game: Starfall Odyssey (PPSA10001), version 01.000.010\n"), "{}", text(&r));
     }
 
     #[test]
     fn control_characters_never_break_the_row() {
-        // A name from param.json may carry a line break, a tab or another control character: each is a
-        // space, so the row stays one markdown line.
-        let r = Report { title_name: "Line one\r\nLine\ttwo\u{7}|x", game_version: "01.0\n00", ..starfall("", None) };
+        // A | would split a cell and a line break, a tab or another control character would break the
+        // markdown line: a | is escaped and each control character is a space.
+        let r = Report { drive: "/mnt/odd|one\r\nx\t\u{7}", firmware: Some("13.6\n0"), ..starfall("", None) };
         let row = compat_row(&r);
-        assert_eq!(row, "| PPSA10001 | Line one  Line two \\|x | 01.0 00 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |");
+        assert_eq!(row, "| ? | zstd folder | — | /mnt/odd\\|one  x   | 13.6 0 | MaxPack 1.0.0 | Full | ? | ? |  |");
         assert!(!row.chars().any(char::is_control), "{row:?}");
         // The whole report keeps the row on one line too.
         assert!(text(&r).contains(&format!("\n{row}\n")), "{}", text(&r));
@@ -223,8 +287,8 @@ ampr-emu-ng: bundled v0.5.0-maxpack.3\n\
 PlayGo stub: on\n\
 Last crash: 2026-01-01 00:00:00Z in eboot.bin, killed by signal 11 (console dump folder PPSA10001_1795166239)\n\
 \n\
-Row for docs/compatibility.md (fill in the result and the date):\n\
-| PPSA10001 | Starfall Odyssey | 01.000.010 | carpeta zstd | 13.60 | MaxPack 1.0.0 | ? | ? |\n\
+Row for docs/compatibility.md (fill in each ?; it names no game):\n\
+| ? | zstd folder | — | internal SSD | 13.60 | MaxPack 1.0.0 | Full | ? | ? |  |\n\
 \n\
 maxpack.log, last 40 lines with PPSA10001:\n\
 2026-01-01 00:00:00Z [1] PPSA10001: built\n\

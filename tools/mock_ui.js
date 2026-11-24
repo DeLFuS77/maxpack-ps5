@@ -392,8 +392,12 @@ http.createServer((req, res) => {
       const g = games().find((x) => x.title_id === p.slice('/api/report/'.length));
       if (!g) return send(res, 404, 'text/plain', 'not found');
       // The shape of maxpack_logic::report::text, with fixed values.
-      const kinds = { pkg: ['pkg', 'pkg'], p5z: ['p5z', 'p5z'], plain: ['folder', 'carpeta'], zstd: ['folder (zstd)', 'carpeta zstd'], lz4: ['folder (lz4)', 'carpeta lz4'] };
-      const [en, es] = kinds[g.kind === 'folder' ? g.packing : g.kind];
+      const kinds = { pkg: ['pkg', 'pkg'], p5z: ['p5z', 'p5z'], plain: ['folder', 'plain folder'], zstd: ['folder (zstd)', 'zstd folder'], lz4: ['folder (lz4)', 'LZ4 folder'] };
+      const [en, format] = kinds[g.kind === 'folder' ? g.packing : g.kind];
+      // maxpack_logic::report::compat_row: no name, no title id; drive_text and the Fakelib mode in the page's words.
+      const drive = { '/data': 'internal SSD', '/mnt/ext1': 'M.2 SSD (console slot)', '/mnt/ext0': 'USB SSD or HDD? (extended storage)' }[g.drive]
+        || (/^\/mnt\/usb\d+$/.test(g.drive) ? 'USB SSD or HDD?' : g.drive);
+      const mode = g.overlay_off ? 'none (MaxPack libraries at launch off)' : { full: 'Full', emulators: 'Emulators only', off: 'Off' }[g.fakelib_mode];
       const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
@@ -403,8 +407,8 @@ http.createServer((req, res) => {
           g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})`] : [],
         ['ampr-emu-ng: bundled v0.5.1-maxpack.1', `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : 'on'}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
-          '', 'Row for docs/compatibility.md (fill in the result and the date):',
-          `| ${g.title_id} | ${g.title_name} | ${g.version} | ${es} | 13.60 | MaxPack 1.0.0 | ? | ? |`, '',
+          '', 'Row for docs/compatibility.md (fill in each ?; it names no game):',
+          `| ? | ${format} | ${g.kind === 'p5z' ? '?' : '—'} | ${drive} | 13.60 | MaxPack 1.0.0 | ${mode} | ? | ? |  |`, '',
           `maxpack.log, last 40 lines with ${g.title_id}:`, `2026-11-23 20:00:05Z [5000] ${g.title_id}: cache fresh`]).join('\n') + '\n';
       return send(res, 200, 'text/plain; charset=utf-8', text);
     }
