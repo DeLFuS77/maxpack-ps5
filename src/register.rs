@@ -559,12 +559,14 @@ pub fn is_registered(title_id: &str) -> bool {
     }
 }
 
-/// is_registered for many titles (/api/state), in `tids` order, with one app.db read and one pass
-/// over it (maxpack_logic::presence::in_app_db). All false when app.db cannot be read (logged once
-/// until it reads again: the page polls this every second or two).
-/// ponytail: app.db is read on every call; it is a few MB at most.
+/// is_registered for many titles (/api/state), in `tids` order: the staged files of each, then its
+/// title id in app.db (maxpack_logic::presence::in_app_db). app.db is read and scanned again only when
+/// its length or mtime or the titles asked changed (presence::DbMemo): the page polls this every
+/// second or two. All false when app.db cannot be read (logged once until it reads again).
 pub fn registered(tids: &[&str]) -> Vec<bool> {
+    use std::os::unix::fs::MetadataExt;
     static READ_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static MEMO: Mutex<Option<maxpack_logic::presence::DbMemo>> = Mutex::new(None);
     let staged: Vec<bool> = tids.iter()
         .map(|t| Path::new(APP_BASE).join(t).join("sce_sys/param.json").is_file()
             && Path::new(APPMETA_BASE).join(t).join("param.json").is_file())
@@ -572,18 +574,23 @@ pub fn registered(tids: &[&str]) -> Vec<bool> {
     if !staged.contains(&true) {
         return staged;
     }
-    let db = match fs::read(APP_DB) {
-        Ok(db) => db,
+    let wanted: Vec<&str> = tids.iter().zip(&staged).map(|(t, s)| if *s { *t } else { "" }).collect();
+    let found = fs::metadata(APP_DB).and_then(|m| {
+        let mut memo = MEMO.lock().unwrap_or_else(|e| e.into_inner());
+        memo.get_or_insert_with(Default::default).get((m.len(), m.mtime(), m.mtime_nsec()), &wanted, || fs::read(APP_DB))
+    });
+    match found {
+        Ok(found) => {
+            READ_FAILED.store(false, std::sync::atomic::Ordering::Relaxed);
+            found
+        }
         Err(e) => {
             if !READ_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 log!("read {APP_DB}: {e}; titles shown as not registered");
             }
-            return vec![false; tids.len()];
+            vec![false; tids.len()]
         }
-    };
-    READ_FAILED.store(false, std::sync::atomic::Ordering::Relaxed);
-    let wanted: Vec<&str> = tids.iter().zip(&staged).map(|(t, s)| if *s { *t } else { "" }).collect();
-    maxpack_logic::presence::in_app_db(&db, &wanted)
+    }
 }
 
 /// Only the nullfs `app0` -> /system_ex/app/<TID> (+ backport unionfs) of `register`, for a

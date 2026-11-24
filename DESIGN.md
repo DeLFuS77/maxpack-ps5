@@ -491,7 +491,7 @@ pub fn register(title_id: &str, app0: &std::path::Path, sce_sys: &std::path::Pat
 pub fn register_tile(port: u16);
 pub fn tile_staged() -> bool;                             // FW 12+: the tile waits for the pass's install_all
 pub fn is_registered(title_id: &str) -> bool;
-pub fn registered(tids: &[&str]) -> Vec<bool>;            // is_registered for many, in tids order, one app.db read (all false when unreadable)
+pub fn registered(tids: &[&str]) -> Vec<bool>;            // is_registered for many, in tids order; app.db read again only when its (len, mtime) or tids change (all false when unreadable)
 pub fn set_snd0info(title_id: &str);                      // app.db snd0info -> /user/appmeta/<TID>/snd0.at9; logs, never fails
 pub fn spawn_snd0info(title_id: &str, delay_ms: u64);    // set_snd0info on its own thread after delay_ms
 pub fn mount(title_id: &str, app0: &std::path::Path, backport: Option<&std::path::Path>) -> std::io::Result<()>;
@@ -553,7 +553,7 @@ minute):
   hidden: bool (in the `hidden` setting: the page lists it only with "show hidden" on),
   crash: {at, process, status}|null (the last crash, from crashes.json, see Crash report),
   rebuild_queued: bool (a rebuild asked for, not started yet: the title is in `forced`; the page keeps Rebuild disabled through it and while the game is pending, checking or building),
-  registered: bool (`register::registered`: the staged `param.json` files and the title id in app.db, one app.db read per request),
+  registered: bool (`register::registered`: the staged `param.json` files and the title id in app.db; app.db is read and scanned again only when its length or mtime, or the titles asked, changed: `maxpack_logic::presence::DbMemo`),
   mounted: bool (`/system_ex/app/<TID>` is a mount point, one mount table per request), source_present: bool (the source path exists),
   overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),

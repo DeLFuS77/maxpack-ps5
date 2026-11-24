@@ -807,8 +807,8 @@ fn api_state(state: &State) -> Vec<u8> {
 }
 
 /// Per game: [registered (register::registered: the staged files and the title id in app.db), mounted
-/// (/system_ex/app/<TID> is a mount point), source present (its path exists)], from one app.db read
-/// and one mount table for all of them.
+/// (/system_ex/app/<TID> is a mount point), source present (its path exists)], from app.db (read again
+/// only when it changed) and one mount table for all of them.
 fn presence(games: &[Game]) -> Vec<[bool; 3]> {
     let tids: Vec<&str> = games.iter().map(|g| g.src.title_id.as_str()).collect();
     let registered = register::registered(&tids);
