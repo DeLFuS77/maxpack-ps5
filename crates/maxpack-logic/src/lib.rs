@@ -14,6 +14,7 @@ pub mod play;
 pub mod presence;
 pub mod report;
 pub mod roots;
+pub mod sandbox;
 pub mod sony;
 pub mod titles;
 pub mod version;
