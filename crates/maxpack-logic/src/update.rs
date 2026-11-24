@@ -52,10 +52,55 @@ pub enum Latest {
     Unusable(String),
 }
 
+/// `vX.Y.Z` or `X.Y.Z`, numbers only: a pre-release name (`-beta.1`) is never offered.
+fn plain_version(v: &str) -> Option<(u32, u32, u32)> {
+    let v = v.strip_prefix('v').unwrap_or(v);
+    // Digits only: u32's parse would also take "+1".
+    let mut it = v.split('.').map(|p| if p.bytes().all(|b| b.is_ascii_digit()) { p.parse::<u32>().ok() } else { None });
+    let r = (it.next()??, it.next()??, it.next()??);
+    it.next().is_none().then_some(r)
+}
+
+/// The asset `name` of release `tag`: exactly one, at this repository's download URL for that tag,
+/// not empty and within `max`.
+fn pick(assets: &[serde_json::Value], tag: &str, name: &str, max: usize) -> Result<Asset, String> {
+    let mut found = assets.iter().filter(|a| a["name"].as_str() == Some(name));
+    let (Some(a), None) = (found.next(), found.next()) else {
+        return Err(format!("{tag}: not one {name} asset"));
+    };
+    let url = a["browser_download_url"].as_str().unwrap_or("");
+    let want = format!("https://github.com/{REPO}/releases/download/{tag}/{name}");
+    if url != want {
+        return Err(format!("{tag}: {name} is at {url:?}, not {want}"));
+    }
+    match a["size"].as_u64().and_then(|n| usize::try_from(n).ok()) {
+        Some(size) if size > 0 && size <= max => Ok(Asset { url: want, size }),
+        n => Err(format!("{tag}: {name} size {n:?} is not 1..={max} bytes")),
+    }
+}
+
 /// What a releases/latest answer (`body`) offers to the running version (`running`, Cargo.toml's).
 pub fn latest(body: &[u8], running: &str) -> Latest {
-    let _ = (body, running);
-    Latest::Unusable(String::new())
+    let j: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(j) => j,
+        Err(e) => return Latest::Unusable(format!("bad JSON: {e}")),
+    };
+    let Some(tag) = j["tag_name"].as_str() else { return Latest::Unusable("no tag_name".into()) };
+    if j["draft"].as_bool() != Some(false) || j["prerelease"].as_bool() != Some(false) {
+        return Latest::Unusable(format!("{tag}: a draft or a pre-release"));
+    }
+    let (Some(new), Some(cur)) = (plain_version(tag), plain_version(running)) else {
+        return Latest::Unusable(format!("{tag} or the running {running} is not X.Y.Z"));
+    };
+    if new <= cur {
+        return Latest::NotNewer(tag.to_string());
+    }
+    let assets = j["assets"].as_array().map_or(&[][..], |a| a.as_slice());
+    let picked = pick(assets, tag, ELF_ASSET, ELF_MAX).and_then(|elf| Ok((elf, pick(assets, tag, SUMS_ASSET, SUMS_MAX)?)));
+    match picked {
+        Ok((elf, sums)) => Latest::Newer(Offer { version: tag.to_string(), elf, sums }),
+        Err(why) => Latest::Unusable(why),
+    }
 }
 
 /// What a failed look at LATEST_URL means; `status` is the HTTP status, None when no answer came.
@@ -70,27 +115,66 @@ pub enum LookFailed {
 }
 
 pub fn look_failed(status: Option<u16>) -> LookFailed {
-    let _ = status;
-    LookFailed::TryAgain
+    match status {
+        Some(404) => LookFailed::NoRelease,
+        None | Some(500..=599) => LookFailed::TryAgain,
+        Some(_) => LookFailed::GiveUp,
+    }
 }
 
 /// ELF or SELF (the signed form elfldr also takes).
 pub fn is_module(b: &[u8]) -> bool {
-    let _ = b;
-    false
+    b.starts_with(&[0x7f, 0x45, 0x4c, 0x46]) || b.starts_with(&[0x4f, 0x15, 0x3d, 0x1d])
+}
+
+/// 64 hex digits, either case.
+fn parse_hex(s: &str) -> Option<[u8; 32]> {
+    let b = s.as_bytes();
+    if b.len() != 64 || !b.iter().all(u8::is_ascii_hexdigit) {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (o, pair) in out.iter_mut().zip(b.chunks_exact(2)) {
+        *o = u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?;
+    }
+    Some(out)
 }
 
 /// The SHA-256 that `sums` (a SHA256SUMS file: `<64 hex>  <name>` or `<64 hex> *<name>` lines)
 /// lists for `name`. Err: not text, no line for `name`, or more than one.
 pub fn listed_sha256(sums: &[u8], name: &str) -> Result<[u8; 32], String> {
-    let _ = (sums, name);
-    Err(String::new())
+    let text = std::str::from_utf8(sums).map_err(|_| format!("{SUMS_ASSET} is not text"))?;
+    let mut found = None;
+    for line in text.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) {
+        // sha256sum's line: the hash, a space, ' ' (text) or '*' (binary), the name.
+        let (Some(hash), Some(rest)) = (line.get(..64), line.get(64..)) else { continue };
+        let listed = rest.strip_prefix("  ").or_else(|| rest.strip_prefix(" *"));
+        if listed != Some(name) {
+            continue;
+        }
+        let Some(h) = parse_hex(hash) else { continue };
+        if found.replace(h).is_some() {
+            return Err(format!("{SUMS_ASSET} lists {name} more than once"));
+        }
+    }
+    found.ok_or_else(|| format!("{SUMS_ASSET} lists no {name}"))
 }
 
 /// The downloaded ELF is the offered one: the asset's size, an ELF or SELF, and the SHA-256 that the
 /// release's SHA256SUMS (`sums`) lists for maxpack.elf. Err says what differs; nothing is sent then.
 pub fn verify(elf: &[u8], offer: &Offer, sums: &[u8]) -> Result<(), String> {
-    let _ = (elf, offer, sums);
+    if elf.len() != offer.elf.size {
+        return Err(format!("{} bytes, the release's {ELF_ASSET} has {}", elf.len(), offer.elf.size));
+    }
+    if !is_module(elf) {
+        return Err(format!("not an ELF (magic {:02x?})", &elf[..elf.len().min(4)]));
+    }
+    let want = listed_sha256(sums, ELF_ASSET)?;
+    let got = crate::sha256::digest(elf);
+    if got != want {
+        let (got, want) = (crate::sha256::hex(&got), crate::sha256::hex(&want));
+        return Err(format!("SHA-256 {got} is not the {want} that {SUMS_ASSET} lists"));
+    }
     Ok(())
 }
 
@@ -119,17 +203,42 @@ pub enum Fail {
 
 impl Fail {
     pub fn status(&self) -> u16 {
-        500
+        match self {
+            Fail::NotOffered => 400,
+            Fail::GameRunning | Fail::UpdateRunning | Fail::ScanRunning | Fail::InstallRunning => 409,
+            Fail::NoElfldr(_) => 503,
+            Fail::Download(_) | Fail::Verify(_) | Fail::Send(_) => 502,
+        }
     }
 
     /// The page shows its own text for each code (ui.html `updFail_<code>`).
     pub fn code(&self) -> &'static str {
-        ""
+        match self {
+            Fail::NotOffered => "not_offered",
+            Fail::GameRunning => "game_running",
+            Fail::UpdateRunning => "update_running",
+            Fail::ScanRunning => "scan_running",
+            Fail::InstallRunning => "install_running",
+            Fail::NoElfldr(_) => "no_elfldr",
+            Fail::Download(_) => "download",
+            Fail::Verify(_) => "checksum",
+            Fail::Send(_) => "send",
+        }
     }
 
     /// English, for the log and the page's details.
     pub fn detail(&self) -> String {
-        String::new()
+        match self {
+            Fail::NotOffered => "not the newer release found at start".into(),
+            Fail::GameRunning => "a game is running: close it first".into(),
+            Fail::UpdateRunning => "an update is already running".into(),
+            Fail::ScanRunning => "a scan or build is in progress; try again in a moment".into(),
+            Fail::InstallRunning => "the installer is copying a game; try again when it ends".into(),
+            Fail::NoElfldr(e) => format!("elfldr does not answer: {e}"),
+            Fail::Download(e) => format!("download failed: {e}"),
+            Fail::Verify(e) => format!("not the released {ELF_ASSET}, not sent: {e}"),
+            Fail::Send(e) => format!("sending it to elfldr failed: {e}"),
+        }
     }
 }
 
@@ -148,29 +257,38 @@ impl Updater {
     }
 
     pub fn set_offer(&mut self, offer: Option<Offer>) {
-        let _ = offer;
+        self.offer = offer;
     }
 
     pub fn offer(&self) -> Option<&Offer> {
-        None
+        self.offer.as_ref()
     }
 
     /// An update runs or its ELF was sent less than HOLD_MS ago: no scan pass starts.
     pub fn holding(&self, now_ms: u64) -> bool {
-        let _ = now_ms;
-        false
+        self.updating || self.hold_until > now_ms
     }
 
     /// Starts the update to `version`: the offer it installs, or why not. `game_running`: a game
     /// runs now.
     pub fn begin(&mut self, version: &str, game_running: bool, now_ms: u64) -> Result<Offer, Fail> {
-        let _ = (version, game_running, now_ms);
-        Err(Fail::NotOffered)
+        let offer = self.offer.as_ref().filter(|o| o.version == version).ok_or(Fail::NotOffered)?.clone();
+        if game_running {
+            return Err(Fail::GameRunning);
+        }
+        if self.holding(now_ms) {
+            return Err(Fail::UpdateRunning);
+        }
+        self.updating = true;
+        Ok(offer)
     }
 
     /// The update ended; `sent`: its ELF went to elfldr (then HOLD_MS of hold).
     pub fn end(&mut self, sent: bool, now_ms: u64) {
-        let _ = (sent, now_ms);
+        self.updating = false;
+        if sent {
+            self.hold_until = now_ms.saturating_add(HOLD_MS);
+        }
     }
 }
 
