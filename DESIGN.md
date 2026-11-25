@@ -43,6 +43,7 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
 | `/data/maxpack/maxpack.log` | log (setting `log`); each line starts with the UTC time and the milliseconds since boot (`2026-11-19 20:51:03Z [10643021] `); starts over past 1 MiB, no kept copy |
 | `/data/maxpack/maxpack.elf` | self copy the tile starts (Dump Forge style, below) |
 | `/data/maxpack/crashes.json` | the last crash of each title (see Crash report); not in a cache, which a pkg or .p5z game sees as `/app0` |
+| `/data/maxpack/recommended.json` | the last downloaded list of recommended settings whose `version` was higher than the one in use (see Recommended settings); written tmp + rename |
 
 ## Drives and scan roots (`src/storage.rs`)
 Drives: `/data` (label "Internal") always, plus each of `/mnt/usb0..7` ("USB n+1") and
@@ -86,7 +87,9 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `overlay_off` | [] | array of title ids whose cache gets an empty `fakelib/`, so the launch watcher mounts nothing in their sandbox: no overlay (not the game's or backport's fakelib, not ampr-emu-ng, not the emulators), no `/data`, USB, fonts or writable `/app0` either; the title runs as registered (for a game that must not get MaxPack's libraries, such as a Playden title shell). Plain folder games only (`maxpack_logic::overlay`): a pkg is read through ampr-emu-ng's pkg mode, a `.p5z` only through our ampr-emu-ng's p5z mode, and a zstd or LZ4 folder's packs only through ampr-emu-ng, all of which come in that overlay; so the web refuses it for them (409) and a listed title whose library copy is one of those (packed since, or a pkg or `.p5z` copy took over) keeps its fakelib. Per game from the game sheet (`POST /api/overlay/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/`. Ported from the upstream project's 0.3.2, with the `.p5z` and packed folder refusals ours |
 | `fakelib_emulators` | [] | array of title ids whose fakelib mode is `emulators`: their cache's `fakelib/` gets nothing from the game's or the backport's lib dir, only the bundled emulators they need (`add_emulators`, `playgo_off` as usual) and ampr-emu-ng (see Cache). For a game that shows a black screen with the libraries its dump or backport ships. Per game from the game sheet (`POST /api/fakelib/<TID>`); the settings form keeps the list; a change only refreshes `fakelib/` |
 | `fakelib_off` | [] | array of title ids whose fakelib mode is `off`: their `fakelib/` gets only ampr-emu-ng, and that only for a pkg, a `.p5z` or a zstd or LZ4 folder (a plain folder gets an empty `fakelib/`, so MaxPack mounts nothing at its launch, as with `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in its sandbox). For a game that still stalls with the emulators. A title is in one of the two lists at most (`maxpack_logic::fakelib::set_mode`); one listed in both by hand is `off` and the next save drops it from `fakelib_emulators` (`fakelib::exclusive`, logged). In neither: `full`, the composition as it always was. Like `fakelib_emulators` otherwise |
+| `manual_settings` | [] | array of title ids whose Fakelib mode and PlayGo stub the user chose on the game sheet: the recommended settings do not apply to them (see Recommended settings). A title in `fakelib_emulators`, `fakelib_off` or `playgo_off` counts as chosen too, so a console upgraded from 1.0.1 keeps every choice it had. Added by `POST /api/fakelib/<TID>` and `POST /api/playgo/<TID>`, cleared with the three others by `POST /api/recommended/<TID>`; the settings form keeps the list |
 | `ampr_auto_update` | false | once per start, download a newer ampr-emu-ng release from GitHub, installed only when it matches the release's `SHA256SUMS` and once the secure-connection self-test has passed (a hand-placed `libSceAmpr.sprx` is kept; see Auto-update in Flow) |
+| `recommended_update` | true | once per start, download the list of recommended settings from this repository once the secure-connection self-test has passed (see Recommended settings); off: the copy in use stays (the bundled one, or the last download) |
 | `backports` | true | apply `<scan root>/backports/<TID>*` (the game's own root, the other roots, then `/data/homebrew`: `maxpack_logic::exclude::backport_dirs`; an excluded `backports` folder is never opened and an excluded backport never used) |
 | `scan_interval_seconds` | 10 | scan loop period (1..3600) |
 | `stability_wait_seconds` | 10 | skip a source changed less than this many seconds ago (still being copied) (0..3600, 0 = off) |
@@ -97,7 +100,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
-Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `exclude`, `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`) that is not
+Invalid values are logged and replaced by the default; a string item of an array (`scanpath`, `exclude`, `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`, `manual_settings`) that is not
 a valid value is logged and skipped, the other items stay (an array that does not parse, such as one with a number in it,
 is ignored as a whole). The web UI edits the same file.
 
@@ -179,7 +182,9 @@ is ignored as a whole). The web UI edits the same file.
   The dlc_emu set is all-or-nothing: when any of its 3 files is a copy that is neither a known older release nor the bundled file, none of the 3
   is added or upgraded (no mixed set), logged `<TID>: fakelib: kept the game's dlc_emu files (not a known release)`; pgo_stub goes per file.
   A title in `playgo_off` skips pgo_stub entirely (no add, no upgrade, the eboot is not searched), logged
-  `<TID>: fakelib: PlayGo stub off (playgo_off)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
+  `<TID>: fakelib: PlayGo stub off (playgo_off or the recommended settings)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
+  Here and below, `playgo_off` and the fakelib mode are the effective ones (`recommended::effective`): the user's
+  choice, else the recommended settings' (see Recommended settings).
   A plain folder title in `overlay_off` (`cache::overlay_off`) stops right after `fakelib/` is emptied (no base, no
   emulators, no ampr), logged `<TID>: fakelib: overlay off (overlay_off)`; `.ampr` is written with `"overlay_off": true`
   and the earlier "playgo" memo kept. Launch then mounts nothing (empty `fakelib/`).
@@ -193,7 +198,8 @@ is ignored as a whole). The web UI edits the same file.
   zstd or LZ4 folder), whatever `inject_ampr` says; a plain folder gets an empty `fakelib/` (launch then mounts
   nothing, as for `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in the sandbox). Each composition in a mode other than `full` logs one line:
   `<TID>: fakelib: mode emulators (the game's and backport's fakelib not used)`, `<TID>: fakelib: mode off (only
-  ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`. `overlay_off` comes first: such a title stops at the empty
+  ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`, with `, recommended setting` after it when the mode is the
+  recommended settings'. `overlay_off` comes first: such a title stops at the empty
   `fakelib/` whatever its mode.
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
   `.pkg` named in `kraken.image`) or a .p5z game (a game's own ng has no p5z mode, so `keep_game_ng` does not apply:
@@ -210,7 +216,8 @@ is ignored as a whole). The web UI edits the same file.
   `"overlay_off": true` is in `.ampr` only for a title `cache::overlay_off` takes (an older `.ampr` stays fresh).
   `"fakelib_mode": "emulators"|"off"` is in `.ampr` only for a mode other than `full` (`fakelib::record`); a `.ampr`
   without it (every cache built before the setting, and every `full` one) reads as `full` (`fakelib::recorded`), so the
-  upgrade refreshes no cache.
+  upgrade refreshes no cache. A new list of recommended settings that changes a game's effective mode or PlayGo stub
+  makes the recorded state differ in the same way, so that game's `fakelib/` is recomposed at the next pass.
   When "ampr", "emus" or "overlay_off" differ, or the recorded fakelib mode does (the ampr dir, `inject_ampr`, the emulator inputs, `overlay_off` or the mode changed), or `.done` still has a
   `game_fakelib` other than `full` (a cache built before the setting was removed), `check` says `Fakelib` and only `fakelib/` is
   recomposed (`refresh_fakelib`, which then rewrites `.done` with its own mtime and its inputs record), no extraction or re-registration. `fakelib/` is not in the AMPR index.
@@ -356,7 +363,7 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its `playgo_off` membership,
+only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its effective `playgo_off`,
 `cache::overlay_off` and `cache::fakelib_mode`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
 `.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
 Duplicate title ids: a folder beats a pkg, which beats a .p5z
@@ -463,8 +470,8 @@ pub const CONFIG_PATH: &str = "/data/maxpack/config.toml";
 #[derive(Clone, PartialEq, Debug)]
 pub struct Settings { pub scan_paths: Vec<String>, pub exclude: Vec<String>, pub inject_ampr: bool, pub add_emulators: bool,
   pub playgo_off: Vec<String>, pub hidden: Vec<String>, pub overlay_off: Vec<String>,
-  pub fakelib_emulators: Vec<String>, pub fakelib_off: Vec<String>, pub ampr_auto_update: bool,
-  pub backports: bool, pub scan_interval_secs: u64, pub stability_wait_secs: u64, pub low_space_gb: u64,
+  pub fakelib_emulators: Vec<String>, pub fakelib_off: Vec<String>, pub manual_settings: Vec<String>,
+  pub ampr_auto_update: bool, pub recommended_update: bool, pub backports: bool, pub scan_interval_secs: u64, pub stability_wait_secs: u64, pub low_space_gb: u64,
   pub auto_remove_missing: bool, pub auto_remove_delay_secs: u64, pub notify: bool, pub log: bool, pub debug: bool }
 impl Default for Settings
 pub fn load() -> Settings;                       // creates the file with defaults when missing
@@ -510,7 +517,8 @@ pub fn relink(src: &Source, s: &Settings, from: &std::path::Path) -> std::io::Re
 pub fn pkg_id(pkg: &std::path::Path) -> std::io::Result<String>;   // sampled identity, see Cache
 pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fakelib: fakelib/ only
 pub fn overlay_off(src: &Source, s: &Settings) -> bool;                 // listed in overlay_off and a plain folder: empty fakelib/
-pub fn fakelib_mode(src: &Source, s: &Settings) -> maxpack_logic::fakelib::Mode; // from fakelib_emulators / fakelib_off; Full in neither
+pub fn fakelib_mode(src: &Source, s: &Settings) -> maxpack_logic::fakelib::Mode; // effective: recommended::effective
+pub fn playgo_off(src: &Source, s: &Settings) -> bool;                  // effective: recommended::effective
 pub fn check(src: &Source, s: &Settings) -> Fresh;
 pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z build stopped at its space check (inside an io::Error)
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
@@ -568,6 +576,51 @@ pub fn firmware() -> Option<String>;                     // "13.60" from the SDK
 pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
 ```
 
+## Recommended settings (`src/recommended.rs`, `maxpack_logic::recommended`)
+A list of per-game settings that a game needs to start: its Fakelib mode, its PlayGo stub, and a notice. Out of
+scope: every other setting (`overlay_off`, backports, scans). The console never sends anything about its games.
+
+- **Files.** `data/recommended.json` in the repository, bundled in the ELF (`include_bytes!`; its parse is a test,
+  `bundled_list_parses`), and the last downloaded copy, `/data/maxpack/recommended.json`. At start `recommended::init`
+  takes the cached copy when it parses and its `version` is higher than the bundled one's, else the bundled list:
+  `recommended: v<version> (<n> titles, bundled|downloaded)`, or `recommended: cached copy ignored: <reason>` (it
+  does not parse, it cannot be read, or it is not newer).
+- **Format.** `{"format": 1, "version": <positive integer, higher for each change>, "titles": {"<key>": {entry}}}`.
+  An entry may have `fakelib` (`full`, `emulators` or `off`), `playgo` (`false`: no bundled PlayGo stub, as
+  `playgo_off`), `notice` (`long_first_boot`), and `fw_min` / `fw_max` (`"NN.NN"`, inclusive bounds on the console's
+  firmware, compared as its BCD version; on a console whose firmware cannot be read an entry with a bound never applies).
+- **Key.** The list names no game: a title is keyed by the lowercase hex of the first 16 bytes of the SHA-256 of
+  `maxpack-recommended-v1:` and its title id (`key("PPSA01234")` is `17c2e30975e7e93c42a3ccaa639d8e5b`).
+  `node tools/recommended_key.js <TITLE_ID>` prints it. It does not hide a title from someone who tries the few
+  possible ids; it keeps the file from being read at a glance.
+- **Limits and checks.** At most 262144 bytes and 4096 titles. A wrong structure refuses the whole file: not JSON
+  (or nested past serde_json's depth limit), over a limit, `format` other than 1, `version` not a positive integer,
+  no `titles` object, a key that is not 32 lowercase hex digits, an entry that is not an object, a known field of
+  the wrong JSON type, a malformed `fw_min` / `fw_max`. An unknown value of a known field (a newer Fakelib mode or
+  notice) or an unknown field is ignored for that entry, so a newer list stays readable by an older MaxPack.
+- **Precedence** (`maxpack_logic::recommended::effective`, asked by `cache::fakelib_mode`, `cache::playgo_off`,
+  `main::inputs_key`, `/api/state` and the report). A title in any of `manual_settings`, `fakelib_emulators`,
+  `fakelib_off` or `playgo_off` is the user's: its mode and stub come from those lists (`settings_source` "user").
+  Otherwise an entry with `fakelib` or `playgo` gives them (a missing one is Full / with the stub; "recommended").
+  Otherwise Full with the stub ("default"). The notice is the entry's in every case. A hand change on the sheet adds
+  the title to `manual_settings`; when its settings were the list's, the list's values are written into the lists
+  first, so the one the user did not touch stays as shown (`hand_choice`). `POST /api/recommended/<TID>` takes it
+  out of all four lists.
+- **Refresh** (`recommended::spawn_refresh`, once per start). Skipped with `recommended: refresh off` without
+  `recommended_update`, and `recommended: refresh waits for the secure connection check` until the self-test has
+  passed (`tls::passed`). Otherwise
+  `GET https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json` (262144 bytes at most;
+  tried again as the self-update's look, `maxpack_logic::update::look_failed`, after no answer or a server error),
+  checked with `parse`, and only when its `version` is higher than the list in use: saved to
+  `/data/maxpack/recommended.json` (tmp + rename), put in use, `recommended: downloaded v<version> (<n> titles)`, and
+  the scan loop woken, which recomposes the `fakelib/` of every game whose effective mode or stub changed (Cache).
+  Else `recommended: kept v<version> (download is not newer)`, `recommended: download refused: <reason>` or
+  `recommended: download failed: <error>`; the list in use stays.
+- **Notice at launch** (`recommended::on_launch`, from the launch watcher: every new sandbox of one of our titles,
+  and an exec the sandbox watch missed). With `notify`, the notice as a notification in the console's language
+  (`i18n::notice_long_first_boot`), sent from its own thread; logged `<TID>: notice long_first_boot`, or
+  `... not shown (notify off)`. The page shows it in the game's sheet too.
+
 ## Web API (`src/web.rs`, port 8095, served to `src/ui.html`)
 Rest mode can close the listening socket: on an accept error the server binds port 8095 again every second.
 If a newer copy took the port meanwhile, this copy quits (not while a game runs).
@@ -599,17 +652,22 @@ minute):
   mounted: bool (`/system_ex/app/<TID>` is a mount point, one mount table per request), source_present: bool (the source path exists),
   overlay_off: bool (listed in `overlay_off` and a plain folder game, as `cache::overlay_off`),
   overlay_off_listed: bool (listed in `overlay_off`, whatever this copy is: true with `overlay_off` false is a stale entry),
-  fakelib_mode: "full"|"emulators"|"off" (the title's fakelib mode, `maxpack_logic::fakelib::mode_of` of the two lists)}],
+  fakelib_mode: "full"|"emulators"|"off" (the title's effective fakelib mode, `recommended::effective`; `playgo_off` is the effective one too),
+  settings_source: "default"|"user"|"recommended" (where the two come from), recommended: {fakelib: mode|null,
+  playgo_off: bool|null}|null (what the list says of the two for this title on this firmware; null when it says nothing
+  of them), notice: "long_first_boot"|null (the list's notice for the title)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
-  without `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off` or `exclude` keeps that current list
+  without `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`, `manual_settings` or `exclude` keeps that current list
   from the file (the settings form sends `exclude` only); then a title in both fakelib lists is kept in `fakelib_off`
   only (`fakelib::exclusive`, logged); 409 when `overlay_off` names a library game that needs the overlay (a pkg, a `.p5z` or a
   packed folder, `maxpack_logic::overlay::needed`, the reason as text). A `scanpath` entry that
   may never be a root (`maxpack_logic::roots::never_root`) is 400 JSON `{code:"forbidden_root", path, detail}`
   and nothing is saved; the page says it in its language.
 - `POST /api/playgo/<TID>`, body exactly `on` or `off` -> removes the title from / adds it to `playgo_off`,
+  and adds it to `manual_settings` (`maxpack_logic::recommended::hand_choice`: when its settings were the recommended
+  ones, their Fakelib mode is written into the lists first, so it stays as shown),
   saves, applies, rescans, logs `<TID>: PlayGo stub on|off`, 204; 404 for an invalid or absent library
   title, 400 for any other body.
 - `POST /api/hidden/<TID>`, body exactly `on` or `off` -> adds the title to / removes it from `hidden`
@@ -623,9 +681,15 @@ minute):
   `<TID>: overlay off refused: <path> (<reason>)`).
 - `POST /api/fakelib/<TID>`, body exactly `full`, `emulators` or `off` (`maxpack_logic::fakelib::body`) -> puts the
   title in `fakelib_emulators` or `fakelib_off` and out of the other, or out of both for `full`
-  (`fakelib::set_mode`), saves, applies, rescans (a fakelib refresh before the next launch; while a game runs the
+  (`fakelib::set_mode`), and adds it to `manual_settings` (`hand_choice`, as for PlayGo: a recommended PlayGo setting
+  stays as shown), saves, applies, rescans (a fakelib refresh before the next launch; while a game runs the
   pass waits for its exit, as for PlayGo), logs `<TID>: fakelib mode <mode>`, 204; 404 for an invalid or absent
   library title, 400 for any other body.
+- `POST /api/recommended/<TID>`, body exactly `reset` -> "Back to the recommended setting": takes the title out of
+  `manual_settings`, `fakelib_emulators`, `fakelib_off` and `playgo_off` (`maxpack_logic::recommended::reset`), saves,
+  applies, rescans (a fakelib refresh when that changes its mode or stub), logs `<TID>: back to the recommended
+  settings (fakelib mode <mode>, PlayGo stub on|off, <source>)`, 204; 404 for an invalid or absent library title,
+  400 for any other body.
 - `POST /api/launch/<TID>` -> starts the title for the foreground user as its home-screen tile does
   (`sys::launch_app`: `sceLncUtilLaunchApp` through its NID in libSceSystemService, taken when it returns >= 0 or
   0x80940005; else `sceSystemServiceLaunchApp`), 204 once a launch is taken; the launch watcher then sees the game
@@ -842,8 +906,15 @@ at launch" (`POST /api/overlay`, `overlay_off`): on by default; off, the sheet n
 A pkg, a `.p5z` or a packed folder does not show it (the payload refuses turning it off for them), except while the
 title is still listed in `overlay_off` from an earlier copy (`overlay_off_listed`: packed since, or a pkg or `.p5z` took
 over): then the switch shows off with a note that this copy keeps the libraries, so the stale entry can be cleared
-(turned on, the row goes). The entry is never dropped by itself: a plain folder copy coming back would use it again. Settings has "Excluded paths"
-under "Scan paths", one path per line (`exclude`).
+(turned on, the row goes). The entry is never dropped by itself: a plain folder copy coming back would use it again.
+The recommended settings: while `settings_source` is "recommended", "Recommended setting" shows as a tag beside the
+"PlayGo stub" and "Fakelib" labels; a game with a `notice` shows its text above the sheet's fields; once the user chose
+the settings (`settings_source` "user") and the list recommends something for the game (`recommended` not null), "Back
+to the recommended setting" (`POST /api/recommended/<TID>`, body `reset`) shows under the Fakelib row, and is in the
+D-pad's list of the sheet's controls only while it shows. A hand change draws the settings as the user's until the
+next state; the report is fetched again when `settings_source` or the stub changes. Settings has "Excluded paths"
+under "Scan paths", one path per line (`exclude`), and "Download updated recommended settings"
+(`recommended_update`) under the ampr-emu-ng update.
 Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
 an extra one, changes a `{placeholder}` or keeps the English text.
 
@@ -863,16 +934,17 @@ an extra one, changes a `{placeholder}` or keeps the English text.
 | `src/web.rs`, `src/ui.html` | HTTP server and the single-file UI |
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
-| `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update) and the self-test's HEAD probe |
+| `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update, recommended settings) and the self-test's HEAD probe |
 | `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update and the ampr-emu-ng update wait for |
 | `src/update.rs` | self-update: the latest release looked at once per start, `POST /api/self_update` |
+| `src/recommended.rs`, `data/recommended.json` | the recommended per-game settings: the bundled list, the cached download, the once-per-start refresh, the effective settings, the notice at launch |
 | `src/i18n.rs` | toast texts in the console language (the UI's 11 languages) |
 | `crates/maxpack-logic` | pure logic tested on the host (`cargo test -p maxpack-logic`) |
 | `crates/kraken-mount-pkg` | FPKG reader and its Kraken decoder (`decoder` module) |
 | `vendor/maxpack` | copy of the MaxPack engine sources (with zstd and zlib) the payload links |
 | `vendor/ampr-emu-ng`, `vendor/dlc_emu`, `vendor/pgo_stub` | the bundled sprx files, each with `VERSION` and `SHA256SUMS` |
 | `ps5/` | Docker build, linker, C shims (`compat.c` holds PS5 libc adapters, `appdb.c` writes app.db through the SQLite amalgamation the Dockerfile fetches), `make-payloads-json.sh` (the release's catalog for ps5-payload-manager) |
-| `tools/` | `check_identity.sh` (CI), `sync_maxpack.sh`, `mock_ui.js` (the page without a console) |
+| `tools/` | `check_identity.sh` (CI), `sync_maxpack.sh`, `mock_ui.js` (the page without a console), `recommended_key.js` (a title id's key in `data/recommended.json`) |
 
 ## Vendored components
 - ampr-emu-ng is its own project (DeLFuS77/ampr-emu-ng) and is not built here. To update the bundled copy, replace

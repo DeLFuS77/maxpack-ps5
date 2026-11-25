@@ -5,7 +5,7 @@
 //
 //   node tools/mock_ui.js [--port 8095] [--waiting other|kstuff|none] [--job on|paused|off]
 //                         [--last done|failed|needs_confirm|none] [--empty]
-//                         [--update v1.0.1|none] [--update-fail <code>|none]
+//                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
 //                         [--ampr-fail checksum|none]
 //   then open http://localhost:8095/ and the Install tab.
@@ -28,7 +28,7 @@
 // passed, as the payload (maxpack_logic::ampr); then it installs, or, with --ampr-fail checksum, refuses
 // the download as one that does not match the release's SHA256SUMS. Default: none.
 // The same switches at run time, without a restart (the page picks them up on its next poll):
-//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.1&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
+//   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.3&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
@@ -74,7 +74,7 @@ const mock = {
   ampr_fail: arg('ampr-fail', 'none'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
-let version = '1.0.0';
+let version = '1.0.2';
 // state.update as src/update.rs `available` gives it: a newer release, or null.
 function updateValue() {
   if (!mock.update || mock.update === 'none' || mock.update.replace(/^v/, '') === version) return null;
@@ -112,7 +112,7 @@ const UPDATE_FAILS = {
   scan_running: [409, 'a scan or build is in progress; try again in a moment'],
   install_running: [409, 'the installer is copying a game; try again when it ends'],
   no_elfldr: [503, 'elfldr does not answer: 127.0.0.1:9021: connection refused'],
-  download: [502, 'download failed: GET https://github.com/DeLFuS77/maxpack-ps5/releases/download/v1.0.1/maxpack.elf: HTTP status 404'],
+  download: [502, 'download failed: GET https://github.com/DeLFuS77/maxpack-ps5/releases/download/v1.0.3/maxpack.elf: HTTP status 404'],
   checksum: [502, 'not the released maxpack.elf, not sent: SHA-256 0a1b... is not the 9f8e... that SHA256SUMS lists'],
   send: [502, 'sending it to elfldr failed: 3456789 bytes to 127.0.0.1:9021: broken pipe'],
 };
@@ -415,7 +415,7 @@ http.createServer((req, res) => {
       return send(res, 403, 'text/plain; charset=utf-8', REFUSED[why].join('\n') + '\n');
     }
     if (req.method === 'GET' && p === '/') {
-      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '1.0.0-mock');
+      const html = fs.readFileSync(path.join(root, 'src/ui.html'), 'utf8').replace(/__VERSION__/g, '1.0.2-mock');
       return send(res, 200, 'text/html; charset=utf-8', html);
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
@@ -441,7 +441,7 @@ http.createServer((req, res) => {
         || (/^\/mnt\/usb\d+$/.test(g.drive) ? 'USB SSD or HDD?' : g.drive);
       const mode = g.overlay_off ? 'none (MaxPack libraries at launch off)' : { full: 'Full', emulators: 'Emulators only', off: 'Off' }[g.fakelib_mode];
       const fromList = g.settings_source === 'recommended' ? ' (recommended)' : '';
-      const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
+      const text = [`MaxPack 1.0.2: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
         ['Backport: none'],
@@ -454,7 +454,7 @@ http.createServer((req, res) => {
           `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : (g.playgo_off ? 'off' : 'on') + fromList}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in each ?; it names no game):',
-          `| ? | ${format} | ${g.kind === 'p5z' ? '?' : '—'} | ${drive} | 13.60 | MaxPack 1.0.0 | ${mode} | ? | ? |  |`, '',
+          `| ? | ${format} | ${g.kind === 'p5z' ? '?' : '—'} | ${drive} | 13.60 | MaxPack 1.0.2 | ${mode} | ? | ? |  |`, '',
           `maxpack.log, last 40 lines with ${g.title_id}:`, `2026-11-23 20:00:05Z [5000] ${g.title_id}: cache fresh`]).join('\n') + '\n';
       return send(res, 200, 'text/plain; charset=utf-8', text);
     }

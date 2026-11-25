@@ -3,6 +3,28 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
+## 1.0.2 - 2026-11-25
+
+### Added
+
+- **Recommended settings per game.** MaxPack carries a list of the settings some games need to start, so
+  they work the first time: a game known to need it gets its **Fakelib** mode (or its PlayGo stub) by
+  itself, and its sheet says "Recommended setting" beside the value. The first entries are the two games
+  tested on the console that needed it: one only reaches its menu with Fakelib **Off** (firmware 13.60 and
+  later), the other stays on a black screen for minutes before it starts.
+- **A notice for a game that is slow to start**: its sheet shows it, and the console shows it as a
+  notification, in its language, when the game starts.
+- **What you choose wins.** Changing Fakelib or the PlayGo stub in a game's sheet makes that game's
+  settings yours (`manual_settings` in `config.toml`); **Back to the recommended setting** undoes it. A game
+  you had set by hand in 1.0.1 keeps your setting.
+- **The list stays current.** It comes inside `maxpack.elf`, and once per start, after "Check secure
+  connections" has passed, MaxPack downloads the latest one from this repository: only data, checked
+  whole before it is used, and used only when it is newer. Nothing about your games is sent. Settings >
+  "Download updated recommended settings" (on by default) turns it off. The list names no game: each one
+  is a code made from its title id (`tools/recommended_key.js`).
+- "Copy report" says `(recommended)` after the Fakelib mode and the PlayGo stub when they come from the
+  list.
+
 ## 1.0.1 - 2026-11-24
 
 ### Security

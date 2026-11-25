@@ -29,9 +29,11 @@
   337 MB in 6.4 s); the packs are read from the `.p5z` while you play.
 - **Fakelib per game**, new in 1.0.0: **Full**, **Emulators only** or **Off**, for a game that shows a
   black screen or stalls while checking add-ons ([more](#fakelib-per-game)).
+- **Recommended settings**, new in 1.0.2: a game known to need a Fakelib mode gets it by itself, and a game
+  that takes minutes on a black screen says so when it starts ([more](#recommended-settings)).
 
 > [!NOTE]
-> **Status: first public release, help us test.** MaxPack 1.0.0 is the first public release. It has
+> **Status: early release, help us test.** MaxPack 1.0.2 is the current release (1.0.0 was the first public one). It has
 > been tested on one console (firmware 13.60) with a handful of games, so expect rough edges. Testing
 > on other firmwares, games and drives is the most useful help right now:
 > [here is how](#help-test-maxpack).
@@ -67,6 +69,7 @@ of [why MaxPack exists](https://github.com/DeLFuS77/maxpack#why-maxpack-exists).
 - [The MaxPack family](#the-maxpack-family)
 - [Features](#features)
 - [Fakelib per game](#fakelib-per-game)
+- [Recommended settings](#recommended-settings)
 - [Trust and updates](#trust-and-updates)
 - [Documentation](#documentation)
 - [FAQ](#faq)
@@ -293,6 +296,8 @@ The whole flow, from packing on the PC:
 - **Storage** shows what the game, its DLC, its saves and its cache take.
 - **Fakelib** chooses what goes into the game's `fakelib/`: **Full** (the default), **Emulators only** or
   **Off**. See [Fakelib per game](#fakelib-per-game).
+- **Recommended setting** shows beside Fakelib and the PlayGo stub when their values come from the
+  [recommended settings](#recommended-settings), and a game that is slow to start shows its notice there.
 - **MaxPack libraries at launch** can be turned off for an unpacked folder game that must run as it
   is.
 
@@ -322,8 +327,11 @@ The whole flow, from packing on the PC:
   has none; **backports**; cleaning up games whose source is gone.
 - The bundled **ampr-emu-ng** (`v0.5.1-maxpack.1`), with its own updater (off until MaxPack is
   published), checked like the self-update.
+- **Download updated recommended settings** (on by default): the latest list of
+  [recommended settings](#recommended-settings), once per start.
 - **Check secure connections:** proves that the console refuses forged certificates. MaxPack's
-  self-update and the ampr-emu-ng updater stay off until this check has passed once.
+  self-update, the ampr-emu-ng updater and the recommended settings download stay off until this check
+  has passed once.
 - **Rescan**, **Rebuild all**, **Purge cache**, **Show log** and **Stop MaxPack**.
 - **11 languages** (English, Russian, Chinese, German, Spanish, French, Japanese, Portuguese, Italian,
   Korean and Arabic): the page follows your browser or your choice, and the console notifications follow
@@ -393,6 +401,29 @@ Only that game's `fakelib/` is rebuilt, before its next launch; other games and 
 touched. The choice is kept in `config.toml` (`fakelib_emulators`, `fakelib_off`) and shows in
 **Copy report**.
 
+## Recommended settings
+
+New in 1.0.2. Some games need a setting to start: one only reaches its menu with **Fakelib** on **Off**,
+another stays on a black screen for minutes before it starts, which looks like a hang. MaxPack carries a
+list of **recommended settings** per game, so those games work the first time without you having to know
+what Fakelib is.
+
+- A game's sheet shows **Recommended setting** beside **Fakelib** and the **PlayGo stub** while their
+  values come from the list. **Copy report** says so too.
+- A game that is slow to start has a notice: its sheet shows it, and the console shows it as a
+  notification, in its language, every time the game starts.
+- **What you choose wins.** Change Fakelib or the PlayGo stub in a game's sheet and the list no longer
+  applies to that game (`manual_settings` in `config.toml`). **Back to the recommended setting**, in the
+  same sheet, undoes it. A game you had set by hand before 1.0.2 keeps your setting.
+- The list comes inside `maxpack.elf`, so it works offline. Once per start, when the console has passed
+  **Check secure connections**, MaxPack downloads the latest list from this repository
+  ([`data/recommended.json`](data/recommended.json)): only data, checked whole before it is used, and used
+  only when it is newer than the one it has. Nothing about your games is sent: the whole list is
+  downloaded. Settings > **Download updated recommended settings** turns the download off.
+- The list names no game: each one is a code made from its title id with SHA-256, so it cannot be read at
+  a glance. `node tools/recommended_key.js <TITLE_ID>` gives a title id's code. Found a game that needs a
+  setting? Say so in an [issue](https://github.com/DeLFuS77/maxpack-ps5/issues) with its **Copy report**.
+
 ## Trust and updates
 
 - **Every release** carries `maxpack.elf` and its `SHA256SUMS`, both with a GitHub build attestation
@@ -405,6 +436,9 @@ touched. The choice is kept in `config.toml` (`fakelib_emulators`, `fakelib_off`
 - **The ampr-emu-ng updater** (off by default) only takes DeLFuS77/ampr-emu-ng's releases, installs
   their `libSceAmpr.sprx` only when it matches that release's `SHA256SUMS`, and waits for the same
   **Check secure connections** (since 1.0.1).
+- **The recommended settings** (since 1.0.2) download only a data file from this repository, check it
+  whole before using it (size, format and values: anything else is refused and the list in use stays), send
+  nothing about your games, and also wait for **Check secure connections**.
 
 ### Updates
 
@@ -514,13 +548,15 @@ but MaxPack does not mount them: ShadowMountPlus plays them.
 
 ## Status
 
-MaxPack for the console **1.0.0** is the first public release. Honestly, this is where it stands:
+MaxPack for the console **1.0.2** is the current release (1.0.0 was the first public one). Honestly, this
+is where it stands:
 
 | Area | State |
 |---|---|
 | Mounting a MaxPack-packed folder on a real PS5 | **Tested** on firmware 13.60: the first build of MaxPack for the console mounted, launched and cleaned up a packed game 3 times, and going back to ShadowMountPlus worked. The same game boots, saves and loads with MaxPack's ampr-emu-ng. |
 | Playing a `.p5z` in place | **Tested on a real PS5**: firmware 13.60, three games with 1, 9 and 19 volumes, from the internal SSD and an external M.2 SSD over USB-C ([results](#tested-on-a-real-ps5)). Still to do: a side-by-side timing against a packed folder, and more games, firmwares and drives. |
 | Fakelib per game | Done and tested on the PC. Game C reached its menu with the same `fakelib/` that **Off** makes, set up by hand during the tests. |
+| Recommended settings | Done and tested on the PC (the list's checks and the precedence in `cargo test`, the page in the mock); its pass through the console checklist (section 10) is still to do. |
 | The library, Play, hide, Copy report, installer, excluded paths, living with ShadowMountPlus and Kraken Mount, the tile, the self-update | Done and tested on the PC; their pass through the console checklist is still under way. |
 | Everything inherited from Kraken Mount 0.3.1 | Kept as in Kraken Mount, a released mounter; MaxPack's own pass through that part of the checklist (section B) is still to do. |
 
@@ -552,7 +588,8 @@ back. How it is built, the rules for a change and the contract between modules a
 
 - Binary: `maxpack.elf`; its own copy in `/data/maxpack/maxpack.elf`.
 - Data in `/data/maxpack/`: `config.toml`, `maxpack.log`, `caches/<TID>`, `ampr/`, `crashes.json`,
-  and the installer's (`state/`, `installed/`, `tmp/`).
+  `recommended.json` (the last downloaded list of recommended settings), and the installer's (`state/`,
+  `installed/`, `tmp/`).
 - Home-screen tile: `MXPK00001`. Web page on port **8095**.
 - Its own version, the one in `Cargo.toml`: 1.0.0 is the first published one; 0.1.x and 0.2.x were
   test builds. It does not follow Kraken Mount's numbering, whose 0.3.1 is the base.

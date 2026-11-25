@@ -745,3 +745,60 @@ by "Update ampr-emu-ng now" (it asks first).
   - The page's side, without a console: `node tools/mock_ui.js --tls passed --ampr-fail checksum`, then
     Settings > "Update ampr-emu-ng now". Expected: "Update failed: the download does not match the
     release's SHA256SUMS: nothing was installed."
+
+## 10. 1.0.2: recommended settings
+
+With a 1.0.2 build on firmware 13.60. The bundled list (`data/recommended.json`, version 2026112501) has two
+entries, keyed by a hash of the title id: a game that gets Fakelib **Off** on firmware 13.60 and later (the
+"Off game" below), and a game with the notice `long_first_boot` (the "notice game"). To find out whether a
+game is in the list, run `node tools/recommended_key.js <TITLE_ID>` on the PC and look for its key in the
+file. Keep which games they are in your own notes: this checklist, the issues and the log lines you paste
+name no game.
+
+- [ ] **10.1. The list at start.**
+  - Restart MaxPack. Expected in the log: `recommended: v2026112501 (2 titles, bundled)`, then
+    `recommended: refresh waits for the secure connection check` if 8.1 has not passed on this console, or,
+    once it has, `recommended: kept v2026112501 (download is not newer)` (`downloaded v<version> (<n>
+    titles)` if a newer list was pushed to `main`).
+  - Turn off "Download updated recommended settings", save and restart MaxPack. Expected:
+    `recommended: refresh off`. Turn it on again.
+- [ ] **10.2. A game with a bundled recommendation shows the tag.**
+  - First, the Off game must have no setting chosen by hand: it is in none of `fakelib_emulators`,
+    `fakelib_off`, `playgo_off` and `manual_settings` in `config.toml`. On a console upgraded from 1.0.1
+    where it was set to Off by hand it shows as your choice (no tag): press "Back to the recommended
+    setting" in its sheet first (10.4).
+  - Expected at the first pass: `<TID>: ...; refreshing fakelib only` and
+    `<TID>: fakelib: mode off (only ampr-emu-ng), recommended setting` (no refresh when its `fakelib/` was
+    already Off by hand).
+  - Open its sheet. Expected: Fakelib shows Off with "Recommended setting" beside it, and beside "PlayGo
+    stub" too when the sheet shows that switch; "Copy report" has `Fakelib mode: off (only ampr-emu-ng)
+    (recommended)`.
+  - Start it. Expected: it reaches its menu, as with Off set by hand.
+- [ ] **10.3. A hand change wins.**
+  - In the Off game's sheet, set Fakelib to Full. Expected: the tags go and "Back to the recommended
+    setting" shows; in the log `<TID>: fakelib mode full`, then at the next pass
+    `<TID>: ...; refreshing fakelib only`; in `config.toml`, the title in `manual_settings`.
+  - Restart MaxPack. Expected: still Full, no tag, the button still there.
+- [ ] **10.4. Back to the recommended setting.**
+  - Press it. Expected: in the log `<TID>: back to the recommended settings (fakelib mode off, PlayGo stub
+    on, recommended)` and, at the next pass, the fakelib refresh with `mode off (only ampr-emu-ng),
+    recommended setting`; the tags are back and the button is gone; `config.toml` lists the title in none
+    of the four lists.
+- [ ] **10.5. The notice at launch.**
+  - Open the notice game's sheet. Expected: the notice above its fields, "It can take several minutes to
+    start, with a black screen. Wait." in the page's language; no "Recommended setting" tag (the list sets
+    neither Fakelib nor PlayGo for it).
+  - Start it from the home screen. Expected: at once, a console notification with the same text in the
+    console's language; in the log `<TID>: notice long_first_boot`. Wait: the game starts after a few
+    minutes. Start it again: the notification shows again. Started with Play from the page: the same.
+  - Turn off "System notifications", save, start it again. Expected: no notification, and in the log
+    `<TID>: notice long_first_boot not shown (notify off)`. Turn them on again.
+- [ ] **10.6. A list that does not check out is never used.**
+  - Over FTP (binary mode), put a file with the text `x` as `/data/maxpack/recommended.json` and restart
+    MaxPack. Expected: `recommended: cached copy ignored: not JSON: ...`, then
+    `recommended: v2026112501 (2 titles, bundled)`, and the Off game still tagged.
+  - Replace it with `{"format": 1, "version": 1, "titles": {}}` and restart. Expected:
+    `recommended: cached copy ignored: v1 is not newer than the bundled v2026112501`. Delete the file.
+  - A download that is too large, too deep, of the wrong types, with 4097 titles or `"format": 2` cannot be
+    served to the console (it takes only the repository's file); those are tested on the PC:
+    `cargo test -p maxpack-logic recommended`.
