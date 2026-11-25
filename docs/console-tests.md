@@ -770,9 +770,9 @@ name no game.
   - Expected at the first pass: `<TID>: ...; refreshing fakelib only` and
     `<TID>: fakelib: mode off (only ampr-emu-ng), recommended setting` (no refresh when its `fakelib/` was
     already Off by hand).
-  - Open its sheet. Expected: Fakelib shows Off with "Recommended setting" beside it, and beside "PlayGo
-    stub" too when the sheet shows that switch; "Copy report" has `Fakelib mode: off (only ampr-emu-ng)
-    (recommended)`.
+  - Open its sheet. Expected: Fakelib shows Off with "Recommended setting" beside it, and no tag beside
+    "PlayGo stub" when the sheet shows that switch (the list sets only Fakelib for this game); "Copy report"
+    has `Fakelib mode: off (only ampr-emu-ng) (recommended)` and a PlayGo line without `(recommended)`.
   - Start it. Expected: it reaches its menu, as with Off set by hand.
 - [ ] **10.3. A hand change wins.**
   - In the Off game's sheet, set Fakelib to Full. Expected: the tags go and "Back to the recommended

@@ -296,8 +296,9 @@ The whole flow, from packing on the PC:
 - **Storage** shows what the game, its DLC, its saves and its cache take.
 - **Fakelib** chooses what goes into the game's `fakelib/`: **Full** (the default), **Emulators only** or
   **Off**. See [Fakelib per game](#fakelib-per-game).
-- **Recommended setting** shows beside Fakelib and the PlayGo stub when their values come from the
-  [recommended settings](#recommended-settings), and a game that is slow to start shows its notice there.
+- **Recommended setting** shows beside Fakelib or the PlayGo stub when the
+  [recommended settings](#recommended-settings) set its value, and a game that is slow to start shows its
+  notice there.
 - **MaxPack libraries at launch** can be turned off for an unpacked folder game that must run as it
   is.
 
@@ -408,8 +409,8 @@ another stays on a black screen for minutes before it starts, which looks like a
 list of **recommended settings** per game, so those games work the first time without you having to know
 what Fakelib is.
 
-- A game's sheet shows **Recommended setting** beside **Fakelib** and the **PlayGo stub** while their
-  values come from the list. **Copy report** says so too.
+- A game's sheet shows **Recommended setting** beside **Fakelib** or the **PlayGo stub** when the list sets
+  that value (only beside the one it sets). **Copy report** says so too.
 - A game that is slow to start has a notice: its sheet shows it, and the console shows it as a
   notification, in its language, every time the game starts.
 - **What you choose wins.** Change Fakelib or the PlayGo stub in a game's sheet and the list no longer

@@ -198,8 +198,8 @@ is ignored as a whole). The web UI edits the same file.
   zstd or LZ4 folder), whatever `inject_ampr` says; a plain folder gets an empty `fakelib/` (launch then mounts
   nothing, as for `overlay_off`: no overlay, no `/data`, USB, fonts or writable `/app0` in the sandbox). Each composition in a mode other than `full` logs one line:
   `<TID>: fakelib: mode emulators (the game's and backport's fakelib not used)`, `<TID>: fakelib: mode off (only
-  ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`, with `, recommended setting` after it when the mode is the
-  recommended settings'. `overlay_off` comes first: such a title stops at the empty
+  ampr-emu-ng)` or `<TID>: fakelib: mode off (empty)`, with `, recommended setting` after it when the list itself
+  sets the mode (`Effective::fakelib_recommended`). `overlay_off` comes first: such a title stops at the empty
   `fakelib/` whatever its mode.
   Then, with `inject_ampr` and always for a pkg game (the package's own `libSceAmpr.sprx` cannot read the
   `.pkg` named in `kraken.image`) or a .p5z game (a game's own ng has no p5z mode, so `keep_game_ng` does not apply:
@@ -601,7 +601,9 @@ scope: every other setting (`overlay_off`, backports, scans). The console never 
 - **Precedence** (`maxpack_logic::recommended::effective`, asked by `cache::fakelib_mode`, `cache::playgo_off`,
   `main::inputs_key`, `/api/state` and the report). A title in any of `manual_settings`, `fakelib_emulators`,
   `fakelib_off` or `playgo_off` is the user's: its mode and stub come from those lists (`settings_source` "user").
-  Otherwise an entry with `fakelib` or `playgo` gives them (a missing one is Full / with the stub; "recommended").
+  Otherwise an entry with `fakelib` or `playgo` gives them (a missing one is Full / with the stub; "recommended";
+  `fakelib_recommended` / `playgo_recommended` say which of the two the entry itself sets, and only those get the
+  sheet's tag and the report's `(recommended)`).
   Otherwise Full with the stub ("default"). The notice is the entry's in every case. A hand change on the sheet adds
   the title to `manual_settings`; when its settings were the list's, the list's values are written into the lists
   first, so the one the user did not touch stays as shown (`hand_choice`). `POST /api/recommended/<TID>` takes it
@@ -908,7 +910,8 @@ title is still listed in `overlay_off` from an earlier copy (`overlay_off_listed
 over): then the switch shows off with a note that this copy keeps the libraries, so the stale entry can be cleared
 (turned on, the row goes). The entry is never dropped by itself: a plain folder copy coming back would use it again.
 The recommended settings: while `settings_source` is "recommended", "Recommended setting" shows as a tag beside the
-"PlayGo stub" and "Fakelib" labels; a game with a `notice` shows its text above the sheet's fields; once the user chose
+"Fakelib" label when `recommended.fakelib` is set and beside "PlayGo stub" when `recommended.playgo_off` is set (never
+beside a value the list leaves at its default); a game with a `notice` shows its text above the sheet's fields; once the user chose
 the settings (`settings_source` "user") and the list recommends something for the game (`recommended` not null), "Back
 to the recommended setting" (`POST /api/recommended/<TID>`, body `reset`) shows under the Fakelib row, and is in the
 D-pad's list of the sheet's controls only while it shows. A hand change draws the settings as the user's until the

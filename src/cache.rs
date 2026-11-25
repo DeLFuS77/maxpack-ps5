@@ -1025,7 +1025,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
     let uses = fakelib_sources(src, s);
     let eff = crate::recommended::effective(&src.title_id, s);
     if let Some(note) = fakelib::note(eff.fakelib, uses) {
-        let from = if eff.source == maxpack_logic::recommended::Source::Recommended { ", recommended setting" } else { "" };
+        let from = if eff.fakelib_recommended { ", recommended setting" } else { "" };
         log!("{}: fakelib: {note}{from}", src.title_id);
     }
     if !uses.game_libs {

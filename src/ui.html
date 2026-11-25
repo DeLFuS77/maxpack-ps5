@@ -4263,12 +4263,12 @@ function renderModal() {
   fl.disabled = !!fl._busy || g.status === 'building' || !!g.overlay_off;
   $('m-fakelib-ov').hidden = !g.overlay_off;
   $('m-fakelib-plain').hidden = !overlayOptional(g) || !!g.overlay_off;
-  // The recommended settings (src/recommended.rs): a tag beside both values while they are the list's; once
-  // the user chose them on this sheet, the way back to the list's, when it recommends anything for the game.
-  // The list's notice for the game stays above its fields either way.
-  var fromList = g.settings_source === 'recommended';
-  $('m-fakelib-rec').hidden = !fromList;
-  $('m-playgo-rec').hidden = !fromList;
+  // The recommended settings (src/recommended.rs): a tag beside each value the list itself sets (not beside one it
+  // leaves at its default) while the game follows the list; once the user chose them on this sheet, the way back to
+  // the list's, when it recommends anything for the game. The list's notice stays above its fields either way.
+  var rec = g.settings_source === 'recommended' && g.recommended;
+  $('m-fakelib-rec').hidden = !rec || rec.fakelib == null;
+  $('m-playgo-rec').hidden = !rec || rec.playgo_off == null;
   var reset = $('m-reset');
   $('m-reset-row').hidden = dup || g.settings_source !== 'user' || !g.recommended;
   reset.disabled = !!reset._busy || g.status === 'building';

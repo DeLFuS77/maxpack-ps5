@@ -22,8 +22,7 @@ What changed in each version of MaxPack for the console. The format follows
   whole before it is used, and used only when it is newer. Nothing about your games is sent. Settings >
   "Download updated recommended settings" (on by default) turns it off. The list names no game: each one
   is a code made from its title id (`tools/recommended_key.js`).
-- "Copy report" says `(recommended)` after the Fakelib mode and the PlayGo stub when they come from the
-  list.
+- "Copy report" says `(recommended)` after the Fakelib mode or the PlayGo stub that the list sets.
 
 ## 1.0.1 - 2026-11-24
 

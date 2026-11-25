@@ -191,17 +191,29 @@ pub struct Effective {
     pub playgo_off: bool,
     pub source: Source,
     pub notice: Option<Notice>,
+    /// The Fakelib mode is the list's own value (Source::Recommended and the entry sets it), not a default.
+    pub fakelib_recommended: bool,
+    /// The PlayGo stub is the list's own value (Source::Recommended and the entry sets it), not a default.
+    pub playgo_recommended: bool,
 }
 
 /// The settings of `tid`: the user's when any of the four lists names it (`manual_settings`, and the
 /// lists of 1.0.1 and earlier, which only a choice of the user's ever filled), else the entry's when
 /// it has a Fakelib mode or a PlayGo setting (a missing one is Full / with the stub), else Full with the
-/// stub. The notice is the entry's in every case.
+/// stub. The notice is the entry's in every case. `fakelib_recommended` / `playgo_recommended` say which of the
+/// two the entry itself sets, so a value only defaulted is not shown as the list's.
 pub fn effective(tid: &str, emulators: &[String], off: &[String], playgo_off: &[String], manual: &[String], entry: Option<&Entry>) -> Effective {
     let notice = entry.and_then(|e| e.notice);
     let listed = |l: &[String]| l.iter().any(|t| t == tid);
     if [manual, emulators, off, playgo_off].into_iter().any(listed) {
-        return Effective { fakelib: fakelib::mode_of(tid, emulators, off), playgo_off: listed(playgo_off), source: Source::User, notice };
+        return Effective {
+            fakelib: fakelib::mode_of(tid, emulators, off),
+            playgo_off: listed(playgo_off),
+            source: Source::User,
+            notice,
+            fakelib_recommended: false,
+            playgo_recommended: false,
+        };
     }
     match entry.filter(|e| e.fakelib.is_some() || e.playgo_off.is_some()) {
         Some(e) => Effective {
@@ -209,8 +221,17 @@ pub fn effective(tid: &str, emulators: &[String], off: &[String], playgo_off: &[
             playgo_off: e.playgo_off.unwrap_or(false),
             source: Source::Recommended,
             notice,
+            fakelib_recommended: e.fakelib.is_some(),
+            playgo_recommended: e.playgo_off.is_some(),
         },
-        None => Effective { fakelib: Mode::Full, playgo_off: false, source: Source::Default, notice },
+        None => Effective {
+            fakelib: Mode::Full,
+            playgo_off: false,
+            source: Source::Default,
+            notice,
+            fakelib_recommended: false,
+            playgo_recommended: false,
+        },
     }
 }
 
@@ -466,7 +487,7 @@ mod tests {
     #[test]
     fn effective_default() {
         let e = effective("PPSA01234", &[], &[], &[], &[], None);
-        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::Default, notice: None });
+        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::Default, notice: None, fakelib_recommended: false, playgo_recommended: false });
         // Another title's choices change nothing for this one.
         let other = list(&["PPSA01235"]);
         let e = effective("PPSA01234", &other, &other, &other, &other, None);
@@ -477,25 +498,25 @@ mod tests {
     fn effective_recommended_off() {
         let entry = Entry { fakelib: Some(Mode::Off), ..Entry::default() };
         let e = effective("PPSA01234", &[], &[], &[], &[], Some(&entry));
-        assert_eq!(e, Effective { fakelib: Mode::Off, playgo_off: false, source: Source::Recommended, notice: None });
+        assert_eq!(e, Effective { fakelib: Mode::Off, playgo_off: false, source: Source::Recommended, notice: None, fakelib_recommended: true, playgo_recommended: false });
         // Only PlayGo: the Fakelib mode stays Full.
         let entry = Entry { playgo_off: Some(true), notice: Some(Notice::LongFirstBoot), ..Entry::default() };
         let e = effective("PPSA01234", &[], &[], &[], &[], Some(&entry));
-        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: true, source: Source::Recommended, notice: Some(Notice::LongFirstBoot) });
+        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: true, source: Source::Recommended, notice: Some(Notice::LongFirstBoot), fakelib_recommended: false, playgo_recommended: true });
     }
 
     #[test]
     fn effective_notice_only_stays_default() {
         let entry = Entry { notice: Some(Notice::LongFirstBoot), ..Entry::default() };
         let e = effective("PPSA01234", &[], &[], &[], &[], Some(&entry));
-        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::Default, notice: Some(Notice::LongFirstBoot) });
+        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::Default, notice: Some(Notice::LongFirstBoot), fakelib_recommended: false, playgo_recommended: false });
     }
 
     #[test]
     fn effective_manual_wins() {
         let entry = Entry { fakelib: Some(Mode::Off), playgo_off: Some(true), notice: Some(Notice::LongFirstBoot), ..Entry::default() };
         let e = effective("PPSA01234", &[], &[], &[], &list(&["PPSA01234"]), Some(&entry));
-        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::User, notice: Some(Notice::LongFirstBoot) });
+        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: false, source: Source::User, notice: Some(Notice::LongFirstBoot), fakelib_recommended: false, playgo_recommended: false });
         // The user's own mode, from the lists.
         let e = effective("PPSA01234", &list(&["PPSA01234"]), &[], &[], &list(&["PPSA01234"]), Some(&entry));
         assert_eq!((e.fakelib, e.source), (Mode::Emulators, Source::User));
@@ -506,12 +527,35 @@ mod tests {
         // A console upgraded from 1.0.1: the title is in playgo_off only, never in manual_settings.
         let entry = Entry { fakelib: Some(Mode::Off), ..Entry::default() };
         let e = effective("PPSA01234", &[], &[], &list(&["PPSA01234"]), &[], Some(&entry));
-        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: true, source: Source::User, notice: None });
+        assert_eq!(e, Effective { fakelib: Mode::Full, playgo_off: true, source: Source::User, notice: None, fakelib_recommended: false, playgo_recommended: false });
         let e = effective("PPSA01234", &list(&["PPSA01234"]), &[], &[], &[], Some(&entry));
         assert_eq!((e.fakelib, e.playgo_off, e.source), (Mode::Emulators, false, Source::User));
         let entry = Entry { fakelib: Some(Mode::Emulators), ..Entry::default() };
         let e = effective("PPSA01234", &[], &list(&["PPSA01234"]), &[], &[], Some(&entry));
         assert_eq!((e.fakelib, e.source), (Mode::Off, Source::User));
+    }
+
+    #[test]
+    fn effective_marks_only_the_settings_the_list_sets() {
+        let marks = |e: Effective| (e.source, e.fakelib_recommended, e.playgo_recommended);
+        // Fakelib alone: the PlayGo stub is the default one, not the list's.
+        let entry = Entry { fakelib: Some(Mode::Off), ..Entry::default() };
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &[], &[], Some(&entry))), (Source::Recommended, true, false));
+        // PlayGo alone: Fakelib stays Full, not the list's.
+        let entry = Entry { playgo_off: Some(true), ..Entry::default() };
+        let e = effective("PPSA01234", &[], &[], &[], &[], Some(&entry));
+        assert_eq!((e.fakelib, marks(e)), (Mode::Full, (Source::Recommended, false, true)));
+        // Both, an explicit Full and the stub on included.
+        let entry = Entry { fakelib: Some(Mode::Full), playgo_off: Some(false), ..Entry::default() };
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &[], &[], Some(&entry))), (Source::Recommended, true, true));
+        // The user's or the default: neither, whatever the entry says.
+        let entry = Entry { fakelib: Some(Mode::Off), playgo_off: Some(true), notice: Some(Notice::LongFirstBoot), ..Entry::default() };
+        let mine = list(&["PPSA01234"]);
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &[], &mine, Some(&entry))), (Source::User, false, false));
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &mine, &[], Some(&entry))), (Source::User, false, false));
+        let notice_only = Entry { notice: Some(Notice::LongFirstBoot), ..Entry::default() };
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &[], &[], Some(&notice_only))), (Source::Default, false, false));
+        assert_eq!(marks(effective("PPSA01234", &[], &[], &[], &[], None)), (Source::Default, false, false));
     }
 
     #[test]

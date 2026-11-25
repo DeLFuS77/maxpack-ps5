@@ -440,7 +440,10 @@ http.createServer((req, res) => {
       const drive = { '/data': 'internal SSD', '/mnt/ext1': 'M.2 SSD (console slot)', '/mnt/ext0': 'USB SSD or HDD? (extended storage)' }[g.drive]
         || (/^\/mnt\/usb\d+$/.test(g.drive) ? 'USB SSD or HDD?' : g.drive);
       const mode = g.overlay_off ? 'none (MaxPack libraries at launch off)' : { full: 'Full', emulators: 'Emulators only', off: 'Off' }[g.fakelib_mode];
-      const fromList = g.settings_source === 'recommended' ? ' (recommended)' : '';
+      // maxpack_logic::report: " (recommended)" only after a value the list itself sets.
+      const rec = g.settings_source === 'recommended' && g.recommended ? g.recommended : {};
+      const fromList = rec.fakelib != null ? ' (recommended)' : '';
+      const playgoFromList = rec.playgo_off != null ? ' (recommended)' : '';
       const text = [`MaxPack 1.0.2: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
@@ -451,7 +454,7 @@ http.createServer((req, res) => {
           g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})${fromList}`] :
             fromList ? [`Fakelib mode: full${fromList}`] : [],
         ['ampr-emu-ng: bundled v0.5.1-maxpack.1',
-          `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : (g.playgo_off ? 'off' : 'on') + fromList}`,
+          `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : (g.playgo_off ? 'off' : 'on') + playgoFromList}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in each ?; it names no game):',
           `| ? | ${format} | ${g.kind === 'p5z' ? '?' : '—'} | ${drive} | 13.60 | MaxPack 1.0.2 | ${mode} | ? | ? |  |`, '',
