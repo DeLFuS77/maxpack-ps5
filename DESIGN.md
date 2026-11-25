@@ -609,8 +609,9 @@ scope: every other setting (`overlay_off`, backports, scans). The console never 
   first, so the one the user did not touch stays as shown (`hand_choice`). `POST /api/recommended/<TID>` takes it
   out of all four lists.
 - **Refresh** (`recommended::spawn_refresh`, once per start). Skipped with `recommended: refresh off` without
-  `recommended_update`, and `recommended: refresh waits for the secure connection check` until the self-test has
-  passed (`tls::passed`). Otherwise
+  `recommended_update`. Skipped with `recommended: refresh skipped until the next start: the secure connection check
+  has not passed` when the self-test has not passed by the time MaxPack starts (`tls::passed`, asked once): a check
+  that passes later in the same run does not start it; the next start does. Otherwise
   `GET https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json` (262144 bytes at most;
   tried again as the self-update's look, `maxpack_logic::update::look_failed`, after no answer or a server error),
   checked with `parse`, and only when its `version` is higher than the list in use: saved to

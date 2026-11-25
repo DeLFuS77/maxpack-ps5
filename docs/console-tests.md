@@ -757,9 +757,11 @@ name no game.
 
 - [ ] **10.1. The list at start.**
   - Restart MaxPack. Expected in the log: `recommended: v2026112501 (2 titles, bundled)`, then
-    `recommended: refresh waits for the secure connection check` if 8.1 has not passed on this console, or,
-    once it has, `recommended: kept v2026112501 (download is not newer)` (`downloaded v<version> (<n>
-    titles)` if a newer list was pushed to `main`).
+    `recommended: refresh skipped until the next start: the secure connection check has not passed` if 8.1 has
+    not passed on this console, or, once it has, `recommended: kept v2026112501 (download is not newer)`
+    (`downloaded v<version> (<n> titles)` if a newer list was pushed to `main`).
+  - With the check not passed, run "Check secure connections" until it passes. Expected: no `recommended:`
+    download line in this run; restart MaxPack: now `kept` (or `downloaded`) as above.
   - Turn off "Download updated recommended settings", save and restart MaxPack. Expected:
     `recommended: refresh off`. Turn it on again.
 - [ ] **10.2. A game with a bundled recommendation shows the tag.**

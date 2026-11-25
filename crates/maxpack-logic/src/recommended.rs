@@ -611,8 +611,10 @@ mod tests {
 
     #[test]
     fn bundled_list_parses() {
+        // Any number of titles: a game added to the list must not need a change here.
         let l = parse(include_bytes!("../../../data/recommended.json")).unwrap();
-        assert_eq!(l.len(), 2);
+        assert!(!l.is_empty());
         assert!(l.version > 0);
+        assert!(l.titles.keys().all(|k| valid_key(k)), "{:?}", l.titles.keys().collect::<Vec<_>>());
     }
 }

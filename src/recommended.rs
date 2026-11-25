@@ -71,8 +71,9 @@ fn set_current(list: List) {
     *CURRENT.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(list));
 }
 
-/// The once-per-start refresh, in its own thread (`recommended_update`, after the secure-connection
-/// self-test has passed on this console): URL downloaded (MAX_BYTES at most; tried again as the
+/// The once-per-start refresh, in its own thread (`recommended_update`, and only when the secure-connection
+/// self-test has passed on this console by the time MaxPack starts: one passed later counts from the next
+/// start): URL downloaded (MAX_BYTES at most; tried again as the
 /// self-update's look, after no answer or a server error), checked whole with
 /// maxpack_logic::recommended::parse, and put in use, saved to CACHED and the scan loop woken only when
 /// its version is higher than the list's in use. Anything else is one log line, and the list in use
@@ -84,7 +85,7 @@ pub fn spawn_refresh(state: Arc<crate::web::State>) {
         return;
     }
     if !crate::tls::passed() {
-        log!("recommended: refresh waits for the secure connection check");
+        log!("recommended: refresh skipped until the next start: the secure connection check has not passed");
         return;
     }
     std::thread::spawn(move || {

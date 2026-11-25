@@ -417,7 +417,8 @@ what Fakelib is.
   applies to that game (`manual_settings` in `config.toml`). **Back to the recommended setting**, in the
   same sheet, undoes it. A game you had set by hand before 1.0.2 keeps your setting.
 - The list comes inside `maxpack.elf`, so it works offline. Once per start, when the console has passed
-  **Check secure connections**, MaxPack downloads the latest list from this repository
+  **Check secure connections** (a check passed while MaxPack runs counts from its next start), MaxPack
+  downloads the latest list from this repository
   ([`data/recommended.json`](data/recommended.json)): only data, checked whole before it is used, and used
   only when it is newer than the one it has. Nothing about your games is sent: the whole list is
   downloaded. Settings > **Download updated recommended settings** turns the download off.
