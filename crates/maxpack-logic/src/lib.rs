@@ -15,6 +15,7 @@ pub mod overlay;
 pub mod p5z;
 pub mod play;
 pub mod presence;
+pub mod recommended;
 pub mod report;
 pub mod roots;
 pub mod sandbox;
