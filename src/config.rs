@@ -447,8 +447,15 @@ fn first_settings() -> Settings {
     s
 }
 
-/// Reads the config; creates it when missing (first_settings).
+/// Reads the config; creates it when missing (first_settings). The launch watcher's copy of `notify`
+/// (recommended::set_notify) follows it.
 pub fn load() -> Settings {
+    let s = read();
+    crate::recommended::set_notify(s.notify);
+    s
+}
+
+fn read() -> Settings {
     match std::fs::read_to_string(CONFIG_PATH) {
         Ok(t) => parse(&t),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -465,7 +472,7 @@ pub fn load() -> Settings {
     }
 }
 
-/// Writes the config atomically (tmp + rename).
+/// Writes the config atomically (tmp + rename); the launch watcher's copy of `notify` follows it.
 pub fn save(s: &Settings) -> std::io::Result<()> {
     let path = std::path::Path::new(CONFIG_PATH);
     if let Some(dir) = path.parent() {
@@ -473,7 +480,9 @@ pub fn save(s: &Settings) -> std::io::Result<()> {
     }
     let tmp = format!("{CONFIG_PATH}.tmp");
     std::fs::write(&tmp, render(s))?;
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path)?;
+    crate::recommended::set_notify(s.notify);
+    Ok(())
 }
 
 pub fn to_json(s: &Settings) -> Value {

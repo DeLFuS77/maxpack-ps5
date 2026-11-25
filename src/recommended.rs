@@ -4,8 +4,9 @@
 //! `effective`, so a game whose settings the user chose keeps them and the others get the list's.
 
 use crate::config::Settings;
-use maxpack_logic::recommended::{self as logic, Effective, Entry, List};
+use maxpack_logic::recommended::{self as logic, Effective, Entry, List, Notice};
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 /// The list in the repository, the only place it is downloaded from.
@@ -146,6 +147,32 @@ fn firmware() -> Option<(u8, u8)> {
 /// The list's entry for `tid` on this console's firmware, if one applies.
 pub fn entry(tid: &str) -> Option<Entry> {
     logic::entry_for(&current(), tid, firmware()).copied()
+}
+
+/// The `notify` setting, for `on_launch` (the launch watcher has no Settings): config::load and
+/// config::save keep it as the file says.
+static NOTIFY: AtomicBool = AtomicBool::new(true);
+
+pub fn set_notify(on: bool) {
+    NOTIFY.store(on, Ordering::Relaxed);
+}
+
+/// A launch of `tid` (launch.rs, once per launch): its notice, if the list has one for it, as a
+/// notification in the console's language (with `notify`; logged either way). Sent from its own
+/// thread, so the launch watcher never waits for it.
+pub fn on_launch(tid: &str) {
+    let Some(notice) = entry(tid).and_then(|e| e.notice) else { return };
+    if !NOTIFY.load(Ordering::Relaxed) {
+        log!("{tid}: notice {} not shown (notify off)", notice.name());
+        return;
+    }
+    log!("{tid}: notice {}", notice.name());
+    std::thread::spawn(move || {
+        let l = crate::i18n::lang();
+        crate::sys::notify(match notice {
+            Notice::LongFirstBoot => crate::i18n::notice_long_first_boot(l),
+        });
+    });
 }
 
 /// The Fakelib mode, the PlayGo stub and the notice of `tid` as used: the user's choice, else the list's.

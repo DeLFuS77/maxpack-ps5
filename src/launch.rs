@@ -763,6 +763,9 @@ impl Watcher {
         tlog!("{tid} sandbox seen: {SANDBOX_ROOT}/{name}");
         // Pause the scan now, not after the up-to-3 s common/lib wait (a queued purge could run in it).
         self.running.lock().unwrap().insert(tid.to_string());
+        // A new sandbox is a new launch: the game's notice from the recommended settings, if any (its own
+        // thread: the common/lib wait below is not delayed).
+        crate::recommended::on_launch(tid);
         if let Some(mut old) = self.sessions.remove(name) {
             tlog!("{tid} stale session on {name}, unmounting it first");
             // The mounts first: left in the sandbox they hang its teardown. The dump folder after.
@@ -873,6 +876,10 @@ impl Watcher {
             },
         };
         let not_mounting = self.not_mounting();
+        // A launch the sandbox watch missed (fast_mount opened no session for it): its notice, as there.
+        if !self.sessions.contains_key(&name) {
+            crate::recommended::on_launch(tid);
+        }
         let s = self.sessions.entry(name.clone()).or_insert_with(|| {
             let mut s = Session::new(tid);
             if not_mounting.is_some() {

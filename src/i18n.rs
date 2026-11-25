@@ -393,3 +393,21 @@ pub fn smp_running(l: Lang) -> &'static str {
         Lang::Ar => "MaxPack: ShadowMount+ قيد التشغيل؛ جارٍ انتظار إيقافه",
     }
 }
+
+/// The recommended settings' notice `long_first_boot` (maxpack_logic::recommended::Notice), shown when
+/// such a game starts: its screen stays black for minutes, which looks like a hang.
+pub fn notice_long_first_boot(l: Lang) -> &'static str {
+    match l {
+        Lang::En => "It can take several minutes to start, with a black screen. Wait.",
+        Lang::Ru => "Запуск может занять несколько минут, с чёрным экраном. Подождите.",
+        Lang::Zh => "启动可能需要几分钟，期间屏幕保持黑色。请稍候。",
+        Lang::De => "Der Start kann mehrere Minuten dauern, mit schwarzem Bildschirm. Bitte warten.",
+        Lang::Es => "Puede tardar varios minutos en arrancar, con la pantalla en negro. Espera.",
+        Lang::Fr => "Le démarrage peut prendre plusieurs minutes, avec un écran noir. Patientez.",
+        Lang::Ja => "起動に数分かかることがあり、その間画面は真っ暗です。お待ちください。",
+        Lang::Pt => "Pode levar vários minutos para iniciar, com a tela preta. Aguarde.",
+        Lang::It => "L'avvio può richiedere diversi minuti, con lo schermo nero. Attendi.",
+        Lang::Ko => "시작하는 데 몇 분이 걸릴 수 있으며 그동안 화면이 검게 보입니다. 기다려 주세요.",
+        Lang::Ar => "قد يستغرق بدء التشغيل عدة دقائق مع شاشة سوداء. انتظر.",
+    }
+}
