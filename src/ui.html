@@ -337,6 +337,10 @@ button.shoulder:hover { color: var(--fg); }
   box-shadow: inset 0 1px 0.2rem rgba(0, 0, 0, 0.3); resize: vertical; }
 .m-note { margin-top: 0.9rem; color: var(--ok); overflow-wrap: break-word; }
 .m-note:empty { display: none; }
+/* The recommended settings: the game's notice above its fields, a tag beside the values the list set. */
+.m-notice { margin: 0 0 1.1rem; padding: 0.75rem 1rem; border-radius: 0.9rem; background: rgba(110, 72, 18, 0.5);
+  color: #fff0cf; box-shadow: inset 0.25rem 0 0 var(--warn); overflow-wrap: break-word; }
+.tag.rec { margin-left: 0.6rem; vertical-align: 0.08rem; background: rgba(45, 125, 255, 0.24); color: #d6e4ff; }
 .sheet-side .badge { left: 1rem; top: 1rem; }
 .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .sheet-head h2 { font: 800 2.4rem/1.12 var(--display); letter-spacing: -0.03em; text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.55); }
@@ -769,6 +773,7 @@ button.inst-item[aria-checked="true"] {
     <label class="row"><span class="lbl" data-i18n="addEmulators">Add the bundled DLC (dlc_emu) and PlayGo (pgo_stub) emulators when a game needs them and has none</span><input type="checkbox" id="f_add_emulators"></label>
     <label class="row"><span class="lbl" data-i18n="injectAmpr">Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)</span><input type="checkbox" id="f_inject_ampr"></label>
     <label class="row"><span><span class="lbl" data-i18n="amprAutoUpdate">Auto-update ampr-emu-ng (checked once at start)</span><span class="hint" data-i18n="amprAutoUpdateHint">Off by default. It installs only MaxPack's own ampr-emu-ng releases, checked against their SHA256SUMS, and only after the secure-connection check.</span></span><input type="checkbox" id="f_ampr_auto_update"></label>
+    <label class="row"><span><span class="lbl" data-i18n="recommendedUpdate">Download updated recommended settings</span><span class="hint" data-i18n="recommendedUpdateHint">Only data, checked before it is used. Needs the secure connection check.</span></span><input type="checkbox" id="f_recommended_update"></label>
     <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprtls" data-i18n="amprNeedsTls" hidden>ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
     <div class="row"><span><span class="lbl" data-i18n="tlsTitle">Secure connections</span><span class="hint" data-i18n="tlsHint">MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.</span><span class="hint" id="tlsmsg" role="status"></span></span><button id="tlscheck" type="button" data-i18n="tlsCheck">Check secure connections</button></div>
     <ul class="tls-list" id="tlslist" hidden></ul>
@@ -826,12 +831,13 @@ button.inst-item[aria-checked="true"] {
       </button>
     </div>
     <div class="panel">
+      <div class="m-notice" id="m-notice" role="note" hidden></div>
       <dl class="fields" id="m-fields"></dl>
-      <label class="row m-row" id="m-playgo-row" hidden><span><span class="lbl" data-i18n="playgoStub">PlayGo stub</span>
+      <label class="row m-row" id="m-playgo-row" hidden><span><span class="lbl" data-i18n="playgoStub">PlayGo stub</span><span class="tag rec" id="m-playgo-rec" data-i18n="recommendedTag" hidden>Recommended setting</span>
         <span class="hint" data-i18n="playgoHint">Turn off if the game stays on a black screen; turn on if it asks to finish the download.</span>
         <span class="hint" id="m-playgo-fl" data-i18n="playgoFakelibOff" hidden>No effect while Fakelib is Off.</span></span>
         <input type="checkbox" id="m-playgo"></label>
-      <label class="row m-row" id="m-fakelib-row" hidden><span><span class="lbl" data-i18n="fakelibLbl">Fakelib</span>
+      <label class="row m-row" id="m-fakelib-row" hidden><span><span class="lbl" data-i18n="fakelibLbl">Fakelib</span><span class="tag rec" id="m-fakelib-rec" data-i18n="recommendedTag" hidden>Recommended setting</span>
         <span class="hint" data-i18n="fakelibHint">If the game shows a black screen or stalls while checking add-ons, try "Emulators only", then "Off".</span>
         <span class="hint" id="m-fakelib-plain" data-i18n="fakelibPlainOff" hidden>For an unpacked folder game, Off mounts nothing at launch: no /data, USB, fonts or writable /app0 in its sandbox.</span>
         <span class="hint" id="m-fakelib-ov" data-i18n="fakelibOverlayOff" hidden>No effect while "MaxPack libraries at launch" is off.</span></span>
@@ -840,6 +846,7 @@ button.inst-item[aria-checked="true"] {
           <option value="emulators" data-i18n="fakelibEmulators">Emulators only</option>
           <option value="off" data-i18n="fakelibOff">Off</option>
         </select></label>
+      <div class="m-row" id="m-reset-row" hidden><button type="button" id="m-reset" data-i18n="recommendedReset">Back to the recommended setting</button></div>
       <label class="row m-row" id="m-overlay-row" hidden><span><span class="lbl" data-i18n="overlayLbl">MaxPack libraries at launch</span>
         <span class="hint" data-i18n="overlayHint">Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.</span></span>
         <input type="checkbox" id="m-overlay"></label>
@@ -963,6 +970,8 @@ var MSG = {
     playgoFakelibOff: 'No effect while Fakelib is Off.',
     fakelibOverlayOff: 'No effect while "MaxPack libraries at launch" is off.',
     fakelibPlainOff: 'For an unpacked folder game, Off mounts nothing at launch: no /data, USB, fonts or writable /app0 in its sandbox.',
+    recommendedTag: 'Recommended setting', recommendedReset: 'Back to the recommended setting',
+    noticeLongFirstBoot: 'It can take several minutes to start, with a black screen. Wait.',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
     sizesNone: 'Sizes unavailable', sizesLoading: 'Loading sizes...',
@@ -995,6 +1004,8 @@ var MSG = {
     injectAmpr: "Inject ampr-emu-ng into folder games' fakelib (pkg games always get it)",
     amprAutoUpdate: 'Auto-update ampr-emu-ng (checked once at start)',
     amprAutoUpdateHint: "Off by default. It installs only MaxPack's own ampr-emu-ng releases, checked against their SHA256SUMS, and only after the secure-connection check.",
+    recommendedUpdate: 'Download updated recommended settings',
+    recommendedUpdateHint: 'Only data, checked before it is used. Needs the secure connection check.',
     amprUpdateNow: "Update ampr-emu-ng now",
     amprUpdating: "Updating ampr-emu-ng...",
     amprBundled: "bundled",
@@ -1231,10 +1242,14 @@ var MSG = {
     playgoFakelibOff: 'Не действует, пока Fakelib в режиме «Выкл.».',
     fakelibOverlayOff: 'Не действует, пока «Библиотеки MaxPack при запуске» выключены.',
     fakelibPlainOff: 'Для игры в распакованной папке «Выкл.» значит, что при запуске MaxPack ничего не монтирует: в песочнице нет /data, USB, шрифтов и записываемого /app0.',
+    recommendedTag: 'Рекомендуемая настройка', recommendedReset: 'Вернуть рекомендуемую настройку',
+    noticeLongFirstBoot: 'Запуск может занять несколько минут, с чёрным экраном. Подождите.',
     deleteP5z: "Файл .p5z и его кеш будут удалены с накопителя: {path}. Это нельзя отменить.",
     excludePaths: "Исключённые пути",
     excludePathsHint: "По одному в строке. Сканирование их не открывает: игра там не отображается и не регистрируется (уже добавленная на главный экран остаётся).",
     amprAutoUpdateHint: "По умолчанию выключено. Устанавливает только собственные выпуски ampr-emu-ng от MaxPack, проверенные по их SHA256SUMS, и только после проверки защищённых соединений.",
+    recommendedUpdate: 'Загружать обновлённые рекомендуемые настройки',
+    recommendedUpdateHint: 'Только данные, проверяются перед использованием. Нужна проверка защищённых соединений.',
     forbiddenRoot: "MaxPack никогда не сканирует {path}: это системная папка, данные пользователя консоли или установленные игры, либо папка данных MaxPack или другого монтировщика.",
     aboutTitle: "О программе",
     aboutMaxPack: "MaxPack {version} монтирует и устанавливает игры PS5 с собственной сборкой ampr-emu-ng.",
@@ -1479,10 +1494,14 @@ var MSG = {
     playgoFakelibOff: 'Fakelib 为“关闭”时无效。',
     fakelibOverlayOff: '“启动时加载 MaxPack 库”关闭时无效。',
     fakelibPlainOff: '对于未打包的文件夹游戏，“关闭”表示启动时 MaxPack 不挂载任何内容：沙盒中没有 /data、USB、字体，也没有可写的 /app0。',
+    recommendedTag: '推荐设置', recommendedReset: '恢复推荐设置',
+    noticeLongFirstBoot: '启动可能需要几分钟，期间屏幕保持黑色。请稍候。',
     deleteP5z: "将从驱动器删除 .p5z 文件及其缓存：{path}。此操作无法撤销。",
     excludePaths: "排除的路径",
     excludePathsHint: "每行一个。扫描不会打开这些路径：其中的游戏不会被列出或注册（已在主屏幕上的会保留）。",
     amprAutoUpdateHint: "默认关闭。只安装 MaxPack 自己发布的 ampr-emu-ng，并按其 SHA256SUMS 校验，且仅在通过安全连接检查之后。",
+    recommendedUpdate: '下载更新的推荐设置',
+    recommendedUpdateHint: '仅为数据，使用前会先检查。需要先通过安全连接检查。',
     forbiddenRoot: "MaxPack 绝不会扫描 {path}：它是系统文件夹、主机的用户数据或已安装的游戏，或是 MaxPack 或其他挂载器的数据文件夹。",
     aboutTitle: "关于",
     aboutMaxPack: "MaxPack {version} 使用自己构建的 ampr-emu-ng 来挂载和安装 PS5 游戏。",
@@ -1727,10 +1746,14 @@ var MSG = {
     playgoFakelibOff: 'Ohne Wirkung, solange Fakelib auf „Aus“ steht.',
     fakelibOverlayOff: 'Ohne Wirkung, solange „MaxPack-Bibliotheken beim Start“ ausgeschaltet ist.',
     fakelibPlainOff: 'Bei einem entpackten Ordnerspiel bindet „Aus“ beim Start nichts ein: kein /data, kein USB, keine Schriften und kein beschreibbares /app0 in seiner Sandbox.',
+    recommendedTag: 'Empfohlene Einstellung', recommendedReset: 'Zurück zur empfohlenen Einstellung',
+    noticeLongFirstBoot: 'Der Start kann mehrere Minuten dauern, mit schwarzem Bildschirm. Bitte warten.',
     deleteP5z: "Die .p5z-Datei und ihr Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.",
     excludePaths: "Ausgeschlossene Pfade",
     excludePathsHint: "Einer pro Zeile. Der Scan öffnet sie nie: Ein Spiel dort wird weder aufgelistet noch registriert (eines, das schon auf dem Startbildschirm ist, bleibt).",
     amprAutoUpdateHint: "Standardmäßig aus. Es installiert nur MaxPacks eigene ampr-emu-ng-Releases, geprüft anhand ihrer SHA256SUMS, und erst nach der Prüfung sicherer Verbindungen.",
+    recommendedUpdate: 'Aktualisierte empfohlene Einstellungen herunterladen',
+    recommendedUpdateHint: 'Nur Daten, vor der Verwendung geprüft. Erfordert die Prüfung sicherer Verbindungen.',
     forbiddenRoot: "MaxPack scannt {path} nie: Es ist ein Systemordner, die Benutzerdaten der Konsole oder installierte Spiele, oder ein Datenordner von MaxPack oder eines anderen Mounters.",
     aboutTitle: "Info",
     aboutMaxPack: "MaxPack {version} bindet PS5-Spiele ein und installiert sie, mit einem eigenen Build von ampr-emu-ng.",
@@ -1907,6 +1930,8 @@ var MSG = {
     playgoFakelibOff: 'No tiene efecto mientras Fakelib está en «Desactivado».',
     fakelibOverlayOff: 'No tiene efecto mientras «Librerías de MaxPack al lanzar» está apagado.',
     fakelibPlainOff: 'En un juego en carpeta sin empaquetar, «Desactivado» hace que MaxPack no monte nada al lanzarlo: ni /data, ni USB, ni fuentes, ni /app0 escribible en su sandbox.',
+    recommendedTag: 'Ajuste recomendado', recommendedReset: 'Volver al recomendado',
+    noticeLongFirstBoot: 'Puede tardar varios minutos en arrancar, con la pantalla en negro. Espera.',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
     sizesNone: 'Tamaños no disponibles', sizesLoading: 'Cargando tamaños...',
@@ -1937,6 +1962,8 @@ var MSG = {
     injectAmpr: 'Inyectar ampr-emu-ng en la fakelib de los juegos en carpeta (los juegos pkg siempre lo reciben)',
     amprAutoUpdate: 'Actualizar ampr-emu-ng automáticamente (se comprueba una vez al iniciar)',
     amprAutoUpdateHint: 'Apagada por defecto. Solo instala las versiones de ampr-emu-ng propias de MaxPack, comprobadas con su SHA256SUMS, y solo después de la comprobación de conexiones seguras.',
+    recommendedUpdate: 'Descargar los ajustes recomendados actualizados',
+    recommendedUpdateHint: 'Solo datos, comprobados antes de usarlos. Necesita la comprobación de conexiones seguras.',
     amprUpdateNow: "Actualizar ampr-emu-ng ahora",
     amprUpdating: "Actualizando ampr-emu-ng...",
     amprBundled: "incluido",
@@ -2168,10 +2195,14 @@ var MSG = {
     playgoFakelibOff: "Sans effet tant que Fakelib est sur « Désactivé ».",
     fakelibOverlayOff: "Sans effet tant que « Bibliothèques MaxPack au lancement » est désactivé.",
     fakelibPlainOff: "Pour un jeu en dossier non empaqueté, « Désactivé » signifie que MaxPack ne monte rien au lancement : ni /data, ni USB, ni polices, ni /app0 inscriptible dans son bac à sable.",
+    recommendedTag: 'Réglage recommandé', recommendedReset: 'Revenir au réglage recommandé',
+    noticeLongFirstBoot: 'Le démarrage peut prendre plusieurs minutes, avec un écran noir. Patientez.',
     deleteP5z: "Le fichier .p5z et son cache seront supprimés du disque : {path}. Action irréversible.",
     excludePaths: "Chemins exclus",
     excludePathsHint: "Un par ligne. L'analyse ne les ouvre jamais : un jeu qui s'y trouve n'est ni listé ni enregistré (celui déjà sur l'écran d'accueil y reste).",
     amprAutoUpdateHint: "Désactivé par défaut. Il n'installe que les versions d'ampr-emu-ng propres à MaxPack, vérifiées avec leur SHA256SUMS, et seulement après la vérification des connexions sécurisées.",
+    recommendedUpdate: 'Télécharger les réglages recommandés à jour',
+    recommendedUpdateHint: 'Uniquement des données, vérifiées avant leur utilisation. Nécessite la vérification des connexions sécurisées.',
     forbiddenRoot: "MaxPack n'analyse jamais {path} : c'est un dossier système, les données utilisateur de la console ou les jeux installés, ou un dossier de données de MaxPack ou d'un autre monteur.",
     aboutTitle: "À propos",
     aboutMaxPack: "MaxPack {version} monte et installe les jeux PS5, avec sa propre version d'ampr-emu-ng.",
@@ -2416,10 +2447,14 @@ var MSG = {
     playgoFakelibOff: 'Fakelib が「オフ」の間は効果がありません。',
     fakelibOverlayOff: '「起動時に MaxPack のライブラリを使う」がオフの間は効果がありません。',
     fakelibPlainOff: '展開済みフォルダーのゲームでは、「オフ」にすると起動時に MaxPack は何もマウントしません。サンドボックスに /data、USB、フォント、書き込み可能な /app0 はありません。',
+    recommendedTag: '推奨設定', recommendedReset: '推奨設定に戻す',
+    noticeLongFirstBoot: '起動に数分かかることがあり、その間画面は真っ暗です。お待ちください。',
     deleteP5z: ".p5z ファイルとそのキャッシュをドライブから削除します: {path}。元に戻せません。",
     excludePaths: "除外するパス",
     excludePathsHint: "1 行に 1 つ。スキャンはこれらを開きません。そこにあるゲームは一覧にも登録にも表示されません（すでにホーム画面にあるものは残ります）。",
     amprAutoUpdateHint: "既定ではオフです。MaxPack 独自の ampr-emu-ng リリースだけを、その SHA256SUMS で検証したうえで、安全な接続のチェックに合格した後にのみインストールします。",
+    recommendedUpdate: '最新の推奨設定をダウンロード',
+    recommendedUpdateHint: 'データのみで、使用前に検証されます。安全な接続のチェックが必要です。',
     forbiddenRoot: "MaxPack は {path} を決してスキャンしません。システムフォルダー、本体のユーザーデータやインストール済みゲーム、または MaxPack や他のマウンターのデータフォルダーです。",
     aboutTitle: "このアプリについて",
     aboutMaxPack: "MaxPack {version} は、独自ビルドの ampr-emu-ng で PS5 のゲームをマウント・インストールします。",
@@ -2664,10 +2699,14 @@ var MSG = {
     playgoFakelibOff: 'Sem efeito enquanto o Fakelib estiver em “Desligado”.',
     fakelibOverlayOff: 'Sem efeito enquanto “Bibliotecas do MaxPack ao iniciar” estiver desligado.',
     fakelibPlainOff: 'Em um jogo em pasta não empacotada, “Desligado” faz o MaxPack não montar nada ao iniciar: sem /data, USB, fontes ou /app0 gravável no sandbox.',
+    recommendedTag: 'Configuração recomendada', recommendedReset: 'Voltar à configuração recomendada',
+    noticeLongFirstBoot: 'Pode levar vários minutos para iniciar, com a tela preta. Aguarde.',
     deleteP5z: "O arquivo .p5z e o cache dele serão excluídos do drive: {path}. Não é possível desfazer.",
     excludePaths: "Caminhos excluídos",
     excludePathsHint: "Um por linha. A varredura nunca os abre: um jogo ali não é listado nem registrado (um que já esteja na tela inicial continua).",
     amprAutoUpdateHint: "Desativado por padrão. Só instala as versões do ampr-emu-ng do próprio MaxPack, verificadas pelo SHA256SUMS delas, e só depois da verificação de conexões seguras.",
+    recommendedUpdate: 'Baixar as configurações recomendadas atualizadas',
+    recommendedUpdateHint: 'Apenas dados, verificados antes de serem usados. Requer a verificação de conexões seguras.',
     forbiddenRoot: "O MaxPack nunca varre {path}: é uma pasta do sistema, os dados de usuário do console ou jogos instalados, ou uma pasta de dados do MaxPack ou de outro montador.",
     aboutTitle: "Sobre",
     aboutMaxPack: "O MaxPack {version} monta e instala jogos de PS5, com um build próprio do ampr-emu-ng.",
@@ -2912,10 +2951,14 @@ var MSG = {
     playgoFakelibOff: "Nessun effetto finché Fakelib è su «Disattivato».",
     fakelibOverlayOff: "Nessun effetto finché «Librerie di MaxPack all'avvio» è disattivato.",
     fakelibPlainOff: "Per un gioco in cartella non impacchettata, «Disattivato» significa che MaxPack non monta nulla all'avvio: niente /data, USB, font o /app0 scrivibile nella sandbox.",
+    recommendedTag: 'Impostazione consigliata', recommendedReset: "Torna all'impostazione consigliata",
+    noticeLongFirstBoot: "L'avvio può richiedere diversi minuti, con lo schermo nero. Attendi.",
     deleteP5z: "Il file .p5z e la sua cache verranno eliminati dall'unità: {path}. L'operazione non è reversibile.",
     excludePaths: "Percorsi esclusi",
     excludePathsHint: "Uno per riga. La scansione non li apre mai: un gioco lì dentro non viene elencato né registrato (uno già nella schermata iniziale resta).",
     amprAutoUpdateHint: "Disattivato per impostazione predefinita. Installa solo le release di ampr-emu-ng di MaxPack, verificate con il loro SHA256SUMS, e solo dopo il controllo delle connessioni sicure.",
+    recommendedUpdate: 'Scarica le impostazioni consigliate aggiornate',
+    recommendedUpdateHint: 'Solo dati, verificati prima di essere usati. Richiede il controllo delle connessioni sicure.',
     forbiddenRoot: "MaxPack non scansiona mai {path}: è una cartella di sistema, i dati utente della console o i giochi installati, oppure una cartella dati di MaxPack o di un altro montatore.",
     aboutTitle: "Informazioni",
     aboutMaxPack: "MaxPack {version} monta e installa i giochi PS5, con una build propria di ampr-emu-ng.",
@@ -3160,10 +3203,14 @@ var MSG = {
     playgoFakelibOff: 'Fakelib이 “끄기”인 동안에는 효과가 없습니다.',
     fakelibOverlayOff: '“실행 시 MaxPack 라이브러리 사용”이 꺼져 있는 동안에는 효과가 없습니다.',
     fakelibPlainOff: '압축되지 않은 폴더 게임에서 “끄기”는 실행 시 MaxPack이 아무것도 마운트하지 않는다는 뜻입니다. 샌드박스에 /data, USB, 글꼴, 쓰기 가능한 /app0이 없습니다.',
+    recommendedTag: '권장 설정', recommendedReset: '권장 설정으로 되돌리기',
+    noticeLongFirstBoot: '시작하는 데 몇 분이 걸릴 수 있으며 그동안 화면이 검게 보입니다. 기다려 주세요.',
     deleteP5z: ".p5z 파일과 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.",
     excludePaths: "제외할 경로",
     excludePathsHint: "한 줄에 하나씩. 스캔은 이 경로를 열지 않으므로 그 안의 게임은 목록에 표시되거나 등록되지 않습니다(이미 홈 화면에 있는 게임은 유지됩니다).",
     amprAutoUpdateHint: "기본적으로 꺼져 있습니다. MaxPack 자체 ampr-emu-ng 릴리스만, 해당 SHA256SUMS로 확인한 뒤, 보안 연결 확인을 통과한 후에만 설치합니다.",
+    recommendedUpdate: '업데이트된 권장 설정 다운로드',
+    recommendedUpdateHint: '데이터만 받으며 사용 전에 확인합니다. 보안 연결 확인이 필요합니다.',
     forbiddenRoot: "MaxPack은 {path}을(를) 스캔하지 않습니다. 시스템 폴더, 콘솔의 사용자 데이터나 설치된 게임, 또는 MaxPack이나 다른 마운터의 데이터 폴더입니다.",
     aboutTitle: "정보",
     aboutMaxPack: "MaxPack {version}은 자체 빌드한 ampr-emu-ng로 PS5 게임을 마운트하고 설치합니다.",
@@ -3408,10 +3455,14 @@ var MSG = {
     playgoFakelibOff: 'لا أثر له ما دام Fakelib على «إيقاف».',
     fakelibOverlayOff: 'لا أثر له ما دام «مكتبات MaxPack عند التشغيل» معطّلًا.',
     fakelibPlainOff: 'في لعبة مجلد غير معبّأ، يعني «إيقاف» أن MaxPack لا يركّب شيئًا عند التشغيل: لا /data ولا USB ولا خطوط ولا /app0 قابل للكتابة في بيئتها المعزولة.',
+    recommendedTag: 'إعداد موصى به', recommendedReset: 'العودة إلى الإعداد الموصى به',
+    noticeLongFirstBoot: 'قد يستغرق بدء التشغيل عدة دقائق مع شاشة سوداء. انتظر.',
     deleteP5z: "سيُحذف ملف .p5z وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.",
     excludePaths: "المسارات المستثناة",
     excludePathsHint: "مسار واحد في كل سطر. لا يفتحها المسح أبدًا: لا تُعرض اللعبة الموجودة فيها ولا تُسجَّل (وتبقى التي على الشاشة الرئيسية).",
     amprAutoUpdateHint: "متوقف افتراضيًا. لا يثبّت إلا إصدارات ampr-emu-ng الخاصة بـ MaxPack، بعد التحقق منها بملف SHA256SUMS، وفقط بعد اجتياز فحص الاتصالات الآمنة.",
+    recommendedUpdate: 'تنزيل الإعدادات الموصى بها المحدّثة',
+    recommendedUpdateHint: 'بيانات فقط، يتم التحقق منها قبل استخدامها. يتطلب فحص الاتصالات الآمنة.',
     forbiddenRoot: "لا يمسح MaxPack المسار {path} أبدًا: فهو مجلد نظام، أو بيانات مستخدم الجهاز أو الألعاب المثبّتة، أو مجلد بيانات لـ MaxPack أو لمُركِّب آخر.",
     aboutTitle: "حول",
     aboutMaxPack: "يركّب MaxPack {version} ألعاب PS5 ويثبّتها بإصداره الخاص من ampr-emu-ng.",
@@ -4194,7 +4245,7 @@ function renderModal() {
   // The report follows the game: fetched again when its status, crash, hidden or overlay state changes, and
   // when it starts or stops running (the exit lines of a run that left no dump are in the log tail).
   var rsig = dup ? '' : g.title_id + '|' + g.status + '|' + JSON.stringify(g.crash || null) + '|' + !!g.hidden +
-    '|' + !!g.overlay_off + '|' + (g.fakelib_mode || 'full') + '|' + isRunning(g);
+    '|' + !!g.overlay_off + '|' + (g.fakelib_mode || 'full') + '|' + !!g.playgo_off + '|' + (g.settings_source || '') + '|' + isRunning(g);
   if (rsig && rsig !== reportSig) { reportSig = rsig; loadReport(g.title_id, ++reportRequest); }
   // The PlayGo switch: only for a game whose eboot imports PlayGo, or one turned off already.
   // In the fakelib mode Off no stub is ever added: the switch keeps its value, greyed, with a note.
@@ -4212,6 +4263,18 @@ function renderModal() {
   fl.disabled = !!fl._busy || g.status === 'building' || !!g.overlay_off;
   $('m-fakelib-ov').hidden = !g.overlay_off;
   $('m-fakelib-plain').hidden = !overlayOptional(g) || !!g.overlay_off;
+  // The recommended settings (src/recommended.rs): a tag beside both values while they are the list's; once
+  // the user chose them on this sheet, the way back to the list's, when it recommends anything for the game.
+  // The list's notice for the game stays above its fields either way.
+  var fromList = g.settings_source === 'recommended';
+  $('m-fakelib-rec').hidden = !fromList;
+  $('m-playgo-rec').hidden = !fromList;
+  var reset = $('m-reset');
+  $('m-reset-row').hidden = dup || g.settings_source !== 'user' || !g.recommended;
+  reset.disabled = !!reset._busy || g.status === 'building';
+  var notice = g.notice === 'long_first_boot' ? t('noticeLongFirstBoot') : '';
+  setText($('m-notice'), notice);
+  $('m-notice').hidden = !notice;
   // MaxPack's overlay: only a plain folder game can run without it (a pkg, a .p5z or a packed folder
   // is read through ampr-emu-ng, which comes in it; the payload refuses those, maxpack_logic::overlay).
   // A title still listed whose copy now needs it (packed since, or a pkg or .p5z took over) shows the
@@ -4398,8 +4461,9 @@ $('m-playgo').onchange = async function () {
   try {
     var r = await fetch('/api/playgo/' + encodeURIComponent(g.title_id), { method: 'POST', body: on ? 'on' : 'off' });
     if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
-    // Until the next state arrives, draw the new value.
+    // Until the next state arrives, draw the new value: the title's settings are the user's now.
     g.playgo_off = !on;
+    g.settings_source = 'user';
     modalActionError = '';
     if (state && state.paused) { queued = true; setBanner('paused', true, pausedText); }
   } catch (e) {
@@ -4421,8 +4485,9 @@ $('m-fakelib').onchange = async function () {
   try {
     var r = await fetch('/api/fakelib/' + encodeURIComponent(g.title_id), { method: 'POST', body: mode });
     if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
-    // Until the next state arrives, draw the new value.
+    // Until the next state arrives, draw the new value: the title's settings are the user's now.
     g.fakelib_mode = mode;
+    g.settings_source = 'user';
     modalActionError = '';
     if (state && state.paused) { queued = true; setBanner('paused', true, pausedText); }
   } catch (e) {
@@ -4432,6 +4497,36 @@ $('m-fakelib').onchange = async function () {
   if (modalOpen() && openTid === id) {
     renderModal();
     if (!box.disabled && !$('m-fakelib-row').hidden) box.focus();
+  }
+  schedule(300);
+};
+// "Back to the recommended setting" (POST /api/recommended/<TID>, body reset): the list applies again.
+$('m-reset').onclick = async function () {
+  var btn = this, g = openTid && findGame(openTid);
+  if (!g) return;
+  var id = gameId(g);
+  btn._busy = true;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/recommended/' + encodeURIComponent(g.title_id), { method: 'POST', body: 'reset' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    // Until the next state arrives, draw the list's values (a missing one is Full / with the stub).
+    var rec = g.recommended || {};
+    g.fakelib_mode = rec.fakelib || 'full';
+    g.playgo_off = !!rec.playgo_off;
+    g.settings_source = 'recommended';
+    modalActionError = '';
+    if (state && state.paused) { queued = true; setBanner('paused', true, pausedText); }
+  } catch (e) {
+    if (modalOpen() && openTid === id) modalActionError = e.message;
+  }
+  btn._busy = false;
+  if (modalOpen() && openTid === id) {
+    renderModal();
+    // The button goes with the user's choice: the focus goes to the setting it put back.
+    var fl = $('m-fakelib');
+    if (!btn.disabled && !$('m-reset-row').hidden) btn.focus();
+    else if (!fl.disabled && !$('m-fakelib-row').hidden) fl.focus();
   }
   schedule(300);
 };
@@ -4725,7 +4820,7 @@ function moveInBanner(btn, key) {
 }
 
 // ---- chunk 3: settings, log, views, keys ----
-var BOOLS = ['inject_ampr', 'add_emulators', 'ampr_auto_update', 'backports', 'auto_remove_missing', 'notify', 'log', 'debug'];
+var BOOLS = ['inject_ampr', 'add_emulators', 'ampr_auto_update', 'recommended_update', 'backports', 'auto_remove_missing', 'notify', 'log', 'debug'];
 var NUMS = ['scan_interval_seconds', 'stability_wait_seconds', 'auto_remove_delay_seconds', 'low_space_gb'];
 var settingsRequest = 0;
 function fillSettings(v) {
@@ -5464,11 +5559,11 @@ function moveInSettings(t, key) {
   else if (list[i + (key === 'ArrowUp' ? -1 : 1)]) list[i + (key === 'ArrowUp' ? -1 : 1)].focus();
   return true;
 }
-// The game sheet's controls in page order: its enabled buttons, the PlayGo switch, the fakelib selector and the
-// overlay switch when shown.
+// The game sheet's controls in page order: its enabled buttons, the PlayGo switch, the fakelib selector, "Back to
+// the recommended setting" and the overlay switch when shown.
 function modalControls() {
   return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled]), #modal select:not([disabled]), #modal textarea'))
-    .filter(function (c) { return /^m-(playgo|fakelib|overlay)$/.test(c.id) ? !$(c.id + '-row').hidden : !c.hidden; });
+    .filter(function (c) { return /^m-(playgo|fakelib|reset|overlay)$/.test(c.id) ? !$(c.id + '-row').hidden : !c.hidden; });
 }
 function moveInModal(key) {
   var list = modalControls();

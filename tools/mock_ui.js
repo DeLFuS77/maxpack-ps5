@@ -39,7 +39,11 @@
 // the switch to clear it; turning a non-plain game off answers 409 as the payload does), the Fakelib selector
 // (POST /api/fakelib: every game shows it; "Starfall Odyssey", a pkg, is set to Off, so its PlayGo switch is
 // greyed; "Shell Title" has it greyed by its overlay off; a plain folder adds the "mounts nothing" line), and the Excluded paths
-// of Settings. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
+// of Settings. The recommended settings (src/recommended.rs): "Recommended Example", a pkg, gets Fakelib Off and a
+// notice from the list (its sheet tags both values and shows the notice); "Chosen Example", a zstd folder, has a
+// recommendation the user overrode by hand, so its sheet offers "Back to the recommended setting" (POST
+// /api/recommended); a hand change of Fakelib or PlayGo (POST /api/fakelib, /api/playgo) makes a game's settings
+// the user's, as the payload does. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -122,6 +126,36 @@ const hidden = new Set(['PPSA02345']);
 const overlayOff = new Set(['PPSA06100', 'PPSA07100']);
 // The fakelib mode of each title not in "full" (fakelib_emulators, fakelib_off).
 const fakelibMode = new Map([['PPSA10001', 'off']]);
+// playgo_off, and manual_settings: the titles whose settings the user chose.
+const playgoOff = new Set();
+const manual = new Set(['PPSA11002']);
+// The recommended settings (data/recommended.json, keyed here by title id for the mock only).
+const recommended = new Map([
+  ['PPSA11001', { fakelib: 'off', notice: 'long_first_boot' }],
+  ['PPSA11002', { fakelib: 'emulators', playgo_off: true }],
+]);
+// maxpack_logic::recommended::effective: the user's when any of the four lists names the title, else the list's.
+function settingsOf(tid) {
+  const rec = recommended.get(tid) || {};
+  const has = rec.fakelib != null || rec.playgo_off != null;
+  const user = manual.has(tid) || fakelibMode.has(tid) || playgoOff.has(tid);
+  return {
+    fakelib_mode: user ? fakelibMode.get(tid) || 'full' : rec.fakelib || 'full',
+    playgo_off: user ? playgoOff.has(tid) : !!rec.playgo_off,
+    settings_source: user ? 'user' : has ? 'recommended' : 'default',
+    recommended: has ? { fakelib: rec.fakelib || null, playgo_off: rec.playgo_off == null ? null : rec.playgo_off } : null,
+    notice: rec.notice || null,
+  };
+}
+// maxpack_logic::recommended::hand_choice: before a hand change, the list's values become the user's.
+function handChoice(tid) {
+  const s = settingsOf(tid);
+  if (s.settings_source === 'recommended') {
+    if (s.fakelib_mode === 'full') fakelibMode.delete(tid); else fakelibMode.set(tid, s.fakelib_mode);
+    if (s.playgo_off) playgoOff.add(tid); else playgoOff.delete(tid);
+  }
+  manual.add(tid);
+}
 const queued = new Set();
 let running = null; // { tid, until }
 function runningNow() {
@@ -141,12 +175,11 @@ function games() {
   const g = (tid, name, kind, packing, status, extra) => Object.assign({
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
-    cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false, playgo_off: false,
+    cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false,
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
     registered: status === 'ready', mounted: status === 'ready', source_present: true,
     overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid), overlay_off_listed: overlayOff.has(tid),
-    fakelib_mode: fakelibMode.get(tid) || 'full',
-  }, extra || {});
+  }, settingsOf(tid), extra || {});
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
       crash: { at: BUILT + 600, process: 'eboot.bin', status: 'killed by signal 11' } }),
@@ -163,6 +196,9 @@ function games() {
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
     // A pkg whose fakelib mode is Off: its fakelib/ holds only ampr-emu-ng.
     g('PPSA10001', 'Starfall Odyssey', 'pkg', null, 'ready', { path: '/data/homebrew/Starfall Odyssey.pkg', playgo: true }),
+    // The recommended settings: Fakelib Off and a notice from the list; and a recommendation the user overrode.
+    g('PPSA11001', 'Recommended Example', 'pkg', null, 'ready', { path: '/data/homebrew/Recommended Example.pkg', playgo: true }),
+    g('PPSA11002', 'Chosen Example', 'folder', 'zstd', 'ready', { playgo: true }),
     // A dump whose title id is installed on the console: left alone, the sheet says why.
     g('PPSA06000', 'Installed Twin', 'folder', 'plain', 'error', { cache_built: null, cache_size: 0,
       error: 'PPSA06000 (/data/homebrew/PPSA06000): an installed copy of this title exists (/user/app/PPSA06000/app.pkg): MaxPack does not register or mount this copy',
@@ -192,7 +228,8 @@ function apiState() {
 }
 
 const settings = {
-  scanpath: [], exclude: ['/data/homebrew/old-copies'], inject_ampr: true, add_emulators: true, ampr_auto_update: false, backports: true,
+  scanpath: [], exclude: ['/data/homebrew/old-copies'], inject_ampr: true, add_emulators: true, ampr_auto_update: false,
+  recommended_update: true, backports: true,
   scan_interval_seconds: 10, stability_wait_seconds: 10, auto_remove_missing: true,
   auto_remove_delay_seconds: 300, low_space_gb: 20, notify: true, log: true, debug: false,
 };
@@ -403,14 +440,18 @@ http.createServer((req, res) => {
       const drive = { '/data': 'internal SSD', '/mnt/ext1': 'M.2 SSD (console slot)', '/mnt/ext0': 'USB SSD or HDD? (extended storage)' }[g.drive]
         || (/^\/mnt\/usb\d+$/.test(g.drive) ? 'USB SSD or HDD?' : g.drive);
       const mode = g.overlay_off ? 'none (MaxPack libraries at launch off)' : { full: 'Full', emulators: 'Emulators only', off: 'Off' }[g.fakelib_mode];
+      const fromList = g.settings_source === 'recommended' ? ' (recommended)' : '';
       const text = [`MaxPack 1.0.0: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
         `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
         ['Backport: none'],
         // maxpack_logic::report::text: a fakelib mode other than full.
-        g.fakelib_mode === 'emulators' ? ["Fakelib mode: emulators only (the game's and backport's fakelib not used)"] :
-          g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})`] : [],
-        ['ampr-emu-ng: bundled v0.5.1-maxpack.1', `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : 'on'}`,
+        // " (recommended)" after the two values the recommended settings gave.
+        g.fakelib_mode === 'emulators' ? [`Fakelib mode: emulators only (the game's and backport's fakelib not used)${fromList}`] :
+          g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})${fromList}`] :
+            fromList ? [`Fakelib mode: full${fromList}`] : [],
+        ['ampr-emu-ng: bundled v0.5.1-maxpack.1',
+          `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : (g.playgo_off ? 'off' : 'on') + fromList}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in each ?; it names no game):',
           `| ? | ${format} | ${g.kind === 'p5z' ? '?' : '—'} | ${drive} | 13.60 | MaxPack 1.0.0 | ${mode} | ? | ? |  |`, '',
@@ -480,7 +521,25 @@ http.createServer((req, res) => {
       const g = games().find((x) => x.title_id === p.slice('/api/fakelib/'.length));
       if (!g) return send(res, 404, 'text/plain', 'not found');
       if (!['full', 'emulators', 'off'].includes(chunks)) return send(res, 400, 'text/plain', 'expected full, emulators or off');
+      handChoice(g.title_id);
       if (chunks === 'full') fakelibMode.delete(g.title_id); else fakelibMode.set(g.title_id, chunks);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/playgo/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/playgo/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
+      handChoice(g.title_id);
+      if (chunks === 'off') playgoOff.add(g.title_id); else playgoOff.delete(g.title_id);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/recommended/')) {
+      const g = games().find((x) => x.title_id === p.slice('/api/recommended/'.length));
+      if (!g) return send(res, 404, 'text/plain', 'not found');
+      if (chunks !== 'reset') return send(res, 400, 'text/plain', 'expected reset');
+      // maxpack_logic::recommended::reset: out of the four lists.
+      [manual, playgoOff].forEach((l) => l.delete(g.title_id));
+      fakelibMode.delete(g.title_id);
       return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p.startsWith('/api/rebuild/')) {
