@@ -965,6 +965,9 @@ fn main() {
         let state = state.clone();
         std::thread::spawn(move || ampr_update(&state, false, 3));
     }
+    // The recommended per-game settings from GitHub, once per start (recommended_update, and only once
+    // the secure-connection self-test has passed: tls::passed reads its record).
+    recommended::spawn_refresh(state.clone());
     let web_state = state.clone();
     std::thread::spawn(move || web::serve(web_state, listener));
     // The web UI is up; nothing mounts until kstuff answers, nor while another mounter runs.
