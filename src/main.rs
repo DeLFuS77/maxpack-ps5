@@ -16,6 +16,7 @@ mod installer;
 mod launch;
 mod net;
 mod p5z;
+mod recommended;
 mod register;
 mod scan;
 mod storage;
@@ -944,6 +945,8 @@ fn main() {
         }
     };
     toast(&s, i18n::started(i18n::lang()));
+    // The recommended per-game settings in use: the bundled list or the newer downloaded copy.
+    recommended::init();
     install_bundled_ampr();
     prepare_ampr();
     std::thread::spawn(save_self_copy);

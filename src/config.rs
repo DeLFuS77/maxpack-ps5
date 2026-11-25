@@ -26,7 +26,13 @@ pub struct Settings {
     /// Title ids whose fakelib/ gets only ampr-emu-ng, and that only when the game needs it
     /// (maxpack_logic::fakelib, Off).
     pub fakelib_off: Vec<String>,
+    /// Title ids whose Fakelib mode and PlayGo stub the user chose on the game's sheet: the recommended
+    /// settings (maxpack_logic::recommended) do not apply to them. A title in fakelib_emulators,
+    /// fakelib_off or playgo_off counts as chosen too.
+    pub manual_settings: Vec<String>,
     pub ampr_auto_update: bool,
+    /// Once per start, the list of recommended settings from GitHub (src/recommended.rs).
+    pub recommended_update: bool,
     pub backports: bool,
     pub scan_interval_secs: u64,
     /// A source changed less than this many seconds ago is still being copied (0 = off).
@@ -53,7 +59,9 @@ impl Default for Settings {
             overlay_off: Vec::new(),
             fakelib_emulators: Vec::new(),
             fakelib_off: Vec::new(),
+            manual_settings: Vec::new(),
             ampr_auto_update: false,
+            recommended_update: true,
             backports: true,
             scan_interval_secs: 10,
             stability_wait_secs: 10,
@@ -78,7 +86,9 @@ const HELP: &[(&str, &str)] = &[
     ("overlay_off", "title ids of plain folder games that get no MaxPack overlay at launch: not the game's fakelib/, not ampr-emu-ng, not the emulators, and no /data, USB or writable /app0 in its sandbox; a pkg, a .p5z or a packed folder always keeps it (a change only refreshes fakelib/)"),
     ("fakelib_emulators", "title ids whose fakelib gets only the bundled emulators they need and ampr-emu-ng, not the game's or backport's fakelib (for a game that shows a black screen with those libraries; a change only refreshes fakelib/)"),
     ("fakelib_off", "title ids whose fakelib gets only ampr-emu-ng, and that only for a pkg, a .p5z or a packed folder (a plain folder gets an empty fakelib), for a game that still stalls with the emulators; a title in both lists is off (a change only refreshes fakelib/)"),
+    ("manual_settings", "title ids whose Fakelib mode and PlayGo stub were chosen by hand on the game's sheet: the recommended settings do not apply to them (a title in fakelib_emulators, fakelib_off or playgo_off counts as chosen too; the sheet's \"Back to the recommended setting\" takes the title out of all four)"),
     ("ampr_auto_update", "true = once per start, download a newer ampr-emu-ng release from MaxPack's own repository (DeLFuS77/ampr-emu-ng); off by default; it installs only MaxPack's own build, checked against the release's SHA256SUMS and only after the secure-connection check (a hand-placed libSceAmpr.sprx is kept)"),
+    ("recommended_update", "true = once per start, download the list of recommended per-game settings from MaxPack's own repository (DeLFuS77/maxpack-ps5): data only, checked before it is used, and only after the secure-connection check; without it the copy inside MaxPack is used"),
     ("backports", "true = apply backports/<TID>* from the game's scan root, then the other roots, then /data/homebrew"),
     ("scan_interval_seconds", "scan loop period, 1..3600"),
     ("stability_wait_seconds", "skip a source changed less than this many seconds ago (still being copied), 0..3600, 0 = off"),
@@ -144,7 +154,12 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
             maxpack_logic::titles::set_listed(&mut s.fakelib_off, v, true);
         }
         "fakelib_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "manual_settings" if crate::scan::valid_tid(v) => {
+            maxpack_logic::titles::set_listed(&mut s.manual_settings, v, true);
+        }
+        "manual_settings" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
         "ampr_auto_update" => s.ampr_auto_update = flag(v)?,
+        "recommended_update" => s.recommended_update = flag(v)?,
         // Removed global setting, now per title (fakelib_emulators, fakelib_off): ignored, dropped on the next
         // save; every title is full until its sheet sets another mode.
         "game_fakelib" => {}
@@ -299,6 +314,8 @@ fn parse(text: &str) -> Settings {
                 s.fakelib_emulators.clear(); // and for the fakelib modes
             } else if k == "fakelib_off" {
                 s.fakelib_off.clear();
+            } else if k == "manual_settings" {
+                s.manual_settings.clear();
             } else if k == "exclude" {
                 s.exclude.clear(); // and for exclude
             } else if vals.len() != 1 {
@@ -357,12 +374,17 @@ fn render(s: &Settings) -> String {
                 let items: Vec<String> = s.overlay_off.iter().map(|t| toml_quote(t)).collect();
                 out += &format!("overlay_off = [{}]\n", items.join(", "));
             }
-            "fakelib_emulators" | "fakelib_off" => {
-                let list = if k == "fakelib_off" { &s.fakelib_off } else { &s.fakelib_emulators };
+            "fakelib_emulators" | "fakelib_off" | "manual_settings" => {
+                let list = match k {
+                    "fakelib_off" => &s.fakelib_off,
+                    "manual_settings" => &s.manual_settings,
+                    _ => &s.fakelib_emulators,
+                };
                 let items: Vec<String> = list.iter().map(|t| toml_quote(t)).collect();
                 out += &format!("{k} = [{}]\n", items.join(", "));
             }
             "ampr_auto_update" => out += &format!("{k} = {}\n", s.ampr_auto_update),
+            "recommended_update" => out += &format!("{k} = {}\n", s.recommended_update),
             "backports" => out += &format!("{k} = {}\n", s.backports),
             "scan_interval_seconds" => out += &format!("{k} = {}\n", s.scan_interval_secs),
             "stability_wait_seconds" => out += &format!("{k} = {}\n", s.stability_wait_secs),
@@ -465,7 +487,9 @@ pub fn to_json(s: &Settings) -> Value {
         "overlay_off": s.overlay_off,
         "fakelib_emulators": s.fakelib_emulators,
         "fakelib_off": s.fakelib_off,
+        "manual_settings": s.manual_settings,
         "ampr_auto_update": s.ampr_auto_update,
+        "recommended_update": s.recommended_update,
         "backports": s.backports,
         "scan_interval_seconds": s.scan_interval_secs,
         "stability_wait_seconds": s.stability_wait_secs,
@@ -484,10 +508,9 @@ pub fn from_json(v: &Value) -> Result<Settings, String> {
     let mut s = Settings::default();
     for (k, val) in obj {
         let vals: Vec<&Value> = match (k.as_str(), val) {
-            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off" | "fakelib_emulators" | "fakelib_off", Value::Array(a)) => {
-                a.iter().collect()
-            }
-            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off" | "fakelib_emulators" | "fakelib_off", _) => {
+            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off" | "fakelib_emulators" | "fakelib_off" | "manual_settings",
+                Value::Array(a)) => a.iter().collect(),
+            ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off" | "fakelib_emulators" | "fakelib_off" | "manual_settings", _) => {
                 return Err(format!("{k}: expected an array of strings"))
             }
             _ => vec![val],

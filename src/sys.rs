@@ -262,6 +262,14 @@ pub fn firmware() -> Option<String> {
     maxpack_logic::report::fw_text(unsafe { kernel_get_fw_version() })
 }
 
+/// The console's firmware as its two top BCD bytes ((0x13, 0x60) for 13.60), the encoding of
+/// maxpack_logic::recommended::parse_fw; None when it cannot be read (the checks of `firmware`).
+pub fn firmware_bcd() -> Option<(u8, u8)> {
+    let v = unsafe { kernel_get_fw_version() };
+    maxpack_logic::report::fw_text(v)?;
+    Some(((v >> 24) as u8, (v >> 16) as u8))
+}
+
 /// libSystemService's app launch context (CheatRunner's app_launch_ctx_t).
 #[repr(C)]
 struct LaunchCtx {

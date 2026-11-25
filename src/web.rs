@@ -685,11 +685,14 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
     let mut cur = state.settings.lock().unwrap();
     // The settings form does not send the per-game lists: keep them, from the file (a scan pass
     // may have put an older copy into state.settings). The same for `exclude` when a body lacks it.
-    const KEPT: [&str; 6] = ["playgo_off", "hidden", "overlay_off", "fakelib_emulators", "fakelib_off", "exclude"];
+    const KEPT: [&str; 7] = ["playgo_off", "hidden", "overlay_off", "fakelib_emulators", "fakelib_off", "manual_settings", "exclude"];
     if KEPT.iter().any(|k| v.get(k).is_none()) {
         let file = config::load();
         if v.get("playgo_off").is_none() {
             s.playgo_off = file.playgo_off;
+        }
+        if v.get("manual_settings").is_none() {
+            s.manual_settings = file.manual_settings;
         }
         if v.get("hidden").is_none() {
             s.hidden = file.hidden;
