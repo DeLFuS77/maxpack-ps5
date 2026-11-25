@@ -7,8 +7,10 @@
 //! fakelib/ (every kind) = the game's or backport's libs, then /data/maxpack/ampr/* copied on
 //! top (inject_ampr; always for a pkg or a .p5z); in between, the bundled DLC (dlc_emu) and PlayGo (pgo_stub)
 //! emulators when the game needs one and ships none (add_emulators; no pgo_stub for playgo_off). The per-title
-//! fakelib mode (fakelib_emulators, fakelib_off) leaves out the game's libs, or all but ampr-emu-ng. A change of the
-//! ampr files, inject_ampr, the emulator inputs or the mode only recomposes fakelib/ (refresh_fakelib), no full rebuild.
+//! fakelib mode (fakelib_emulators, fakelib_off) leaves out the game's libs, or all but ampr-emu-ng. The mode and
+//! playgo_off are the effective ones (src/recommended.rs): the user's choice, else the recommended settings. A
+//! change of the ampr files, inject_ampr, the emulator inputs or the mode (a new recommended list too) only
+//! recomposes fakelib/ (refresh_fakelib), no full rebuild.
 //! /app0 is writable: files the game writes here stay across rebuilds (`.built` lists what a build
 //! made, a rebuild removes only that); purge() deletes them too.
 //! /data/maxpack/ampr is never copied here: launch.rs mounts it as its own layer.
@@ -611,9 +613,10 @@ fn injects_ampr(src: &Source, s: &Settings) -> bool {
     fakelib_sources(src, s).ampr
 }
 
-/// The title's fakelib mode: the fakelib_emulators and fakelib_off settings (maxpack_logic::fakelib).
+/// The title's fakelib mode (maxpack_logic::fakelib) as used: the fakelib_emulators and fakelib_off settings
+/// when the user chose it, else the recommended settings' (src/recommended.rs).
 pub fn fakelib_mode(src: &Source, s: &Settings) -> fakelib::Mode {
-    fakelib::mode_of(&src.title_id, &s.fakelib_emulators, &s.fakelib_off)
+    crate::recommended::effective(&src.title_id, s).fakelib
 }
 
 /// What this title's fakelib/ is composed from, for its mode, kind and the settings.
@@ -742,9 +745,10 @@ fn emu_state(src: &Source, s: &Settings) -> serde_json::Value {
     })
 }
 
-/// Whether the PlayGo stub is turned off for this title (the playgo_off setting).
-fn playgo_off(src: &Source, s: &Settings) -> bool {
-    s.playgo_off.iter().any(|t| *t == src.title_id)
+/// Whether the PlayGo stub is turned off for this title: the playgo_off setting when the user chose it,
+/// else the recommended settings' (src/recommended.rs).
+pub fn playgo_off(src: &Source, s: &Settings) -> bool {
+    crate::recommended::effective(&src.title_id, s).playgo_off
 }
 
 /// The memoized "the eboot imports PlayGo" (AMPR_STATE "playgo"[2]) of title `tid`; None when unknown.
@@ -954,7 +958,7 @@ fn add_emus(tid: &str, fakelib: &Path, dlc: bool, pgo_off: bool, mut playgo: imp
             continue;
         }
         if !is_dlc && pgo_off {
-            log!("{tid}: fakelib: PlayGo stub off (playgo_off)");
+            log!("{tid}: fakelib: PlayGo stub off (playgo_off or the recommended settings)");
             continue;
         }
         let version = if is_dlc { DLC_EMU_VERSION } else { PGO_STUB_VERSION }.trim();
@@ -1019,8 +1023,10 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         return fs::write(dir.join(AMPR_STATE), state.to_string());
     }
     let uses = fakelib_sources(src, s);
-    if let Some(note) = fakelib::note(fakelib_mode(src, s), uses) {
-        log!("{}: fakelib: {note}", src.title_id);
+    let eff = crate::recommended::effective(&src.title_id, s);
+    if let Some(note) = fakelib::note(eff.fakelib, uses) {
+        let from = if eff.source == maxpack_logic::recommended::Source::Recommended { ", recommended setting" } else { "" };
+        log!("{}: fakelib: {note}{from}", src.title_id);
     }
     if !uses.game_libs {
         // Emulators, Off: nothing of the backport's or the game's lib dir (its other files are not affected).

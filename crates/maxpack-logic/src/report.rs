@@ -31,6 +31,8 @@ pub struct Report<'a> {
     pub overlay_off: bool,
     /// The title's fakelib mode (`fakelib_emulators`, `fakelib_off`): what its cache's fakelib/ is made of.
     pub fakelib: Mode,
+    /// The Fakelib mode and the PlayGo stub come from the recommended settings (maxpack_logic::recommended).
+    pub recommended: bool,
     pub backport: Option<&'a str>,
     /// /api/ampr kind and version ("bundled v0.5.0-maxpack.3").
     pub ampr: &'a str,
@@ -153,15 +155,22 @@ pub fn text(r: &Report) -> String {
         lines.push("MaxPack overlay: off (overlay_off: the game runs as registered, without MaxPack's fakelib, ampr-emu-ng, emulators or sandbox mounts)".into());
     }
     lines.push(format!("Backport: {}", r.backport.unwrap_or("none")));
-    match r.fakelib {
-        Mode::Full => {}
-        Mode::Emulators => lines.push("Fakelib mode: emulators only (the game's and backport's fakelib not used)".into()),
-        Mode::Off if crate::fakelib::needs_ng(r.kind, r.packing) => lines.push("Fakelib mode: off (only ampr-emu-ng)".into()),
-        Mode::Off => lines.push("Fakelib mode: off (empty: nothing at launch)".into()),
+    let mode = match r.fakelib {
+        Mode::Full if r.recommended => Some("full"),
+        Mode::Full => None,
+        Mode::Emulators => Some("emulators only (the game's and backport's fakelib not used)"),
+        Mode::Off if crate::fakelib::needs_ng(r.kind, r.packing) => Some("off (only ampr-emu-ng)"),
+        Mode::Off => Some("off (empty: nothing at launch)"),
+    };
+    // From the recommended settings: said after each of the two it sets.
+    let from_list = if r.recommended { " (recommended)" } else { "" };
+    if let Some(mode) = mode {
+        lines.push(format!("Fakelib mode: {mode}{from_list}"));
     }
+    let playgo_from_list = if matches!(r.playgo, "on" | "off") { from_list } else { "" };
     lines.extend([
         format!("ampr-emu-ng: {}", r.ampr),
-        format!("PlayGo stub: {}", r.playgo),
+        format!("PlayGo stub: {}{playgo_from_list}", r.playgo),
         format!("Last crash: {crash}"),
         String::new(),
         "Row for docs/compatibility.md (fill in each ?; it names no game):".into(),
@@ -185,9 +194,32 @@ mod tests {
             version: "1.0.0", firmware: Some("13.60"), waiting: None,
             title_id: "PPSA10001", title_name: "Starfall Odyssey", game_version: "01.000.010",
             path: "/data/homebrew/Starfall Odyssey", kind: "folder", packing: Some("zstd"), drive: "/data",
-            status: "ready", error: None, hidden: false, overlay_off: false, fakelib: Mode::Full, backport: None,
-            ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
+            status: "ready", error: None, hidden: false, overlay_off: false, fakelib: Mode::Full, recommended: false,
+            backport: None, ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
         }
+    }
+
+    #[test]
+    fn a_recommended_setting_says_so() {
+        let line = |r: &Report, start: &str| text(r).lines().find(|l| l.starts_with(start)).map(str::to_owned);
+        let r = Report { kind: "pkg", packing: None, fakelib: Mode::Off, recommended: true, ..starfall("", None) };
+        assert_eq!(line(&r, "Fakelib").as_deref(), Some("Fakelib mode: off (only ampr-emu-ng) (recommended)"));
+        let r = Report { fakelib: Mode::Emulators, recommended: true, ..starfall("", None) };
+        assert_eq!(line(&r, "Fakelib").as_deref(),
+            Some("Fakelib mode: emulators only (the game's and backport's fakelib not used) (recommended)"));
+        // Full from the list (only its PlayGo setting): the line is there too, as is the stub's.
+        let r = Report { recommended: true, playgo: "off", ..starfall("", None) };
+        assert_eq!(line(&r, "Fakelib").as_deref(), Some("Fakelib mode: full (recommended)"));
+        assert_eq!(line(&r, "PlayGo").as_deref(), Some("PlayGo stub: off (recommended)"));
+        // Not added at all: nothing of the list's to say there.
+        let r = Report { recommended: true, playgo: "not added (add_emulators off)", ..starfall("", None) };
+        assert_eq!(line(&r, "PlayGo").as_deref(), Some("PlayGo stub: not added (add_emulators off)"));
+        // The user's or the default: as before.
+        assert_eq!(line(&starfall("", None), "Fakelib"), None);
+        assert_eq!(line(&starfall("", None), "PlayGo").as_deref(), Some("PlayGo stub: on"));
+        // The compatibility row keeps the mode alone.
+        let r = Report { fakelib: Mode::Off, recommended: true, ..starfall("", None) };
+        assert!(compat_row(&r).contains(" | Off | "), "{}", compat_row(&r));
     }
 
     #[test]

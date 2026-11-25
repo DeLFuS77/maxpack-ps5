@@ -214,6 +214,18 @@ pub fn effective(tid: &str, emulators: &[String], off: &[String], playgo_off: &[
     }
 }
 
+/// Before the user's change of the Fakelib mode or the PlayGo stub on `tid`'s sheet: `tid` goes into
+/// `manual`, and, when its settings were the list's (`before`, its `effective` until now), the list's
+/// values go into the lists, so the setting the user did not touch stays as it was shown. The change
+/// itself is made after this.
+pub fn hand_choice(tid: &str, before: Effective, emulators: &mut Vec<String>, off: &mut Vec<String>, playgo_off: &mut Vec<String>, manual: &mut Vec<String>) {
+    if before.source == Source::Recommended {
+        fakelib::set_mode(emulators, off, tid, before.fakelib);
+        crate::titles::set_listed(playgo_off, tid, before.playgo_off);
+    }
+    crate::titles::set_listed(manual, tid, true);
+}
+
 /// "Back to the recommended setting": `tid` out of the four lists. True when one changed.
 pub fn reset(tid: &str, emulators: &mut Vec<String>, off: &mut Vec<String>, playgo_off: &mut Vec<String>, manual: &mut Vec<String>) -> bool {
     [emulators, off, playgo_off, manual].into_iter().fold(false, |changed, l| crate::titles::set_listed(l, tid, false) | changed)
@@ -514,6 +526,43 @@ mod tests {
         assert!(manual.is_empty());
         // Nothing to clear.
         assert!(!reset("PPSA01234", &mut emus, &mut off, &mut pgo, &mut manual));
+    }
+
+    #[test]
+    fn a_hand_choice_keeps_the_other_recommended_setting() {
+        // The list says Fakelib off and no PlayGo stub; the user then sets Fakelib to emulators only.
+        let entry = Entry { fakelib: Some(Mode::Off), playgo_off: Some(true), ..Entry::default() };
+        let (mut emus, mut off, mut pgo, mut manual) = (list(&[]), list(&[]), list(&[]), list(&["PPSA00001"]));
+        let before = effective("PPSA01234", &emus, &off, &pgo, &manual, Some(&entry));
+        hand_choice("PPSA01234", before, &mut emus, &mut off, &mut pgo, &mut manual);
+        crate::fakelib::set_mode(&mut emus, &mut off, "PPSA01234", Mode::Emulators);
+        let after = effective("PPSA01234", &emus, &off, &pgo, &manual, Some(&entry));
+        assert_eq!((after.fakelib, after.playgo_off, after.source), (Mode::Emulators, true, Source::User));
+        assert_eq!(manual, list(&["PPSA00001", "PPSA01234"]));
+        // The other way: the PlayGo stub by hand keeps the list's Fakelib mode.
+        let (mut emus, mut off, mut pgo, mut manual) = (list(&[]), list(&[]), list(&[]), list(&[]));
+        let before = effective("PPSA01234", &emus, &off, &pgo, &manual, Some(&entry));
+        hand_choice("PPSA01234", before, &mut emus, &mut off, &mut pgo, &mut manual);
+        crate::titles::set_listed(&mut pgo, "PPSA01234", false);
+        let after = effective("PPSA01234", &emus, &off, &pgo, &manual, Some(&entry));
+        assert_eq!((after.fakelib, after.playgo_off, after.source), (Mode::Off, false, Source::User));
+    }
+
+    #[test]
+    fn a_hand_choice_without_a_recommendation_only_marks_the_title() {
+        for (emus, pgo) in [(list(&[]), list(&[])), (list(&["PPSA01234"]), list(&["PPSA01234"]))] {
+            let (mut emus, mut off, mut pgo, mut manual) = (emus, list(&[]), pgo, list(&[]));
+            let (e0, p0) = (emus.clone(), pgo.clone());
+            let before = effective("PPSA01234", &emus, &off, &pgo, &manual, None);
+            hand_choice("PPSA01234", before, &mut emus, &mut off, &mut pgo, &mut manual);
+            assert_eq!((emus, off, pgo, manual), (e0, list(&[]), p0, list(&["PPSA01234"])));
+        }
+        // Already the user's: the lists stay as they are, whatever the list says.
+        let entry = Entry { fakelib: Some(Mode::Off), ..Entry::default() };
+        let (mut emus, mut off, mut pgo, mut manual) = (list(&[]), list(&[]), list(&[]), list(&["PPSA01234"]));
+        let before = effective("PPSA01234", &emus, &off, &pgo, &manual, Some(&entry));
+        hand_choice("PPSA01234", before, &mut emus, &mut off, &mut pgo, &mut manual);
+        assert_eq!((emus, off, pgo, manual), (list(&[]), list(&[]), list(&[]), list(&["PPSA01234"])));
     }
 
     #[test]
