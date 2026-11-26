@@ -82,6 +82,23 @@ pub fn known_version<'a>(file: Option<(usize, u32, bool)>, bundled: &'a str, mar
     }
 }
 
+/// Never a downgrade, at start or with "Update ampr-emu-ng now": the release `tag` is installed only when it
+/// is not older than the ampr-emu-ng maxpack.elf carries (`bundled`, its VERSION) nor than the one in use
+/// (`in_use`, its known version: `known_version`; None when unknown, which only the bundled one bounds).
+/// An older one would stop every .p5z that grew (crate::p5z::GROWN_NG), and a restart puts the bundled
+/// one back anyway. A tag that is not a version is refused too. `crate::version` compares X.Y.Z.
+pub fn not_older(tag: &str, bundled: &str, in_use: Option<&str>) -> Result<(), Fail> {
+    use crate::version::newer;
+    let than = if newer(Some(bundled), Some(tag)) {
+        format!("the ampr-emu-ng MaxPack carries, {bundled}")
+    } else if newer(in_use, Some(tag)) {
+        format!("the one in use, {}", in_use.unwrap_or_default())
+    } else {
+        return Ok(());
+    };
+    Err(Fail::Older(format!("the latest release {tag} is older than {than} (bundled {bundled})")))
+}
+
 /// Why the ampr-emu-ng update installed nothing: the HTTP status and code `POST /api/ampr/update`
 /// answers (`{code, detail}`), and the detail for the log.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -100,21 +117,23 @@ pub enum Fail {
     Checksum(String),
     /// Reading what is installed, or writing the new file, failed.
     Install(String),
+    /// The latest release is older than the bundled ampr-emu-ng or the one in use (`not_older`).
+    Older(String),
 }
 
 impl Fail {
     pub fn status(&self) -> u16 {
         match self {
             Fail::TlsUnchecked => update::Fail::TlsUnchecked.status(),
-            Fail::UpdateRunning => 409,
+            Fail::UpdateRunning | Fail::Older(_) => 409,
             Fail::Download(_) | Fail::Release(_) | Fail::Checksum(_) => 502,
             Fail::Install(_) => 500,
         }
     }
 
     /// The page shows its own text for `tls_unchecked` (the self-update's), `update_running` and
-    /// `download` (the self-update's too) and `checksum` (ui.html `amprFail_checksum`); the
-    /// detail for the others.
+    /// `download` (the self-update's too), `checksum` and `older` (ui.html `amprFail_checksum`,
+    /// `amprFail_older`); the detail for the others.
     pub fn code(&self) -> &'static str {
         match self {
             Fail::TlsUnchecked => update::Fail::TlsUnchecked.code(),
@@ -123,6 +142,7 @@ impl Fail {
             Fail::Release(_) => "release",
             Fail::Checksum(_) => "checksum",
             Fail::Install(_) => "install",
+            Fail::Older(_) => "older",
         }
     }
 
@@ -135,6 +155,7 @@ impl Fail {
             Fail::Release(e) => format!("not a release to install: {e}"),
             Fail::Checksum(e) => format!("not the released {SPRX_ASSET}, not installed: {e}"),
             Fail::Install(e) => format!("install failed: {e}"),
+            Fail::Older(e) => format!("not installed: {e}; a .p5z that grew would no longer start with it"),
         }
     }
 }
@@ -330,6 +351,23 @@ mod tests {
         assert_eq!(mark_version(mark, 716_176, 0), None);
     }
 
+    /// Never a downgrade: a release older than the ampr-emu-ng maxpack.elf carries, or than the one in use,
+    /// is not installed (a .p5z that grew would stop with it), nor one whose tag is not a version.
+    #[test]
+    fn an_older_release_is_never_installed() {
+        let b = "v0.5.2-maxpack.1";
+        for (tag, in_use) in [("v0.5.1-maxpack.1", None), ("v0.5.1-maxpack.1", Some(b)), ("v0.5.1-maxpack.9", Some("v0.5.1-maxpack.1")),
+                              ("v0.5.2-maxpack.1", Some("v0.6.0-maxpack.1")), ("latest", None), ("v0.5.2-beta", Some(b))] {
+            let f = not_older(tag, b, in_use).expect_err("refused");
+            assert_eq!((f.status(), f.code()), (409, "older"), "{tag} {in_use:?}");
+            assert!(f.detail().contains(tag) && f.detail().contains(b), "{}", f.detail());
+        }
+        for (tag, in_use) in [("v0.5.2-maxpack.1", None), ("v0.5.2-maxpack.1", Some(b)), ("v0.6.0-maxpack.1", Some(b)),
+                              ("v0.5.2-maxpack.3", Some("v0.5.2-maxpack.1")), ("v0.6.0-maxpack.1", Some("not a version"))] {
+            assert_eq!(not_older(tag, b, in_use), Ok(()), "{tag} {in_use:?}");
+        }
+    }
+
     #[test]
     fn fail_codes() {
         let all = [
@@ -339,6 +377,7 @@ mod tests {
             (Fail::Release("no libSceAmpr.sprx".into()), 502, "release"),
             (Fail::Checksum("SHA256SUMS lists no libSceAmpr.sprx".into()), 502, "checksum"),
             (Fail::Install("No space left on device".into()), 500, "install"),
+            (Fail::Older("v0.5.1-maxpack.1 is older than v0.5.2-maxpack.1".into()), 409, "older"),
         ];
         for (f, status, code) in all {
             assert_eq!((f.status(), f.code()), (status, code), "{f:?}");

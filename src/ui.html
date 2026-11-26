@@ -1017,6 +1017,7 @@ var MSG = {
     amprReplaceYes: "Replace",
     amprNeedsTls: "ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.",
     amprFail_checksum: "the download does not match the release's SHA256SUMS: nothing was installed.",
+    amprFail_older: "the latest release is older than the ampr-emu-ng MaxPack uses now, so nothing was installed: a .p5z that grew on the PC would no longer start with it.",
     backports: 'Apply backports',
     scanInterval: 'Scan interval, seconds (1-3600)',
     stabilityWait: 'Wait for a copy to finish, seconds (0-3600, 0 = off)',
@@ -1162,6 +1163,7 @@ var MSG = {
     amprReplaceYes: "Заменить",
     amprNeedsTls: "Обновления ampr-emu-ng (при запуске или этой кнопкой) отключены, пока на этой консоли не пройдена проверка защищённых соединений ниже.",
     amprFail_checksum: "загрузка не совпадает с SHA256SUMS релиза: ничего не установлено.",
+    amprFail_older: "последний релиз старее ampr-emu-ng, который сейчас использует MaxPack, поэтому ничего не установлено: с ним не запустится .p5z, дополненный на ПК.",
     backports: 'Применять бэкпорты',
     scanInterval: 'Интервал сканирования, секунды (1-3600)',
     stabilityWait: 'Ждать окончания копирования, секунды (0-3600, 0 = выкл.)',
@@ -1416,6 +1418,7 @@ var MSG = {
     amprReplaceYes: "替换",
     amprNeedsTls: "在这台主机通过下方的安全连接检查之前，ampr-emu-ng 的更新（启动时或用此按钮）保持关闭。",
     amprFail_checksum: "下载内容与该版本的 SHA256SUMS 不符：未安装任何内容。",
+    amprFail_older: "最新发布的版本比 MaxPack 当前使用的 ampr-emu-ng 更旧，因此未安装任何内容：在电脑上扩充过的 .p5z 用它将无法启动。",
     backports: '应用向下移植',
     scanInterval: '扫描间隔，秒 (1-3600)',
     stabilityWait: '等待复制完成，秒 (0-3600，0 = 关闭)',
@@ -1670,6 +1673,7 @@ var MSG = {
     amprReplaceYes: "Ersetzen",
     amprNeedsTls: "Updates von ampr-emu-ng (beim Start oder mit dieser Schaltfläche) bleiben aus, bis die Prüfung sicherer Verbindungen unten auf dieser Konsole bestanden ist.",
     amprFail_checksum: "der Download passt nicht zu den SHA256SUMS des Releases: nichts wurde installiert.",
+    amprFail_older: "das neueste Release ist älter als das ampr-emu-ng, das MaxPack gerade nutzt, daher wurde nichts installiert: eine am PC erweiterte .p5z würde damit nicht mehr starten.",
     backports: 'Backports anwenden',
     scanInterval: 'Scan-Intervall, Sekunden (1-3600)',
     stabilityWait: 'Auf Ende des Kopierens warten, Sekunden (0-3600, 0 = aus)',
@@ -1985,6 +1989,7 @@ var MSG = {
     amprReplaceYes: "Reemplazar",
     amprNeedsTls: "Las actualizaciones de ampr-emu-ng (al arrancar o con este botón) siguen desactivadas hasta que esta consola pase la comprobación de conexiones seguras de abajo.",
     amprFail_checksum: "lo descargado no coincide con el SHA256SUMS de la versión: no se ha instalado nada.",
+    amprFail_older: "la última versión publicada es más antigua que el ampr-emu-ng que usa ahora MaxPack, así que no se ha instalado nada: con ella no arrancaría un .p5z que creció en el PC.",
     backports: 'Aplicar backports',
     scanInterval: 'Intervalo de escaneo, segundos (1-3600)',
     stabilityWait: 'Esperar a que termine la copia, segundos (0-3600, 0 = desactivado)',
@@ -2123,6 +2128,7 @@ var MSG = {
     amprReplaceYes: "Remplacer",
     amprNeedsTls: "Les mises à jour d'ampr-emu-ng (au démarrage ou avec ce bouton) restent désactivées tant que le test des connexions sécurisées ci-dessous n'a pas réussi sur cette console.",
     amprFail_checksum: "le téléchargement ne correspond pas au SHA256SUMS de la version : rien n'a été installé.",
+    amprFail_older: "la dernière version publiée est plus ancienne que l'ampr-emu-ng qu'utilise MaxPack, rien n'a donc été installé : un .p5z agrandi sur le PC ne démarrerait plus avec elle.",
     backports: 'Appliquer les backports',
     scanInterval: "Intervalle d'analyse, secondes (1-3600)",
     stabilityWait: "Attendre la fin d'une copie, secondes (0-3600, 0 = désactivé)",
@@ -2377,6 +2383,7 @@ var MSG = {
     amprReplaceYes: "置き換える",
     amprNeedsTls: "この本体が下の安全な接続のチェックに合格するまで、ampr-emu-ng のアップデート（起動時またはこのボタン）はオフのままです。",
     amprFail_checksum: "ダウンロードがリリースの SHA256SUMS と一致しません。何もインストールしていません。",
+    amprFail_older: "最新リリースは MaxPack が今使っている ampr-emu-ng より古いため、何もインストールしませんでした。PC で拡張された .p5z はそれでは起動しなくなります。",
     backports: 'バックポートを適用',
     scanInterval: 'スキャン間隔、秒 (1-3600)',
     stabilityWait: 'コピー完了を待つ、秒 (0-3600、0 = オフ)',
@@ -2631,6 +2638,7 @@ var MSG = {
     amprReplaceYes: "Substituir",
     amprNeedsTls: "As atualizações do ampr-emu-ng (ao iniciar ou com este botão) ficam desativadas até a verificação de conexões seguras abaixo passar neste console.",
     amprFail_checksum: "o download não confere com o SHA256SUMS da versão: nada foi instalado.",
+    amprFail_older: "a versão mais recente publicada é mais antiga que o ampr-emu-ng que o MaxPack usa agora, por isso nada foi instalado: um .p5z que cresceu no PC não iniciaria mais com ela.",
     backports: 'Aplicar backports',
     scanInterval: 'Intervalo de varredura, segundos (1-3600)',
     stabilityWait: 'Aguardar o fim da cópia, segundos (0-3600, 0 = desligado)',
@@ -2885,6 +2893,7 @@ var MSG = {
     amprReplaceYes: "Sostituisci",
     amprNeedsTls: "Gli aggiornamenti di ampr-emu-ng (all'avvio o con questo pulsante) restano disattivati finché il controllo delle connessioni sicure qui sotto non viene superato su questa console.",
     amprFail_checksum: "il download non corrisponde allo SHA256SUMS della release: non è stato installato nulla.",
+    amprFail_older: "l'ultima release è più vecchia dell'ampr-emu-ng che MaxPack usa ora, quindi non è stato installato nulla: un .p5z ampliato sul PC non partirebbe più con essa.",
     backports: 'Applica i backport',
     scanInterval: 'Intervallo di scansione, secondi (1-3600)',
     stabilityWait: 'Attendi la fine della copia, secondi (0-3600, 0 = disattivato)',
@@ -3139,6 +3148,7 @@ var MSG = {
     amprReplaceYes: "바꾸기",
     amprNeedsTls: "이 콘솔이 아래의 보안 연결 검사를 통과할 때까지 ampr-emu-ng 업데이트(시작 시 또는 이 버튼)는 꺼진 상태로 유지됩니다.",
     amprFail_checksum: "다운로드한 파일이 릴리스의 SHA256SUMS와 일치하지 않습니다. 아무것도 설치하지 않았습니다.",
+    amprFail_older: "최신 릴리스가 MaxPack이 지금 쓰는 ampr-emu-ng보다 오래되어 아무것도 설치하지 않았습니다. PC에서 확장된 .p5z는 그것으로는 시작되지 않습니다.",
     backports: '백포트 적용',
     scanInterval: '스캔 간격, 초 (1-3600)',
     stabilityWait: '복사가 끝날 때까지 대기, 초 (0-3600, 0 = 끔)',
@@ -3393,6 +3403,7 @@ var MSG = {
     amprReplaceYes: "استبدال",
     amprNeedsTls: "تبقى تحديثات ampr-emu-ng (عند البدء أو بهذا الزر) متوقفة حتى ينجح فحص الاتصالات الآمنة أدناه على هذا الجهاز.",
     amprFail_checksum: "التنزيل لا يطابق SHA256SUMS الخاص بالإصدار: لم يُثبَّت شيء.",
+    amprFail_older: "أحدث إصدار منشور أقدم من ampr-emu-ng الذي يستخدمه MaxPack الآن، لذا لم يُثبَّت شيء: ملف .p5z الذي تمت زيادته على الكمبيوتر لن يعمل معه.",
     backports: 'تطبيق الباكبورت',
     scanInterval: 'فاصل المسح، بالثواني (1-3600)',
     stabilityWait: 'انتظار انتهاء النسخ، بالثواني (0-3600، 0 = إيقاف)',
@@ -4893,9 +4904,9 @@ async function loadAmpr() {
   } catch (e) { /* Offline: the banner says so; the line keeps its last value. */ }
 }
 // error: {code, detail} from POST /api/ampr/update (maxpack_logic::ampr::Fail), or {text}. The
-// self-update's texts where they fit (tls_unchecked, update_running, download), its own for checksum.
+// self-update's texts where they fit (tls_unchecked, update_running, download), its own for checksum and older.
 function amprErrorText(e) {
-  var key = e.code === 'checksum' ? 'amprFail_checksum' : 'updFail_' + e.code;
+  var key = e.code === 'checksum' || e.code === 'older' ? 'amprFail_' + e.code : 'updFail_' + e.code;
   var own = e.code && t(key);
   return t('updFailed', { error: own && own !== key ? own : (e.detail || e.text || '?') });
 }

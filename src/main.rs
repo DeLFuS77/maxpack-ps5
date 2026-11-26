@@ -647,6 +647,13 @@ fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String
         };
         return Ok(format!("latest {} skipped ({path}: {why})", rel.tag));
     }
+    // Never a downgrade, forced or not: a release older than the bundled ampr-emu-ng or the one in use
+    // would stop every .p5z that grew (refused before anything is downloaded or moved aside).
+    let in_use = match inst {
+        Installed::Ours(v) => v,
+        Installed::Hand | Installed::Missing => None,
+    };
+    ampr_logic::not_older(&rel.tag, BUNDLED_AMPR_VERSION.trim(), in_use)?;
     // Not the release's file, or nothing to check it with: refused, logged (ampr_update) and toasted.
     let refuse = |why: String| {
         let s = state.settings.lock().unwrap().clone();

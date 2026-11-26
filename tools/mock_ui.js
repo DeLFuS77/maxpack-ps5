@@ -7,7 +7,7 @@
 //                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
-//                         [--ampr-fail checksum|none]
+//                         [--ampr-fail checksum|older|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -27,7 +27,8 @@
 // --tls never, --tls-result passed.
 // "Update ampr-emu-ng now" (POST /api/ampr/update, 1 s) answers 409 tls_unchecked until --tls is
 // passed, as the payload (maxpack_logic::ampr); then it installs, or, with --ampr-fail checksum, refuses
-// the download as one that does not match the release's SHA256SUMS. Default: none.
+// the download as one that does not match the release's SHA256SUMS, or with --ampr-fail older, a release
+// older than the bundled ampr-emu-ng. Default: none.
 // The same switches at run time, without a restart (the page picks them up on its next poll):
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.3&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
@@ -497,6 +498,8 @@ http.createServer((req, res) => {
       if (mock.tls !== 'passed') return json(res, 409, { code: 'tls_unchecked', detail: UPDATE_FAILS.tls_unchecked[1] });
       return setTimeout(() => mock.ampr_fail === 'checksum'
         ? json(res, 502, { code: 'checksum', detail: 'not the released libSceAmpr.sprx, not installed: v0.5.1-maxpack.1: SHA256SUMS lists no libSceAmpr.sprx' })
+        : mock.ampr_fail === 'older'
+        ? json(res, 409, { code: 'older', detail: 'not installed: the latest release v0.5.1-maxpack.1 is older than the ampr-emu-ng MaxPack carries, v0.5.2-maxpack.1 (bundled v0.5.2-maxpack.1); a .p5z that grew would no longer start with it' })
         : send(res, 200, 'text/plain', 'installed ampr-emu-ng v0.5.1-maxpack.1 (716176 bytes, matches SHA256SUMS)'), 1000);
     }
     if (req.method === 'POST' && p === '/api/selftest/tls') {
