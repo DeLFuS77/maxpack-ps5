@@ -570,6 +570,26 @@ pub fn data_check(state: State, have: u64, size: u64, offset: u64, len: u64) -> 
     }
 }
 
+/// A PUT writes its next piece, counts it and answers 200 only while its receive is receiving in `gen`, the generation
+/// the PUT was checked in (`checked_gen`; every pause bumps it). Paused now: 409 `paused`; receiving again in a later
+/// generation (a start unpaused it meanwhile): stale, 409 `paused` as the pause it missed (`paused_for`); ended: 409
+/// `state`. So a write of before a pause never lands after the resume.
+pub fn put_goes_on(stage: State, gen: u64, checked_gen: u64, have: u64, paused_for: PauseReason) -> Result<(), Refusal> {
+    match stage {
+        State::Paused(reason) => Err(Refusal::Paused { reason, have }),
+        State::Receiving if gen == checked_gen => Ok(()),
+        State::Receiving => Err(Refusal::Paused { reason: paused_for, have }),
+        s => Err(Refusal::State(s)),
+    }
+}
+
+/// A start that sets the file's length (`Unpause`, `New`: src/receive.rs `prepare`) holds the writer lock first, so
+/// no PUT of before (one stuck in a write when its receive paused) is still writing into the file; `Resume` (the
+/// receive under way, as it is) does not.
+pub fn start_needs_writer(s: Start) -> bool {
+    !matches!(s, Start::Resume { .. })
+}
+
 /// `POST /api/receive/finish`: only a receive that has every byte.
 pub fn finish_check(state: State, have: u64, size: u64) -> Result<(), Refusal> {
     if let State::Paused(reason) = state {
@@ -1228,6 +1248,31 @@ mod tests {
         let listed = vec!["/mnt/usb0/homebrew/Game.p5z.maxpack-recv".to_string()];
         assert!(!may_delete_leftover("/mnt/usb0/homebrew/Game.p5z.maxpack-recv", &listed, Some("/mnt/usb0/homebrew/game.P5Z.maxpack-recv")));
         assert!(may_delete_leftover("/mnt/usb0/homebrew/Game.p5z.maxpack-recv", &listed, Some("/mnt/usb1/homebrew/game.p5z.maxpack-recv")));
+    }
+
+    #[test]
+    fn a_put_from_before_a_pause_never_lands_after_it() {
+        // Each piece of a PUT is written and counted only while its receive is receiving in the generation the PUT
+        // was checked in; a pause bumps the generation.
+        assert_eq!(put_goes_on(State::Receiving, 3, 3, 40, PauseReason::Idle), Ok(()));
+        // Paused now: 409 paused with its reason and have.
+        assert_eq!(put_goes_on(State::Paused(PauseReason::Left), 4, 3, 40, PauseReason::Left),
+            Err(Refusal::Paused { reason: PauseReason::Left, have: 40 }));
+        // Paused and already going on again (a start unpaused it): the old PUT is stale, 409 paused as the pause it missed.
+        assert_eq!(put_goes_on(State::Receiving, 4, 3, 40, PauseReason::Idle), Err(Refusal::Paused { reason: PauseReason::Idle, have: 40 }));
+        // Ended meanwhile: 409 state.
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled] {
+            assert_eq!(put_goes_on(s, 3, 3, 40, PauseReason::Idle), Err(Refusal::State(s)), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn a_start_that_changes_the_file_waits_for_the_writer() {
+        // Unpause and a new receive set the file's length (prepare): never while a PUT may still write into it. Going
+        // on with the receive under way (Resume) changes nothing.
+        assert!(start_needs_writer(Start::Unpause { have: 5 }));
+        assert!(start_needs_writer(Start::New { have: 0 }));
+        assert!(!start_needs_writer(Start::Resume { have: 5 }));
     }
 
     #[test]

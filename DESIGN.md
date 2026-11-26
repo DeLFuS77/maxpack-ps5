@@ -1084,12 +1084,17 @@ on the page's server (port 8095), as the shared contract of both sides says:
   when it paused on a failed write or its file changed. For a file left on the disk (a restart, an earlier run), `have`
   is its length less 64 MiB (`receive::resume_have`: a power cut during a PUT may have left a length whose tail never
   reached the disk), when it is no longer than the size and did not fail its verify in this run; else 0, and the file
-  is truncated. The token is 16 random bytes in hex.
+  is truncated. The token is 16 random bytes in hex. A start that sets the file's length (an unpause, a new receive:
+  `receive::start_needs_writer`) holds the writer lock first, waiting up to 10 s for a PUT still writing (one stuck in a
+  write when its receive paused), else 409 `busy`; going on with the receive under way does not wait.
 - `PUT /api/receive/data?id=<token>&offset=<n>`: web.rs hands its head to `receive::put` without reading the body (the
   16 KiB request limit does not apply), which streams it (up to 64 MiB, else 413 `too_large`; no Content-Length 411
   `length_required`) in 1 MiB pieces written with `pwrite` at the offset, and `fdatasync`s before answering 200
   `{"have"}`. `offset` must be `have` (409 `offset` with `have`); past the size 400 `past_size`; a paused receive 409
-  `{"error":"paused","reason","have"}`; one that ended 409 `state`; a token this run does not know 404 `unknown_id`. One PUT writes at a time: another waits up to 10 s (a PUT
+  `{"error":"paused","reason","have"}`; one that ended 409 `state`; a token this run does not know 404 `unknown_id`. Each piece is written and
+  counted only while the receive is receiving in the generation the PUT was checked in (every pause bumps it,
+  `receive::put_goes_on`): a PUT that a pause overtakes stops before its next piece and answers 409 `paused` (also when
+  the pause came after its last piece), so nothing of before a pause lands after the resume. One PUT writes at a time: another waits up to 10 s (a PUT
   whose connection is going ends within the 5 s read timeout). A body cut short keeps what arrived (`have` grows piece by
   piece): the PC asks again from its last answer, gets 409 `offset` with the real `have`, and goes on. `Expect:
   100-continue` is answered once the request passes. A refused body is read and dropped first, so the PC reads the answer

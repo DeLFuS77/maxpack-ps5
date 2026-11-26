@@ -67,6 +67,11 @@ struct Recv {
     /// The last data request (a PUT, or the start): a discard lets go of a receiving receive only after
     /// DISCARD_QUIET_MS without one (the contract's v3.1).
     data_ms: u64,
+    /// Bumped by every pause: a PUT writes and counts only in the generation it was checked in
+    /// (maxpack_logic::receive::put_goes_on), so nothing of before a pause lands after the resume.
+    gen: u64,
+    /// Why it last paused (a stale PUT's 409 `paused` says it).
+    paused_for: PauseReason,
     ended_ms: Option<u64>,
     rate: Rate,
 }
@@ -125,6 +130,7 @@ fn swept() -> MutexGuard<'static, Option<Recv>> {
 /// stopped it, for the page (a full drive...); None for idle or Stop.
 fn pause(r: &mut Recv, reason: PauseReason, error: Option<String>, why: &str) {
     (r.stage, r.error, r.ended_ms) = (Stage::Paused(reason), error, Some(crate::sys::uptime_ms()));
+    (r.gen, r.paused_for) = (r.gen + 1, reason);
     log!("receive: {}: paused at {} of {} bytes ({why}); {} stays: a send of it again goes on where it was", r.name, r.have,
         r.size, r.partial.display());
 }
@@ -256,6 +262,33 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     // From the first look at the drive: a discard (which holds it too) never deletes the file between this start's
     // look at it and its use of it.
     let _gate = crate::jobs::gate();
+    // A start that sets the file's length (maxpack_logic::receive::start_needs_writer) holds the writer, so a PUT of
+    // before (stuck in a write when its receive paused) is never still writing into it. Tried without waiting first:
+    // a resume of the receive under way and every refusal need none.
+    let w = try_writer();
+    if let Some(a) = start_once(state, &req, w.is_some()) {
+        return a;
+    }
+    let Some(_w) = writer() else {
+        log!("receive: {} to {}: a PUT of before is still writing into it: busy", req.name, req.drive);
+        return Refusal::Busy(maxpack_logic::job::Busy::Receive).into();
+    };
+    start_once(state, &req, true).unwrap_or_else(|| Refusal::Busy(maxpack_logic::job::Busy::Receive).into())
+}
+
+/// WRITER when no one holds it now (a poisoned lock is taken), else None.
+fn try_writer() -> Option<MutexGuard<'static, ()>> {
+    match WRITER.try_lock() {
+        Ok(w) => Some(w),
+        Err(std::sync::TryLockError::Poisoned(e)) => Some(e.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+    }
+}
+
+/// start's checks and what follows them, under the jobs gate; `writer`: the caller holds WRITER. None (nothing done)
+/// when the start would set the file's length without it.
+fn start_once(state: &State, req: &logic::StartReq, writer: bool) -> Option<Answer> {
+    let req = req.clone();
     let mount = logic::drive_mount(&req.drive);
     let drive = mount.as_ref().and_then(|m| usable_or_not(state, m));
     let homebrew = mount.as_ref().map(|m| PathBuf::from(m).join("homebrew"));
@@ -273,43 +306,47 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     });
     // The switch again, under the gate: turning it off (set_on, which holds the gate) cannot race this start.
     if !state.settings.lock().unwrap_or_else(|e| e.into_inner()).receive_from_pc {
-        return Refusal::Off.into();
+        return Some(Refusal::Off.into());
     }
     let busy = maxpack_logic::job::busy(!crate::installer::idle(), crate::verify::running(), false);
     let facts = StartFacts { req: req.clone(), drive, dest_exists, partial: partial_len, failed_before, active, busy };
-    let have = match logic::start_gate(&facts) {
+    let verdict = logic::start_gate(&facts);
+    if verdict.as_ref().is_ok_and(|s| logic::start_needs_writer(*s) && !writer) {
+        return None;
+    }
+    let have = match verdict {
         Ok(Start::Resume { have }) => {
             let id = g.as_mut().map(|r| {
                 (r.last_ms, r.data_ms) = (crate::sys::uptime_ms(), crate::sys::uptime_ms());
                 r.id.clone()
             }).unwrap_or_default();
             log!("receive: {} to {}: the PC goes on at {have} of {} bytes", req.name, req.drive, req.size);
-            return ok(200, json!({"id": id, "have": have}));
+            return Some(ok(200, json!({"id": id, "have": have})));
         }
         Ok(Start::Unpause { have }) => {
-            let Some(r) = g.as_mut() else { return Refusal::UnknownId.into() };
+            let Some(r) = g.as_mut() else { return Some(Refusal::UnknownId.into()) };
             if let Err(e) = prepare(r.partial.parent().unwrap_or(Path::new("/")), &r.partial, have) {
                 log!("receive: {}: {e}", r.partial.display());
-                return ok(500, json!({"error": "write", "detail": e.to_string()}));
+                return Some(ok(500, json!({"error": "write", "detail": e.to_string()})));
             }
             log!("receive: {}: going on with its token at {have} of {} bytes (it was paused)", r.name, r.size);
             let now = crate::sys::uptime_ms();
             (r.stage, r.have, r.from, r.error, r.stop, r.verify) = (Stage::Receiving, have, have, None, None, None);
             (r.last_ms, r.data_ms, r.ended_ms, r.rate) = (now, now, None, Rate::default());
-            return ok(200, json!({"id": r.id, "have": have}));
+            return Some(ok(200, json!({"id": r.id, "have": have})));
         }
         Ok(Start::New { have }) => have,
         Err(r) => {
             log!("receive: {:?} ({} bytes) to {:?} refused: {}", req.name, req.size, req.drive, r.detail());
-            return r.into();
+            return Some(r.into());
         }
     };
     let (Some(homebrew), Some(dest), Some(partial), Some(mount)) = (homebrew, dest, partial, mount) else {
-        return Refusal::NoDrive.into();
+        return Some(Refusal::NoDrive.into());
     };
     if let Err(e) = prepare(&homebrew, &partial, have) {
         log!("receive: {}: {e}", partial.display());
-        return ok(500, json!({"error": "write", "detail": e.to_string()}));
+        return Some(ok(500, json!({"error": "write", "detail": e.to_string()})));
     }
     failed_forget(&partial);
     let mut t = [0u8; 16];
@@ -321,9 +358,9 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     *g = Some(Recv {
         id: id.clone(), seq: SEQ.fetch_add(1, Ordering::Relaxed) + 1, name: req.name, drive: req.drive, mount, partial, dest,
         size: req.size, have, from: have, stage: Stage::Receiving, verify: None, error: None, stop: None, started_ms: now,
-        last_ms: now, data_ms: now, ended_ms: None, rate: Rate::default(),
+        last_ms: now, data_ms: now, gen: 0, paused_for: PauseReason::Idle, ended_ms: None, rate: Rate::default(),
     });
-    ok(200, json!({"id": id, "have": have}))
+    Some(ok(200, json!({"id": id, "have": have})))
 }
 
 /// The start's view of the drive at `mount`: None when it is not mounted.
@@ -415,11 +452,11 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
             None => Err(Refusal::UnknownId),
             Some(r) => logic::data_check(r.stage, r.have, r.size, offset, len).map(|()| {
                 r.data_ms = r.last_ms;
-                (r.partial.clone(), r.mount.clone(), r.size)
+                (r.partial.clone(), r.mount.clone(), r.size, r.gen)
             }),
         }
     };
-    let (path, mount, size) = match checked {
+    let (path, mount, size, gen) = match checked {
         Ok(c) => c,
         Err(e) => {
             drop(w);
@@ -433,7 +470,7 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         Ok(f) => f,
         Err(e) => {
             log!("receive: open {}: {e}", path.display());
-            return paused_by(&id, format!("open {}: {e}", path.display()), ok(500, json!({"error": "write", "detail": e.to_string()})));
+            return paused_by(&id, gen, format!("open {}: {e}", path.display()), ok(500, json!({"error": "write", "detail": e.to_string()})));
         }
     };
     let mut buf = vec![0u8; PIECE];
@@ -454,6 +491,11 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
                 Ok(n) => n,
             }
         };
+        // Not a byte after a pause (or a cancel): checked before each piece, and again before it is counted.
+        if let Err(r) = goes_on(&id, gen) {
+            failure = Some((r.into(), None));
+            break;
+        }
         if let Err(e) = f.write_all_at(&buf[..n], offset + written) {
             log!("receive: write {} at {}: {e}", path.display(), offset + written);
             let at = offset + written;
@@ -473,35 +515,27 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         }
         written += n as u64;
         let mut g = recv();
-        match g.as_mut().filter(|r| r.id == id) {
-            Some(r) if r.stage == Stage::Receiving => {
-                r.have = offset + written;
-                r.last_ms = crate::sys::uptime_ms();
-                r.data_ms = r.last_ms;
-                r.rate.add(r.last_ms, r.have - r.from);
-            }
-            // Cancelled or stopped meanwhile: a cancel deletes the file once this lets WRITER go.
-            Some(r) => {
-                let refusal = match r.stage {
-                    Stage::Paused(reason) => Refusal::Paused { reason, have: r.have },
-                    s => Refusal::State(s),
-                };
-                failure = Some((refusal.into(), None));
-                break;
-            }
-            None => {
-                failure = Some((Refusal::UnknownId.into(), None));
-                break;
-            }
+        let Some(r) = g.as_mut().filter(|r| r.id == id) else {
+            failure = Some((Refusal::UnknownId.into(), None));
+            break;
+        };
+        // Paused, cancelled or stopped meanwhile: not counted (a cancel deletes the file once this lets WRITER go).
+        if let Err(e) = logic::put_goes_on(r.stage, r.gen, gen, r.have, r.paused_for) {
+            failure = Some((e.into(), None));
+            break;
         }
+        r.have = offset + written;
+        r.last_ms = crate::sys::uptime_ms();
+        r.data_ms = r.last_ms;
+        r.rate.add(r.last_ms, r.have - r.from);
     }
     // What arrived is on the disk before the answer (or before the PC asks again after a cut).
     if let Err(e) = f.sync_data() {
         log!("receive: flush {}: {e}", path.display());
-        return paused_by(&id, format!("flush: {e}"), ok(500, json!({"error": "write", "detail": format!("flush: {e}")})));
+        return paused_by(&id, gen, format!("flush: {e}"), ok(500, json!({"error": "write", "detail": format!("flush: {e}")})));
     }
     match failure {
-        Some((a, Some(why))) => return paused_by(&id, why, a),
+        Some((a, Some(why))) => return paused_by(&id, gen, why, a),
         Some((a, None)) => return a,
         None => {}
     }
@@ -509,12 +543,24 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         // The connection was cut: the bytes that came stay, and the PC goes on from `have`.
         return Refusal::BadRequest(format!("the body ended after {written} of {len} bytes")).into();
     }
+    // Paused after its last piece was counted: said, not 200 (the PC then goes on as for any pause).
+    if let Err(e) = goes_on(&id, gen) {
+        return e.into();
+    }
     ok(200, json!({"have": offset + len}))
 }
 
-/// The receive `id` paused by a failed write (`why`, shown on the page), answered with `a`.
-fn paused_by(id: &str, why: String, a: Answer) -> Answer {
-    if let Some(r) = recv().as_mut().filter(|r| r.id == id && r.stage == Stage::Receiving) {
+/// The receive `id` takes the next piece of a PUT checked in generation `gen` (maxpack_logic::receive::put_goes_on).
+fn goes_on(id: &str, gen: u64) -> Result<(), Refusal> {
+    match recv().as_ref().filter(|r| r.id == id) {
+        None => Err(Refusal::UnknownId),
+        Some(r) => logic::put_goes_on(r.stage, r.gen, gen, r.have, r.paused_for),
+    }
+}
+
+/// The receive `id`, still in generation `gen`, paused by a failed write (`why`, shown on the page), answered with `a`.
+fn paused_by(id: &str, gen: u64, why: String, a: Answer) -> Answer {
+    if let Some(r) = recv().as_mut().filter(|r| r.id == id && r.stage == Stage::Receiving && r.gen == gen) {
         pause(r, PauseReason::WriteError, Some(why.clone()), &why);
     }
     a
@@ -755,11 +801,7 @@ pub fn discard(state: &State, body: &[u8]) -> Answer {
     };
     // A data request in flight holds the writer; held from here, none starts until this discard is done (they wait
     // for it, then find the receive gone).
-    let writer = match WRITER.try_lock() {
-        Ok(w) => Some(w),
-        Err(std::sync::TryLockError::Poisoned(e)) => Some(e.into_inner()),
-        Err(std::sync::TryLockError::WouldBlock) => None,
-    };
+    let writer = try_writer();
     let now = crate::sys::uptime_ms();
     let active = g.as_ref().map(|r| Active { state: r.stage, same, have: r.have });
     let quiet_ms = g.as_ref().filter(|_| same).map_or(u64::MAX, |r| now.saturating_sub(r.data_ms));
@@ -778,7 +820,7 @@ pub fn discard(state: &State, body: &[u8]) -> Answer {
     // deleted as a paused one (said in this discard's one log line).
     if d.paused_first {
         if let Some(r) = g.as_mut() {
-            (r.stage, r.ended_ms) = (Stage::Paused(PauseReason::Idle), Some(now));
+            (r.stage, r.ended_ms, r.gen, r.paused_for) = (Stage::Paused(PauseReason::Idle), Some(now), r.gen + 1, PauseReason::Idle);
         }
     }
     // A file that went meanwhile was not deleted by this discard: nothing of it was there.
