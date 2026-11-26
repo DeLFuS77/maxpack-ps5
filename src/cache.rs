@@ -14,7 +14,8 @@
 //! recomposes fakelib/ (refresh_fakelib), no full rebuild.
 //! /app0 is writable: files the game writes here stay across rebuilds (`.built` lists what a build
 //! made, a rebuild removes only that); purge() deletes them too.
-//! /data/maxpack/ampr is never copied here: launch.rs mounts it as its own layer.
+//! /data/maxpack/ampr is copied into fakelib/ when it is composed (compose_fakelib), never mounted at
+//! launch (launch.rs mounts only fakelib/): the ampr-emu-ng a game loads is that copy, the one ng_gate checks.
 use crate::ampr_index::{self, Chunk, IndexFile, Kraken};
 use crate::config::Settings;
 use crate::scan::{Kind, Source};
