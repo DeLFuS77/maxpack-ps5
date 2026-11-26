@@ -989,7 +989,8 @@ the request's `path` (probe) or `p5z` (install) only when that key is given once
 refuses a repeated field): the engine reads the first copy of a repeated key, so the console never reads a file the
 engine did not check. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
-ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
+ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data (every answer with a
+`Content-Length`, as the payload's, so the PC's `maxpack send` itself can run against it), behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, a

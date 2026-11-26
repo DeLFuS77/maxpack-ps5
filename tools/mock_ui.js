@@ -729,8 +729,12 @@ function recvRoute(req, url, body, bytes) {
 if (mock.receive === 'demo' || mock.receive === 'failed') recvDemo(mock.receive);
 
 // ---- server ----
+// With Content-Length, as src/web.rs answers: the PC's mp_http client reads only that (or the close), never chunks,
+// so `maxpack send` itself can be tried against the mock.
 function send(res, status, type, body) {
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store' };
+  if (status !== 204) headers['Content-Length'] = Buffer.byteLength(body);
+  res.writeHead(status, headers);
   res.end(body);
 }
 const json = (res, status, v) => send(res, status, 'application/json', JSON.stringify(v));
