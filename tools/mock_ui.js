@@ -51,6 +51,10 @@
 // console gets one that does not play it: the bundled one does, and no update installs an older release), so
 // Settings shows it as hand-placed and the game's error says its version is not known. Once "Update ampr-emu-ng
 // now" has installed a newer release, the game is ready, as the console's next pass would make it.
+// "Verify fully" on a .p5z's sheet (POST /api/verify/<TID>, src/verify.rs): "Packed Example" shows an earlier OK, "Roomless
+// Example" an earlier damaged result; a verify runs 5 % a second (its Cancel works) and refuses as the payload does, so
+// with the default --job on (an install running) it answers install_running: use --job off to watch one run. While it
+// runs, the installer's install, verify and uninstall answer 409 console_busy.
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -179,17 +183,65 @@ function waitingValue() {
   return null;
 }
 
+// ---- "Verify fully" on a .p5z's sheet (src/verify.rs) ----
+// The kept results by path (verified.json): "Packed Example" was verified OK a day ago, "Roomless Example" found
+// damaged. A verify of this run (state.verify) runs 5 % a second; one of "Roomless Example" finds it damaged again.
+const verified = new Map([
+  ['/mnt/usb0/homebrew/Packed Example.p5z', { kind: 'full', at: BUILT - 82800, ok: true, files_ok: 1532, files_bad: 0, bad: [] }],
+  ['/mnt/usb0/homebrew/Roomless Example.p5z', { kind: 'full', at: BUILT - 7200, ok: false, files_ok: 2101, files_bad: 3, bad: [] }],
+]);
+let verifyJob = null, verifyTimer = null;
+// src/jobs.rs: a console job runs (a verify, a receive from the PC).
+function consoleBusy() { return verifyRunning(); }
+function withVerified(g) { g.verified = g.kind === 'p5z' ? verified.get(g.path) || null : null; return g; }
+function verifyRunning() { return !!verifyJob && verifyJob.state === 'running'; }
+function verifyEnd(state, error) {
+  clearInterval(verifyTimer);
+  Object.assign(verifyJob, { state, cancelling: false, error: error || null, mbps: null });
+}
+// maxpack_logic::verify::gate: in the library, a .p5z, no other job of the engine, no game running.
+function verifyStart(tid, body) {
+  if (body !== 'full') return [400, 'bad_request', 'expected the body full'];
+  const g = games().find((x) => x.title_id === tid);
+  if (!g) return [404, 'not_found', 'not a game of the library'];
+  if (g.kind !== 'p5z') return [409, 'not_p5z', 'only a .p5z is verified on the console'];
+  if (currentJob()) return [409, 'install_running', 'the installer is running a job; try again when it ends'];
+  if (verifyRunning()) return [409, 'verify_running', 'a .p5z is being verified on the console; try again when it ends'];
+  if (runningNow().length) return [409, 'game_running', 'a game is running: close it first'];
+  const total = Math.round(g.size * 1.6), start = Date.now();
+  verifyJob = { state: 'running', cancelling: false, title_id: tid, path: g.path, kind: 'full', done: 0, total, mbps: null, elapsed_ms: 0, error: null };
+  verifyTimer = setInterval(() => {
+    verifyJob.elapsed_ms = Date.now() - start;
+    verifyJob.done = Math.min(total, verifyJob.done + Math.round(total * 0.05));
+    verifyJob.mbps = total * 0.05 / 1e6;
+    if (verifyJob.cancelling) return verifyEnd('cancelled');
+    if (verifyJob.done < total) return;
+    const damaged = /Roomless/.test(g.path);
+    verified.set(g.path, { kind: 'full', at: Math.floor(Date.now() / 1000), ok: !damaged, files_ok: damaged ? 2101 : 1532,
+      files_bad: damaged ? 3 : 0, bad: [] });
+    verifyEnd('done');
+  }, 1000);
+  return null;
+}
+// maxpack_logic::verify::report_line: the report's line, which names no file of the game.
+function verifiedLine(r) {
+  if (!r) return 'never';
+  const at = new Date(r.at * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z'), files = r.files_ok + r.files_bad;
+  return r.ok ? `${r.kind}, OK on ${at} (${files} files)` : `${r.kind}, damaged on ${at}: ${r.files_bad} of ${files} files fail`;
+}
+
 // ---- the payload's own API (src/web.rs) ----
 function games() {
   if (mock.empty) return [];
-  const g = (tid, name, kind, packing, status, extra) => Object.assign({
+  // src/verify.rs `last`: a .p5z's last verify (by path), else null.
+  const g = (tid, name, kind, packing, status, extra) => withVerified(Object.assign({
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
     cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false,
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
     registered: status === 'ready', mounted: status === 'ready', source_present: true,
     overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid), overlay_off_listed: overlayOff.has(tid),
-  }, settingsOf(tid), extra || {});
+  }, settingsOf(tid), extra || {}));
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
       crash: { at: BUILT + 600, process: 'eboot.bin', status: 'killed by signal 11' } }),
@@ -240,6 +292,7 @@ function apiState() {
       { mount: '/data', label: 'Internal', kind: 'internal', total: 825 * GB, free: 311 * GB, ejectable: false },
     ],
     cache: { path: '/data/maxpack/caches', size: 2 * GB, free: 311 * GB, low_space: false, ampr_present: true },
+    verify: verifyJob,
     log: ['2026-11-23 20:00:00Z [1000] web UI on port 8095', '2026-11-23 20:00:02Z [3000] installer: ready in 412 ms'],
   };
 }
@@ -465,7 +518,8 @@ http.createServer((req, res) => {
       const playgoFromList = rec.playgo_off != null ? ' (recommended)' : '';
       const text = [`MaxPack 1.0.2: game report`, 'Firmware: 13.60', 'Mounting: MaxPack mounts the games',
         `Game: ${g.title_name} (${g.title_id}), version ${g.version}`, `Source: ${g.path} (${en}, ${g.drive})`,
-        `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.hidden ? ['Hidden in the library: yes'] : [],
+        `Status: ${g.status}${g.error ? ` (${g.error})` : ''}`].concat(g.kind === 'p5z' ? [`Verified on the console: ${verifiedLine(g.verified)}`] : [],
+        g.hidden ? ['Hidden in the library: yes'] : [],
         ['Backport: none'],
         // maxpack_logic::report::text: a fakelib mode other than full.
         // " (recommended)" after the two values the recommended settings gave.
@@ -567,6 +621,15 @@ http.createServer((req, res) => {
       fakelibMode.delete(g.title_id);
       return send(res, 204, 'text/plain', '');
     }
+    if (req.method === 'POST' && p === '/api/verify/cancel') {
+      if (!verifyRunning()) return send(res, 409, 'text/plain', 'no verify is running');
+      verifyJob.cancelling = true;
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p.startsWith('/api/verify/')) {
+      const no = verifyStart(p.slice('/api/verify/'.length), chunks);
+      return no ? json(res, no[0], { code: no[1], detail: no[2] }) : send(res, 204, 'text/plain', '');
+    }
     if (req.method === 'POST' && p.startsWith('/api/rebuild/')) {
       const tid = p.slice('/api/rebuild/'.length);
       queued.add(tid);
@@ -584,6 +647,9 @@ http.createServer((req, res) => {
       try { body = chunks ? JSON.parse(chunks) : {}; } catch (e) { return json(res, 400, { ok: false, code: 'bad_json', detail: 'the body is not valid JSON' }); }
       if (!/^application\/json/i.test(req.headers['content-type'] || ''))
         return json(res, 403, { ok: false, code: 'forbidden', detail: 'request refused: only the MaxPack page is accepted' });
+      // src/web.rs: a job of the installer waits for the console's own (maxpack_logic::job::blocks_installer).
+      if (['install', 'verify', 'uninstall'].includes(p.slice('/api/inst/'.length)) && consoleBusy())
+        return json(res, 409, { ok: false, code: 'console_busy', detail: 'a .p5z is being verified or a game is arriving from the PC' });
       const out = instPost(p.slice('/api/inst/'.length), body);
       return out ? json(res, 200, out) : send(res, 404, 'text/plain', 'not found');
     }
