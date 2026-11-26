@@ -810,7 +810,8 @@ name no game.
     `recommended: v2026112501 (2 titles, bundled)`, and the Off game still tagged.
   - Replace it with `{"format": 1, "version": 1, "titles": {}}` and restart. Expected:
     `recommended: removed /data/maxpack/recommended.json: v1 is not newer than the bundled v2026112501`, then
-    `recommended: v2026112501 (2 titles, bundled)`, and the file is gone. Restart once more: no `removed` line.
+    `recommended: v2026112501 (2 titles, bundled)`, and the file is gone (unless that start's refresh downloads a
+    list newer than the bundled one, as in 10.1, which writes it again). Restart once more: no `removed` line.
   - A download that is too large, too deep, of the wrong types, with 4097 titles or `"format": 2` cannot be
     served to the console (it takes only the repository's file); those are tested on the PC:
     `cargo test -p maxpack-logic recommended`.

@@ -12,8 +12,8 @@ What changed in each version of MaxPack for the console. The format follows
 - When an older ampr-emu-ng stops several `.p5z` games that grew at once, the console shows one notice with
   their count instead of one per game.
 - A new list of recommended settings that arrives while a game's `fakelib/` is being made no longer leaves
-  that game with the old Fakelib mode recorded as the new one; the next pass now makes it again with the
-  new list.
+  that `fakelib/` made with the old Fakelib mode but recorded as made with the new one; the next pass now
+  makes it again with the new list.
 - A download over its size limit (the recommended settings, the self-update's look, ampr-emu-ng) is not
   tried twice more, 20 s apart; the recommended settings log it as refused, not failed.
 - A downloaded list of recommended settings that is not newer than the one in `maxpack.elf` (after a MaxPack

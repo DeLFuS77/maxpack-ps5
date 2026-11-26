@@ -636,7 +636,9 @@ scope: every other setting (`overlay_off`, backports, scans). The console never 
   `recommended: v<version> (<n> titles, bundled|downloaded)`. Before that line, `recommended: cached copy ignored:
   <reason>` when the copy cannot be read or does not parse (the file stays), or `recommended: removed
   /data/maxpack/recommended.json: v<x> is not newer than the bundled v<y>` when it parses but is not newer (a
-  MaxPack update bundles a newer list): that file is of no use any more and is deleted, so the line comes once.
+  MaxPack update bundles a newer list): that file is of no use any more and is deleted, so the line comes once
+  (when the delete fails: `recommended: cached copy ignored: v<x> is not newer than the bundled v<y> (remove:
+  <error>)`, and the file stays).
 - **Format.** `{"format": 1, "version": <positive integer, higher for each change>, "titles": {"<key>": {entry}}}`.
   An entry may have `fakelib` (`full`, `emulators` or `off`), `playgo` (`false`: no bundled PlayGo stub, as
   `playgo_off`), `notice` (`long_first_boot`), and `fw_min` / `fw_max` (`"NN.NN"`, inclusive bounds on the console's
