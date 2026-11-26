@@ -56,6 +56,8 @@ pub enum PauseReason {
     WriteError,
     /// "Stop (keep what arrived)" on the console, or the payload quitting during the verify.
     Stopped,
+    /// The PC stopped the send and kept what arrived, and said so (`POST /api/receive/leave`).
+    Left,
 }
 
 impl PauseReason {
@@ -64,6 +66,7 @@ impl PauseReason {
             PauseReason::Idle => "idle",
             PauseReason::WriteError => "write_error",
             PauseReason::Stopped => "stopped",
+            PauseReason::Left => "left",
         }
     }
 }
@@ -120,6 +123,9 @@ pub enum Refusal {
     Paused { reason: PauseReason, have: u64 },
     /// A discard whose delete failed: the OS error.
     DeleteFailed(String),
+    /// A discard of the file a receive is receiving now, which had data within DISCARD_QUIET_MS or has a data
+    /// request in flight: busy for this many more seconds at least.
+    Receiving { retry_after: u64 },
 }
 
 impl Refusal {
@@ -136,6 +142,7 @@ impl Refusal {
             Refusal::TooLarge => 413,
             Refusal::LengthRequired => 411,
             Refusal::DeleteFailed(_) => 500,
+            Refusal::Receiving { .. } => 409,
         }
     }
 
@@ -161,6 +168,7 @@ impl Refusal {
             Refusal::Incomplete(_) => "incomplete",
             Refusal::Paused { .. } => "paused",
             Refusal::DeleteFailed(_) => "delete_failed",
+            Refusal::Receiving { .. } => "busy",
         }
     }
 
@@ -189,6 +197,9 @@ impl Refusal {
             Refusal::Incomplete(h) => format!("only {h} bytes arrived"),
             Refusal::Paused { reason, have } => format!("the receive is paused ({}) at {have} bytes: start it again to go on", reason.name()),
             Refusal::DeleteFailed(why) => why.clone(),
+            Refusal::Receiving { retry_after } => format!(
+                "a receive of this file is under way: it can be deleted once no data came from the PC for {} s (in {retry_after} s at the soonest)",
+                DISCARD_QUIET_MS / 1000),
         }
     }
 
@@ -208,6 +219,7 @@ impl Refusal {
                 v["have"] = (*have).into();
             }
             Refusal::Locked(ms) => v["retry_after"] = ms.div_ceil(1000).into(),
+            Refusal::Receiving { retry_after } => v["retry_after"] = (*retry_after).into(),
             _ => {}
         }
         v
@@ -256,9 +268,9 @@ pub fn leftover_name(file_name: &str) -> Option<&str> {
 }
 
 /// The page's delete of a leftover file: only a path the list of leftovers has now, and never the file the receive
-/// under way writes (`under_way`).
+/// under way writes (`under_way`, in any ASCII case: the same file on exFAT and FAT32).
 pub fn may_delete_leftover(path: &str, listed: &[String], under_way: Option<&str>) -> bool {
-    listed.iter().any(|l| l == path) && under_way != Some(path)
+    listed.iter().any(|l| l == path) && !under_way.is_some_and(|u| u.eq_ignore_ascii_case(path))
 }
 
 /// The mount of a drive id: `internal` is `/data`, `usb0`..`usb7` and `ext0`..`ext1` are `/mnt/<id>`.
@@ -468,8 +480,12 @@ pub struct DiscardFacts {
     pub usable: bool,
     /// `<name>.maxpack-recv`, as StartFacts::partial.
     pub partial: Option<u64>,
-    /// This run's receive; `same`: of that very file (the same name and drive).
+    /// This run's receive; `same`: of that very file (`same_file`).
     pub active: Option<Active>,
+    /// A data request of that receive is in flight (a PUT holds the writer).
+    pub writing: bool,
+    /// Milliseconds since that receive's last data request (its start counts as one).
+    pub quiet_ms: u64,
 }
 
 /// What a discard does.
@@ -479,10 +495,13 @@ pub struct Discard {
     pub bytes: Option<u64>,
     /// This run's receive of that file ends: its token is forgotten.
     pub forget: bool,
+    /// It was receiving, with no data for DISCARD_QUIET_MS: it pauses (idle) first.
+    pub paused_first: bool,
 }
 
 /// The discard's checks, in this order: the name (start's rules), the drive, the receive of that file under way
-/// (receiving or verifying: busy). Then it deletes `<name>.maxpack-recv` when a file is there, whatever its size and
+/// (verifying: busy; receiving: busy while data came within DISCARD_QUIET_MS or a data request is in flight, with
+/// `retry_after`, else it pauses first and goes on as for a paused one). Then it deletes `<name>.maxpack-recv` when a file is there, whatever its size and
 /// with no space check, and never anything else (something there that is not a file is left as it is); a receive
 /// of that file that is paused, failed or cancelled ends (one that is done is the library's `.p5z` now).
 pub fn discard_gate(f: &DiscardFacts) -> Result<Discard, Refusal> {
@@ -493,11 +512,34 @@ pub fn discard_gate(f: &DiscardFacts) -> Result<Discard, Refusal> {
         return Err(Refusal::NoDrive);
     }
     let same = f.active.as_ref().filter(|a| a.same);
-    if same.is_some_and(|a| a.state.active()) {
+    // Receiving, but the PC went without saying so (a crash, a lost leave): let go once no data came for
+    // DISCARD_QUIET_MS and none is being written; until then busy, with when to try again.
+    let paused_first = same.is_some_and(|a| a.state == State::Receiving);
+    if paused_first && (f.writing || f.quiet_ms < DISCARD_QUIET_MS) {
+        let left = DISCARD_QUIET_MS.saturating_sub(f.quiet_ms);
+        return Err(Refusal::Receiving { retry_after: left.div_ceil(1000).max(1) });
+    }
+    if same.is_some_and(|a| a.state == State::Verifying) {
         return Err(Refusal::Busy(Busy::Receive));
     }
     let bytes = f.partial.filter(|n| *n != u64::MAX);
-    Ok(Discard { bytes, forget: same.is_some_and(|a| a.state != State::Done) })
+    Ok(Discard { bytes, forget: same.is_some_and(|a| a.state != State::Done), paused_first })
+}
+
+/// A receiving receive with no data request for this long (and none in flight) is let go by a discard of its file:
+/// above the PC's longest wait between its retries (30 s), so a live send is never cut.
+pub const DISCARD_QUIET_MS: u64 = 60_000;
+
+/// The same file on the console's drives: the same drive id, and the same name without regard to ASCII case (exFAT
+/// and FAT32 ignore it; the contract's v3.1 uses that rule on every drive).
+pub fn same_file(a_name: &str, a_drive: &str, b_name: &str, b_drive: &str) -> bool {
+    a_drive == b_drive && a_name.eq_ignore_ascii_case(b_name)
+}
+
+/// `POST /api/receive/leave`: the PC stopped the send and kept what arrived. Only a receive that is receiving pauses
+/// (reason `left`); any other is left as it is (the answer is 200 either way).
+pub fn leave_pauses(state: State) -> bool {
+    state == State::Receiving
 }
 
 /// The discard's answer: `{"deleted":true,"bytes":N}`, or `{"deleted":false}` when nothing of it was there.
@@ -1095,33 +1137,33 @@ mod tests {
     fn discard_facts() -> DiscardFacts {
         DiscardFacts {
             req: DiscardReq { name: "Game [PPSA01234].p5z".into(), drive: "usb0".into() },
-            usable: true, partial: Some(3 << 30), active: None,
+            usable: true, partial: Some(3 << 30), active: None, writing: false, quiet_ms: 0,
         }
     }
 
     #[test]
     fn a_discard_deletes_what_a_send_left() {
         // The file is there, whatever its size: deleted, with no space check.
-        assert_eq!(discard_gate(&discard_facts()), Ok(Discard { bytes: Some(3 << 30), forget: false }));
-        assert_eq!(discard_gate(&DiscardFacts { partial: Some(0), ..discard_facts() }), Ok(Discard { bytes: Some(0), forget: false }));
+        assert_eq!(discard_gate(&discard_facts()), Ok(Discard { bytes: Some(3 << 30), forget: false, paused_first: false }));
+        assert_eq!(discard_gate(&DiscardFacts { partial: Some(0), ..discard_facts() }), Ok(Discard { bytes: Some(0), forget: false, paused_first: false }));
         // Nothing there, or something that is not a file (never deleted): nothing to delete.
         for partial in [None, Some(u64::MAX)] {
-            assert_eq!(discard_gate(&DiscardFacts { partial, ..discard_facts() }), Ok(Discard { bytes: None, forget: false }), "{partial:?}");
+            assert_eq!(discard_gate(&DiscardFacts { partial, ..discard_facts() }), Ok(Discard { bytes: None, forget: false, paused_first: false }), "{partial:?}");
         }
         // A paused receive of that file (or one that failed or was cancelled) is ended: its token is forgotten.
         for state in [State::Paused(PauseReason::Stopped), State::Paused(PauseReason::Idle), State::Failed, State::Cancelled] {
             let active = Some(Active { state, same: true, have: 5 });
             assert_eq!(discard_gate(&DiscardFacts { active: active.clone(), ..discard_facts() }),
-                Ok(Discard { bytes: Some(3 << 30), forget: true }), "{state:?}");
+                Ok(Discard { bytes: Some(3 << 30), forget: true, paused_first: false }), "{state:?}");
             assert_eq!(discard_gate(&DiscardFacts { active, partial: None, ..discard_facts() }),
-                Ok(Discard { bytes: None, forget: true }), "{state:?}");
+                Ok(Discard { bytes: None, forget: true, paused_first: false }), "{state:?}");
         }
         // One that is done is the library's .p5z now: kept as it is.
         let done = Some(Active { state: State::Done, same: true, have: 5 });
-        assert_eq!(discard_gate(&DiscardFacts { active: done, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false }));
+        assert_eq!(discard_gate(&DiscardFacts { active: done, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false, paused_first: false }));
         // Another file's receive under way does not stop it.
         let other = Some(Active { state: State::Receiving, same: false, have: 5 });
-        assert_eq!(discard_gate(&DiscardFacts { active: other, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false }));
+        assert_eq!(discard_gate(&DiscardFacts { active: other, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false, paused_first: false }));
     }
 
     #[test]
@@ -1136,11 +1178,87 @@ mod tests {
         // A drive that is not there, or whose homebrew the PC may not send to.
         let under_way = Some(Active { state: State::Receiving, same: true, have: 5 });
         assert_eq!(discard_gate(&DiscardFacts { usable: false, active: under_way, ..discard_facts() }), Err(Refusal::NoDrive));
-        // That very file receiving or being verified: busy.
-        for state in [State::Receiving, State::Verifying] {
-            let active = Some(Active { state, same: true, have: 5 });
-            assert_eq!(discard_gate(&DiscardFacts { active, ..discard_facts() }), Err(Refusal::Busy(Busy::Receive)), "{state:?}");
+        // That very file being verified: busy, with no retry_after.
+        let active = Some(Active { state: State::Verifying, same: true, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { active, quiet_ms: u64::MAX, ..discard_facts() }), Err(Refusal::Busy(Busy::Receive)));
+        assert!(Refusal::Busy(Busy::Receive).json().get("retry_after").is_none());
+    }
+
+    #[test]
+    fn a_discard_of_a_receive_with_no_data_for_60_s_pauses_it_first() {
+        let receiving = || Some(Active { state: State::Receiving, same: true, have: 5 });
+        // No data request in flight and none for DISCARD_QUIET_MS: paused (idle) first, then deleted as a paused one.
+        assert_eq!(DISCARD_QUIET_MS, 60_000);
+        for quiet_ms in [DISCARD_QUIET_MS, 10 * 60_000] {
+            assert_eq!(discard_gate(&DiscardFacts { active: receiving(), quiet_ms, ..discard_facts() }),
+                Ok(Discard { bytes: Some(3 << 30), forget: true, paused_first: true }), "{quiet_ms}");
         }
+        // A data request in the last 60 s: busy, with the seconds until those 60 s are up (at least 1).
+        let busy = |quiet_ms, writing| discard_gate(&DiscardFacts { active: receiving(), quiet_ms, writing, ..discard_facts() });
+        assert_eq!(busy(0, false), Err(Refusal::Receiving { retry_after: 60 }));
+        assert_eq!(busy(59_001, false), Err(Refusal::Receiving { retry_after: 1 }));
+        assert_eq!(busy(30_500, false), Err(Refusal::Receiving { retry_after: 30 }));
+        // A data request in flight: busy however long ago the last one began.
+        assert_eq!(busy(0, true), Err(Refusal::Receiving { retry_after: 60 }));
+        assert_eq!(busy(10 * 60_000, true), Err(Refusal::Receiving { retry_after: 1 }));
+        let r = Refusal::Receiving { retry_after: 42 };
+        assert_eq!((r.status(), r.code()), (409, "busy"));
+        assert_eq!(r.json()["retry_after"], 42);
+        // Another file's receive, quiet or not, is not this one.
+        let other = Some(Active { state: State::Receiving, same: false, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { active: other, writing: true, ..discard_facts() }),
+            Ok(Discard { bytes: Some(3 << 30), forget: false, paused_first: false }));
+    }
+
+    #[test]
+    fn names_that_differ_only_in_case_are_the_same_file() {
+        // exFAT and FAT32 ignore case: the same name and drive in any ASCII case is the same file.
+        assert!(same_file("Game [PPSA01234].p5z", "usb0", "game [ppsa01234].P5Z", "usb0"));
+        assert!(same_file("A.p5z", "internal", "A.p5z", "internal"));
+        assert!(!same_file("A.p5z", "usb0", "A.p5z", "usb1"));
+        assert!(!same_file("A.p5z", "usb0", "B.p5z", "usb0"));
+        // ASCII only, as the contract says.
+        assert!(!same_file("É.p5z", "usb0", "é.p5z", "usb0"));
+        // A discard whose name differs only in case from the receive under way: busy, never its file deleted.
+        let active = Some(Active { state: State::Receiving, same: same_file("Game [PPSA01234].p5z", "usb0", "GAME [ppsa01234].p5z", "usb0"), have: 5 });
+        let mut f = DiscardFacts { active, ..discard_facts() };
+        f.req.name = "GAME [ppsa01234].p5z".into();
+        assert_eq!(discard_gate(&f), Err(Refusal::Receiving { retry_after: 60 }));
+        // Settings' Delete never takes the file under way, whatever the case of its listed name.
+        let listed = vec!["/mnt/usb0/homebrew/Game.p5z.maxpack-recv".to_string()];
+        assert!(!may_delete_leftover("/mnt/usb0/homebrew/Game.p5z.maxpack-recv", &listed, Some("/mnt/usb0/homebrew/game.P5Z.maxpack-recv")));
+        assert!(may_delete_leftover("/mnt/usb0/homebrew/Game.p5z.maxpack-recv", &listed, Some("/mnt/usb1/homebrew/game.p5z.maxpack-recv")));
+    }
+
+    #[test]
+    fn the_pc_says_it_left() {
+        // POST /api/receive/leave: a receive that is receiving pauses with reason left; any other is left as it is.
+        assert_eq!(PauseReason::Left.name(), "left");
+        assert!(leave_pauses(State::Receiving));
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused(PauseReason::Stopped),
+                  State::Paused(PauseReason::Left)] {
+            assert!(!leave_pauses(s), "{s:?}");
+        }
+        // As idle: data and finish answer 409 paused with its reason, and a start of the same file goes on exactly.
+        let left = State::Paused(PauseReason::Left);
+        assert_eq!(data_check(left, 40, 100, 40, 10), Err(Refusal::Paused { reason: PauseReason::Left, have: 40 }));
+        assert_eq!(finish_check(left, 40, 100), Err(Refusal::Paused { reason: PauseReason::Left, have: 40 }));
+        assert_eq!(status_json(40, 100, left, None, None)["reason"], "left");
+        let paused = Some(Active { state: left, same: true, have: 3 << 30 });
+        assert_eq!(start_gate(&StartFacts { active: paused, partial: Some(3 << 30), ..facts() }), Ok(Start::Unpause { have: 3 << 30 }));
+        // A discard of it deletes at once.
+        let paused = Some(Active { state: left, same: true, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { active: paused, ..discard_facts() }),
+            Ok(Discard { bytes: Some(3 << 30), forget: true, paused_first: false }));
+    }
+
+    #[test]
+    fn a_repeated_key_is_refused() {
+        // The bodies are read by the same parse as what acts on them: a key given twice is no request.
+        assert!(matches!(parse_start(br#"{"name":"A.p5z","name":"B.p5z","size":1000,"drive":"usb0"}"#), Err(Refusal::BadRequest(_))));
+        assert!(matches!(parse_start(br#"{"name":"A.p5z","size":1000,"drive":"usb0","drive":"usb1"}"#), Err(Refusal::BadRequest(_))));
+        assert!(matches!(parse_discard(br#"{"name":"A.p5z","name":"B.p5z"}"#), Err(Refusal::BadRequest(_))));
+        assert!(matches!(parse_discard(br#"{"name":"A.p5z","drive":"usb0","drive":"usb1"}"#), Err(Refusal::BadRequest(_))));
     }
 
     #[test]

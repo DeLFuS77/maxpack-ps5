@@ -516,6 +516,8 @@ fn receive_route(state: &State, head: &str, method: &str, path: &str, query: &st
         },
         // The contract's v3: what a send left of a file, deleted without a start (a full drive too).
         ("POST", "/api/receive/discard") => rx::discard(state, body),
+        // The contract's v3.1: the PC stopped the send and kept what arrived (the receive pauses, reason left).
+        ("POST", "/api/receive/leave") => rx::leave(query),
         _ => return reply(404, "application/json", serde_json::json!({"error": "not_found", "detail": "no such route"}).to_string()),
     };
     receive_reply(a)

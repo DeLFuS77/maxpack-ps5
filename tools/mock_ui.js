@@ -89,6 +89,9 @@ const mock = {
   ampr_fail: arg('ampr-fail', 'none'),
   receive: arg('receive', 'none'),
   receive_delete_fail: args.includes('--receive-delete-fail'),
+  // maxpack_logic::receive::DISCARD_QUIET_MS (60 s); /mock?receive_quiet_ms= shortens it to try the discard of a
+  // receive the PC left without saying so.
+  receive_quiet_ms: 60000,
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
@@ -611,12 +614,14 @@ function recvStart(body) {
   if (!d) return recvNo('no_drive', 404, 'no such drive on the console');
   const dest = `${d.mount}/homebrew/${name}`;
   if (received.has(dest) || games().some((g) => g.path === dest)) return recvNo('exists', 409, 'that .p5z is already there');
-  if (recvJob && recvJob.state === 'receiving' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size)
+  if (recvJob && recvJob.state === 'receiving' && recvSame(recvJob, name, drive) && recvJob.size === size) {
+    recvJob.dataAt = Date.now();
     return [200, { id: recvJob.id, have: recvJob.have }];
+  }
   // Paused in this run: receiving again with its token, from where it was.
-  if (recvJob && recvJob.state === 'paused' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size) {
+  if (recvJob && recvJob.state === 'paused' && recvSame(recvJob, name, drive) && recvJob.size === size) {
     if (currentJob() || verifyRunning()) return recvNo('busy', 409, 'another job runs; try again when it ends');
-    Object.assign(recvJob, { state: 'receiving', reason: null, from: recvJob.have, last: Date.now(), demo: false });
+    Object.assign(recvJob, { state: 'receiving', reason: null, from: recvJob.have, last: Date.now(), dataAt: Date.now(), demo: false });
     return [200, { id: recvJob.id, have: recvJob.have }];
   }
   if (recvUnder()) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
@@ -652,14 +657,24 @@ function recvDiscard(body) {
   if (!recvNameOk(name)) return recvNo('bad_name', 400, 'not a plain .p5z file name');
   const d = RECV_DRIVES.find((x) => x.id === drive);
   if (!d) return recvNo('no_drive', 404, 'no such drive on the console');
-  const p = `${d.mount}/homebrew/${name}.maxpack-recv`;
-  const same = recvJob && recvJob.partial === p ? recvJob : null;
-  if (same && (same.state === 'receiving' || same.state === 'verifying')) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
-  const there = leftState().find((x) => x.path === p);
-  leftovers = leftovers.filter((x) => x.path !== p);
+  const same = recvJob && recvSame(recvJob, name, drive) ? recvJob : null;
+  const p = same && same.state !== 'done' ? same.partial : `${d.mount}/homebrew/${name}.maxpack-recv`;
+  if (same && same.state === 'verifying') return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
+  // The contract's v3.1: receiving, it is let go only once no data came for receive_quiet_ms (then paused first).
+  if (same && same.state === 'receiving') {
+    const quiet = Date.now() - (same.dataAt || same.started);
+    if (quiet < mock.receive_quiet_ms)
+      return recvNo('busy', 409, 'a receive of this file is under way', { retry_after: Math.max(1, Math.ceil((mock.receive_quiet_ms - quiet) / 1000)) });
+    Object.assign(same, { state: 'paused', reason: 'idle', mbps: null });
+  }
+  const there = leftState().find((x) => asciiLower(x.path) === asciiLower(p));
+  leftovers = leftovers.filter((x) => asciiLower(x.path) !== asciiLower(p));
   if (same && same.state !== 'done') { clearInterval(recvTimer); recvJob = null; }
   return [200, there ? { deleted: true, bytes: there.size } : { deleted: false }];
 }
+// maxpack_logic::receive::same_file: the same drive and name in any ASCII case (exFAT and FAT32 ignore it).
+function asciiLower(s) { return s.replace(/[A-Z]/g, (c) => c.toLowerCase()); }
+function recvSame(j, name, drive) { return j.drive === drive && asciiLower(j.name) === asciiLower(name); }
 // --receive-delete-fail (or /mock?receive_delete_fail=1): the delete fails, so the file stays and error says why
 // (src/receive.rs cancel: a cancelled receive's error is only that).
 function recvCancel(j) {
@@ -692,9 +707,15 @@ function recvRoute(req, url, body, bytes) {
     j.have += bytes;
     j.mbps = t > 0 ? bytes / t / 1e6 : null;
     j.lastPut = Date.now();
+    j.dataAt = j.lastPut;
     return [200, { have: j.have }];
   }
   if (req.method === 'GET' && p === '/api/receive/status') return [200, recvStatus(j)];
+  // The contract's v3.1: the PC stopped the send and kept what arrived; only a receive that is receiving pauses.
+  if (req.method === 'POST' && p === '/api/receive/leave') {
+    if (j.state === 'receiving') { clearInterval(recvTimer); Object.assign(j, { state: 'paused', reason: 'left', mbps: null }); }
+    return [200, { have: j.have }];
+  }
   if (req.method === 'POST' && p === '/api/receive/finish') {
     if (j.state === 'paused') return recvNo('paused', 409, 'the receive is paused: start it again to go on', { reason: j.reason, have: j.have });
     if (j.state !== 'receiving') return recvNo('state', 409, `the receive is ${j.state}`);
@@ -768,6 +789,7 @@ http.createServer((req, res) => {
       for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('receive_delete_fail')) mock.receive_delete_fail = url.searchParams.get('receive_delete_fail') === '1';
+      if (url.searchParams.has('receive_quiet_ms')) mock.receive_quiet_ms = Number(url.searchParams.get('receive_quiet_ms')) || 0;
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
       if (url.searchParams.has('receive')) recvDemo(url.searchParams.get('receive'));
