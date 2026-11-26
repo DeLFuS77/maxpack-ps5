@@ -27,9 +27,11 @@ below, whose terms require these notices to accompany binary distributions.
   written into /data/maxpack/ampr/ and game caches: GPL-3.0-or-later (ampr-emu-ng's licence, the
   same as MaxPack's; text in LICENSE). A modified build, MaxPack's own, from
   https://github.com/DeLFuS77/ampr-emu-ng: upstream v0.5.1 (e1789c1, c19915c there) plus the p5z mode (a game served
-  from a .p5z file) and a CI change: its release v0.5.1-maxpack.1, built by its CI run 45435074348
-  (the same bytes). vendor/ampr-emu-ng/SOURCE records the repository, the release, the commit and the run.
-  Corresponding Source: https://github.com/DeLFuS77/ampr-emu-ng/tree/v0.5.1-maxpack.1
+  from a .p5z file), a CI change and the p5z rules of a .p5z that grew by appending: not a release yet,
+  but the build of its CI run 45752231139 (the same bytes) of commit 4c82503 on its branch consola-orden,
+  to be released as v0.5.2-maxpack.1. vendor/ampr-emu-ng/SOURCE records the repository, the commit
+  and the run.
+  Corresponding Source: https://github.com/DeLFuS77/ampr-emu-ng/tree/4c82503500d38e449925005a1e6a68dd70ff697c
 - Rust crates linked into the payload (Cargo.lock), each used under its MIT option: itoa,
   libc, memchr, serde_core, serde_json, zmij.
 - The Rust 1.99.0 standard library (core, alloc, std), built with -Z build-std: MIT OR

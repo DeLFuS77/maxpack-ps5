@@ -1,8 +1,10 @@
 # Where vendor/ampr-emu-ng/libSceAmpr.sprx comes from (Corresponding Source for THIRD_PARTY_NOTICES).
 # Not listed in SHA256SUMS: ps5/build.sh checks with --ignore-missing.
 repository: https://github.com/DeLFuS77/ampr-emu-ng
-release: https://github.com/DeLFuS77/ampr-emu-ng/releases/tag/v0.5.1-maxpack.1 (libSceAmpr.sprx, byte-identical to this one: same SHA-256)
-commit: 73b2973891e6482c232867dab2508c57324f97b0 (tag v0.5.1-maxpack.1)
-upstream: https://github.com/quer3q/ampr-emu-ng v0.5.1 (e1789c1; c19915c in the repository above); the commits above add the p5z mode (a game served from a .p5z file) and a CI change
-ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45435074348 (workflow build, tag v0.5.1-maxpack.1, success)
-version: v0.5.1-maxpack.1 (VERSION)
+build: a CI build, not a release: the libSceAmpr.sprx of the sprx artifact of the CI run below, byte-identical to it (the SHA-256 its SHA256SUMS lists)
+commit: 4c82503500d38e449925005a1e6a68dd70ff697c (branch consola-orden; not merged, not tagged)
+ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45752231139 (workflow build, run by hand on branch consola-orden at that commit, success)
+release: none yet; it is to be released as v0.5.2-maxpack.1, and when that tag is published its libSceAmpr.sprx and SHA256SUMS replace these and this file names the release
+upstream: https://github.com/quer3q/ampr-emu-ng v0.5.1 (e1789c1; c19915c in the repository above); the commits above add the p5z mode (a game served from a .p5z file), a CI change, and the p5z rules of a .p5z that grew by appending (chunks in any order, room no chunk uses, volumes with no chunk, volume headers counting fewer volumes)
+previous: v0.5.1-maxpack.1 (tag on 73b2973, CI run 45435074348), the last release
+version: v0.5.2-maxpack.1 (VERSION), the name of its coming release; the sprx's own identity and its launch notice still say 0.5.1 (the crates' version at that commit)
