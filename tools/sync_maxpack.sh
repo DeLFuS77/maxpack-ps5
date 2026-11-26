@@ -23,11 +23,13 @@ archive() { git -C "$1" -c core.autocrlf=false -c core.eol=lf archive --format=t
 
 rm -rf "$dest"
 mkdir -p "$dest"
-# What CMakeLists.txt reads with -DMAXPACK_PS5=ON: cmake/, the library sources and src/ps5 (its
-# maxpack_elf target must configure, though the payload does not build it). The engine's own
-# installer page (web/index.html) is gone since its commit f8e931a: the payload serves src/ui.html.
+# What CMakeLists.txt reads with -DMAXPACK_PS5=ON: cmake/, the library sources, src/ps5 (its
+# maxpack_elf target must configure, though the payload does not build it) and src/thumb (the .p5z
+# icon reader of the PC's file manager thumbnails: a library the engine configures on every platform
+# since it has thumbnails, which the payload does not build either). The engine's own installer page
+# (web/index.html) is gone since its commit f8e931a: the payload serves src/ui.html.
 archive "$repo" "$commit" CMakeLists.txt LICENSE cmake src/core src/analyze src/pack src/net \
-  src/install src/web src/ps5 | tar -x -C "$dest"
+  src/install src/web src/ps5 src/thumb | tar -x -C "$dest"
 
 # The submodules at the commits the engine's commit records (cmake/ThirdParty.cmake compiles them).
 sub() {

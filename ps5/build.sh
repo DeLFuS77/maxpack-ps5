@@ -32,9 +32,11 @@ done
 # by its own CMake with the SDK as the engine's CI ps5 job does, into the static libraries that
 # ps5/linker.sh links (in this order). Its maxpack_elf target (the phase-2 ELF) is not built, so
 # -DMAXPACK_RUNTIME, which only feeds that target, is not passed: the runtime the installer carries
-# is src/main.rs BUNDLED_AMPR, the same vendor/ampr-emu-ng/libSceAmpr.sprx, embedded once.
+# is src/main.rs BUNDLED_AMPR, the same vendor/ampr-emu-ng/libSceAmpr.sprx, embedded once. Nor its
+# page library (maxpack_page, web/index.html embedded): only the phase-2 ELF's main hands that page
+# to the API, the payload serves src/ui.html, and the engine dropped both in its commit f8e931a.
 eng="$out/engine"
-engine_libs=(maxpack_web maxpack_page maxpack_install maxpack_net maxpack_pack maxpack_analyze maxpack_core mp_zstd mp_zlib)
+engine_libs=(maxpack_web maxpack_install maxpack_net maxpack_pack maxpack_analyze maxpack_core mp_zstd mp_zlib)
 "$PS5_PAYLOAD_SDK/bin/prospero-cmake" -S vendor/maxpack -B "$eng" -DMAXPACK_PS5=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build "$eng" -j "$(nproc)" --target "${engine_libs[@]}"
 for lib in "${engine_libs[@]}"; do
