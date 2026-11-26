@@ -13,6 +13,7 @@ mod cache;
 mod config;
 mod crash;
 mod installer;
+mod jobs;
 mod launch;
 mod net;
 mod p5z;
@@ -22,6 +23,7 @@ mod scan;
 mod storage;
 mod tls;
 mod update;
+mod verify;
 mod web;
 
 use cache::Fresh;

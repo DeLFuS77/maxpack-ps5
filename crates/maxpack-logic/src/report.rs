@@ -43,6 +43,8 @@ pub struct Report<'a> {
     pub crash: Option<&'a Crash>,
     /// The log tail the lines with the title id are taken from.
     pub log: &'a str,
+    /// A .p5z: its last verify on the console (verify::report_line, "never" for none); None for any other kind.
+    pub verified: Option<&'a str>,
 }
 
 /// The source kind as /api/state names it: (the report's words, the compatibility list's Format).
@@ -150,6 +152,9 @@ pub fn text(r: &Report) -> String {
         format!("Source: {} ({}, {})", r.path, kind_text(r.kind, r.packing).0, r.drive),
         format!("Status: {status}"),
     ];
+    if let Some(v) = r.verified {
+        lines.push(format!("Verified on the console: {v}"));
+    }
     if r.hidden {
         lines.push("Hidden in the library: yes".into());
     }
@@ -198,7 +203,22 @@ mod tests {
             path: "/data/homebrew/Starfall Odyssey", kind: "folder", packing: Some("zstd"), drive: "/data",
             status: "ready", error: None, hidden: false, overlay_off: false, fakelib: Mode::Full, fakelib_recommended: false,
             playgo_recommended: false, backport: None, ampr: "bundled v0.5.0-maxpack.3", playgo: "on", crash, log,
+            verified: None,
         }
+    }
+
+    #[test]
+    fn a_p5z_says_how_it_was_verified() {
+        let r = Report { kind: "p5z", packing: None, verified: Some("full, OK on 2026-11-20 09:17:19Z (12 files)"), ..starfall("", None) };
+        let t = text(&r);
+        let line = "Verified on the console: full, OK on 2026-11-20 09:17:19Z (12 files)\n";
+        assert!(t.contains(line), "{t}");
+        // With the source and its status, before the libraries.
+        assert!(t.find("Status:").unwrap() < t.find(line).unwrap(), "{t}");
+        assert!(t.find(line).unwrap() < t.find("Backport:").unwrap(), "{t}");
+        // Nothing for a game that is not a .p5z (None), and the row stays as it was.
+        assert!(!text(&starfall("", None)).contains("Verified"));
+        assert!(!compat_row(&r).contains("OK"));
     }
 
     #[test]

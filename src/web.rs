@@ -196,6 +196,9 @@ fn game_json(g: &Game, x: &GameExtra) -> serde_json::Value {
         "recommended": recommended,
         // The list's notice for the game ("long_first_boot"), or null.
         "notice": eff.notice.map(|n| n.name()),
+        // A .p5z's last verify on the console while the file is the one verified (src/verify.rs), else null.
+        // ponytail: one stat per .p5z game on every state poll.
+        "verified": if g.src.kind == Kind::P5z { crate::verify::last(&g.src.path).map(|r| crate::verify::record_json(&r)) } else { None },
     })
 }
 
@@ -270,6 +273,7 @@ fn rebind(state: &State) -> TcpListener {
             Ok(l) => return l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && !state.paused() => {
                 log!("web: port {PORT} taken by another copy; quitting");
+                crate::verify::stop();
                 crate::installer::stop();
                 std::process::exit(0)
             }
@@ -488,7 +492,8 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
                 if toast {
                     sys::notify(crate::i18n::stopped(crate::i18n::lang()));
                 }
-                // An install in progress pauses first, so it resumes at the next start.
+                // A verify is cancelled; an install in progress pauses, so it resumes at the next start.
+                crate::verify::stop();
                 crate::installer::stop();
                 std::thread::sleep(Duration::from_millis(200));
                 std::process::exit(0)
@@ -515,6 +520,14 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         ("POST", p) if p.starts_with("/api/delete/") => delete(state, &p["/api/delete/".len()..], body),
         ("POST", p) if p.starts_with("/api/launch/") => launch(state, &p["/api/launch/".len()..]),
         ("POST", "/api/eject") => eject(state, body),
+        // "Verify fully" on a .p5z game's sheet (src/verify.rs).
+        ("POST", "/api/verify/cancel") => {
+            if crate::verify::cancel() { no_content() } else { reply(409, "text/plain", "no verify is running") }
+        }
+        ("POST", p) if p.starts_with("/api/verify/") => match crate::verify::start(state, &p["/api/verify/".len()..], body) {
+            Ok(()) => no_content(),
+            Err(r) => reply(r.status(), "application/json", serde_json::json!({"code": r.code(), "detail": r.detail()}).to_string()),
+        },
         ("POST", "/api/purge") => {
             log!("cache purge requested");
             state.purge.store(true, Ordering::SeqCst);
@@ -567,6 +580,19 @@ fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8],
         let body = serde_json::json!({"ok": false, "code": "game_running", "detail": "a game is running"}).to_string();
         return reply(409, "application/json", body);
     }
+    // A job of the installer shares the engine's cancel flag and progress hook with the console's own jobs
+    // (src/jobs.rs): not while one runs, and none starts while this is forwarded.
+    let _job = if maxpack_logic::job::blocks_installer(method, &path) {
+        let Some(g) = crate::jobs::hold_off() else {
+            log!("installer: {path} refused: a verify or a receive from the PC runs on the console");
+            let body = serde_json::json!({"ok": false, "code": "console_busy",
+                "detail": "a .p5z is being verified or a game is arriving from the PC"}).to_string();
+            return reply(409, "application/json", body);
+        };
+        Some(g)
+    } else {
+        None
+    };
     // The library's copy of that title now: the one MaxPack mounts, if any.
     let source = uninstall.as_deref().and_then(|t| state.source(t)).map(|s| s.path);
     let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
@@ -950,6 +976,8 @@ fn api_state(state: &State) -> Vec<u8> {
         "images": images,
         "unplayable": unplayable,
         "drives": drives,
+        // The verify of this run (src/verify.rs), or null.
+        "verify": crate::verify::json(),
         "cache": {
             "path": cache::CACHES,
             "size": *state.cache_total.lock().unwrap(),
@@ -1086,11 +1114,14 @@ fn report(state: &State, tid: &str) -> Reply {
     let log = String::from_utf8_lossy(&log);
     let (kind, packing) = kind_names(g.src.kind);
     let (path, backport) = (g.src.path.to_string_lossy(), g.src.backport.as_ref().map(|b| b.to_string_lossy()));
+    // A .p5z's last verify on the console, in words that name no file of the game.
+    let verified = (g.src.kind == Kind::P5z).then(|| maxpack_logic::verify::report_line(crate::verify::last(&g.src.path).as_ref()));
     let text = maxpack_logic::report::text(&maxpack_logic::report::Report {
         version: env!("CARGO_PKG_VERSION"), firmware: firmware.as_deref(), waiting: waiting.as_deref(),
         title_id: tid, title_name: &g.src.title_name, game_version: &g.src.version, path: &path, kind, packing,
         drive: &g.src.drive, status: g.status, error: g.error.as_deref(), hidden: s.hidden.iter().any(|t| t == tid), overlay_off: crate::cache::overlay_off(&g.src, &s),
         fakelib, fakelib_recommended, playgo_recommended, backport: backport.as_deref(), ampr: &ampr, playgo, crash: crash.as_ref(), log: &log,
+        verified: verified.as_deref(),
     });
     reply(200, "text/plain; charset=utf-8", text)
 }
@@ -1205,6 +1236,9 @@ fn delete(state: &State, tid: &str, body: &[u8]) -> Reply {
     }
     if state.games.lock().unwrap().iter().any(|g| g.src.title_id == tid && matches!(g.status, "building" | "checking")) {
         return reply(409, "text/plain", "the game is being built");
+    }
+    if crate::verify::uses(&src.path) {
+        return reply(409, "text/plain", "the game is being verified");
     }
     let roots = {
         let settings = state.settings.lock().unwrap();
@@ -1332,6 +1366,10 @@ fn eject(state: &State, body: &[u8]) -> Reply {
     };
     if state.paused() {
         return reply(409, "text/plain", "a game is running");
+    }
+    if crate::verify::uses(Path::new(&path)) {
+        log!("eject {path}: refused: a .p5z on it is being verified");
+        return reply(409, "text/plain", "a .p5z on this drive is being verified");
     }
     // Eject unmounts every /system_ex/app/<TID> from the drive, whoever mounted it.
     if let Err(r) = mounts_or_409(state) {

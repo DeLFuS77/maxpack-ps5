@@ -146,6 +146,23 @@ pub fn title_runs(tid: &str) -> Option<bool> {
     proc_find(|pid, _| title_of(pid).as_deref() == Some(tid)).ok().map(|p| p.is_some())
 }
 
+/// The title ids of every game running now, whoever started it (MaxPack, another mounter, the console itself),
+/// as `title_runs` sees one: each process's app info title id but this payload's, kept by
+/// maxpack_logic::job::running_games (no system app, not MaxPack's tile). One process walk. Err when the walk
+/// failed: the caller decides (the console's jobs refuse then).
+pub fn games_running() -> io::Result<Vec<String>> {
+    // SAFETY: a plain query.
+    let me = unsafe { libc::getpid() };
+    let mut seen = Vec::new();
+    proc_find(|pid, _| {
+        if pid != me {
+            seen.extend(title_of(pid));
+        }
+        false
+    })?;
+    Ok(maxpack_logic::job::running_games(seen.iter().map(String::as_str)))
+}
+
 /// Walks sysctl KERN_PROC_PROC with the PS5 kinfo_proc offsets: the first pid where
 /// `f(pid, tdname)`, Ok(None) when there is none, Err when the list could not be read or a record
 /// is bad (find_pid reads both as "not found", as before).
