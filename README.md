@@ -438,8 +438,9 @@ what Fakelib is.
 - **The ampr-emu-ng updater** (off by default) only takes DeLFuS77/ampr-emu-ng's releases, installs
   their `libSceAmpr.sprx` only when it matches that release's `SHA256SUMS`, and waits for the same
   **Check secure connections** (since 1.0.1).
-- **The recommended settings** (since 1.0.2) download only a data file from this repository, check it
-  whole before using it (size, format and values: anything else is refused and the list in use stays), send
+- **The recommended settings** (since 1.0.2) download only a data file from this repository, check its
+  size, its format and the type of every field before using it (a file that fails is refused and the list in
+  use stays; a value this version does not know, such as a newer Fakelib mode, is ignored for that game), send
   nothing about your games, and also wait for **Check secure connections**.
 
 ### Updates
