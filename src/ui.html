@@ -5245,11 +5245,13 @@ $('m-fakelib').onchange = async function () {
   schedule(300);
 };
 // What "Back to the recommended setting" sets, as the reset handler below draws it: the list's Fakelib mode
-// (Full when it sets none), and the PlayGo stub when the sheet will show that switch with an effect.
+// (Full when it sets none), and the PlayGo stub when the sheet will show that switch with an effect: never with
+// Settings > "Add the bundled emulators" off (state.add_emulators), which adds no stub at all.
 var FAKELIB_TEXT = { full: 'fakelibFull', emulators: 'fakelibEmulators', off: 'fakelibOff' };
 function resetWhat(g) {
   var rec = g.recommended || {}, mode = rec.fakelib || 'full', args = { mode: t(FAKELIB_TEXT[mode] || 'fakelibFull') };
-  if (mode === 'off' || !(g.playgo === true || rec.playgo_off)) return t('recommendedResetFakelib', args);
+  var emulators = !state || state.add_emulators !== false;
+  if (mode === 'off' || !emulators || !(g.playgo === true || rec.playgo_off)) return t('recommendedResetFakelib', args);
   return t(rec.playgo_off ? 'recommendedResetStubOff' : 'recommendedResetStubOn', args);
 }
 // "Back to the recommended setting" (POST /api/recommended/<TID>, body reset): the list applies again.

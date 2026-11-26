@@ -1097,6 +1097,8 @@ fn api_state(state: &State, loopback: bool) -> Vec<u8> {
         "waiting": state.mounter.lock().unwrap().api_waiting(),
         "running": running,
         "games": games,
+        // Settings > "Add the bundled emulators": off, no PlayGo stub is ever added (the sheet's reset line says so).
+        "add_emulators": settings.add_emulators,
         "images": images,
         "unplayable": unplayable,
         "drives": drives,

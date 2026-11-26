@@ -250,14 +250,16 @@ function verifiedLine(r) {
 function games() {
   if (mock.empty) return [];
   // src/verify.rs `last`: a .p5z's last verify (by path), else null.
-  const g = (tid, name, kind, packing, status, extra) => withVerified(Object.assign({
+  // src/web.rs game_json: with the bundled emulators off, no PlayGo stub is ever added (playgo null, playgo_off false).
+  const emus = (x) => settings.add_emulators ? x : Object.assign(x, { playgo: null, playgo_off: false });
+  const g = (tid, name, kind, packing, status, extra) => emus(withVerified(Object.assign({
     title_id: tid, title_name: name, version: '01.000.000', path: '/data/homebrew/' + tid, kind, packing,
     drive: '/data', size: kind === 'pkg' ? 38 * GB : 0, status, error: null, installed_copy: null, cache_size: 210 * MB,
     cache_built: BUILT, error_code: null, missing_bytes: null, backport: null, playgo: false,
     hidden: hidden.has(tid), crash: null, rebuild_queued: queued.has(tid),
     registered: status === 'ready', mounted: status === 'ready', source_present: true,
     overlay_off: kind === 'folder' && packing === 'plain' && overlayOff.has(tid), overlay_off_listed: overlayOff.has(tid),
-  }, settingsOf(tid), extra || {}));
+  }, settingsOf(tid), extra || {})));
   return [
     g('PPSA01234', 'Astro Example', 'pkg', null, 'ready', { path: '/mnt/usb0/homebrew/astro.pkg', drive: '/mnt/usb0',
       crash: { at: BUILT + 600, process: 'eboot.bin', status: 'killed by signal 11' } }),
@@ -295,6 +297,8 @@ function apiState(req) {
   return {
     version, update: updateValue(), tls_check: tlsCheckValue(), busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
+    // Settings > "Add the bundled emulators" (src/web.rs api_state): the reset line names the PlayGo stub only with it on.
+    add_emulators: settings.add_emulators,
     images: mock.empty ? [] : [
       { path: '/data/homebrew/Sample Game [PPSA06789].exfat', kind: 'exfat', title_id: 'PPSA06789' },
       { path: '/mnt/usb0/homebrew/misc/another.ffpkg', kind: 'ffpkg' },
