@@ -248,7 +248,7 @@ const PACK_REFUSALS = {
   no_space: [409, '3221.2 MB more is needed on that drive'],
   // As no_space, on the internal drive (it keeps 2 GiB free).
   no_space_internal: [409, '3221.2 MB more is needed on the internal drive (2 GiB stay free there for saves, installs and logs)'],
-  fat32: [409, 'the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is 5368.7 MB: its .p5z could be as large'],
+  fat32: [409, 'the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is 5368.7 MB: with what the engine adds, its .p5z could reach that'],
   pack_running: [409, 'a test compression is running'],
   install_running: [409, 'the installer is running or queuing a job'],
   game_running: [409, 'a game is running'],

@@ -131,7 +131,8 @@ impl Refusal {
                 format!("{} more is needed on the internal drive (2 GiB stay free there for saves, installs and logs)", mb(*missing))
             }
             Refusal::Fat32 { size } => format!(
-                "the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is {}: its .p5z could be as large", mb(*size)),
+                "the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is {}: with what the engine adds, its .p5z could reach that",
+                mb(*size)),
         }
     }
 }
@@ -141,6 +142,9 @@ impl Refusal {
 pub const INTERNAL_MARGIN: u64 = 2 << 30;
 /// FAT32 keeps no file of this size or more.
 pub const FAT32_LIMIT: u64 = 4 << 30;
+/// Room kept under FAT32_LIMIT for what the engine adds to the folder's bytes in the `.p5z` (its indexes, the volume
+/// headers, zstd's frames on data that does not compress): a folder of FAT32_LIMIT - FAT32_ROOM or more is refused.
+pub const FAT32_ROOM: u64 = crate::p5z::SPACE_MARGIN;
 
 /// A filesystem type (statfs `f_fstypename`) that is FAT32 (as maxpack_logic::receive::is_fat32 on the receive's
 /// branch).
@@ -157,11 +161,11 @@ pub struct Drive {
     pub fat32: bool,
 }
 
-/// The room check, before anything is written: on FAT32 a folder of FAT32_LIMIT or more is refused (its `.p5z` is
-/// one file, and can be as large as the folder: some games hardly compress); then the folder's `need` bytes plus
+/// The room check, before anything is written: on FAT32 a folder of FAT32_LIMIT - FAT32_ROOM or more is refused (its
+/// `.p5z` is one file, and can be as large as the folder and what the engine adds: some games hardly compress); then the folder's `need` bytes plus
 /// the margin must fit in `free`: INTERNAL_MARGIN on the internal drive, `p5z::SPACE_MARGIN` (256 MiB) elsewhere.
 pub fn room(free: u64, need: u64, drive: Drive) -> Result<(), Refusal> {
-    if drive.fat32 && need >= FAT32_LIMIT {
+    if drive.fat32 && need.saturating_add(FAT32_ROOM) >= FAT32_LIMIT {
         return Err(Refusal::Fat32 { size: need });
     }
     let margin = if drive.internal { INTERNAL_MARGIN } else { crate::p5z::SPACE_MARGIN };
@@ -637,12 +641,18 @@ mod tests {
     #[test]
     fn a_fat32_drive_takes_no_folder_of_4_gib() {
         // A .p5z is one file, and FAT32 keeps none of 4 GiB or more: refused before anything is written, whatever
-        // the space, and before the space check.
+        // the space, and before the space check; with room for what the engine adds to the folder's bytes (its
+        // indexes, the volume headers, zstd's frames on data that does not compress), SPACE_MARGIN.
         assert_eq!(FAT32_LIMIT, 4 << 30);
+        let most = (4 << 30) - (256 << 20) - 1;
         assert_eq!(room(u64::MAX, 4 << 30, FAT32), Err(Refusal::Fat32 { size: 4 << 30 }));
         assert_eq!(room(0, 5 << 30, FAT32), Err(Refusal::Fat32 { size: 5 << 30 }));
-        assert_eq!(room(u64::MAX, (4 << 30) - 1, FAT32), Ok(()));
-        assert_eq!(room(0, (4 << 30) - 1, FAT32), Err(Refusal::NoSpace { missing: (4 << 30) - 1 + (256 << 20), internal: false }));
+        assert_eq!(room(u64::MAX, most + 1, FAT32), Err(Refusal::Fat32 { size: most + 1 }));
+        assert_eq!(room(u64::MAX, (4 << 30) - 1, FAT32), Err(Refusal::Fat32 { size: (4 << 30) - 1 }));
+        assert_eq!(room(u64::MAX, most, FAT32), Ok(()));
+        assert_eq!(room(0, most, FAT32), Err(Refusal::NoSpace { missing: most + (256 << 20), internal: false }));
+        // Another drive takes any size.
+        assert_eq!(room(u64::MAX, 5 << 30, USB), Ok(()));
         let r = Refusal::Fat32 { size: 5 << 30 };
         assert_eq!((r.status(), r.code()), (409, "fat32"));
         assert!(r.detail().contains("FAT32") && r.detail().contains("5368.7 MB"), "{}", r.detail());
