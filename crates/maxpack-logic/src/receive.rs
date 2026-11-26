@@ -206,6 +206,17 @@ fn format_char(c: char) -> bool {
         | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f)
 }
 
+/// The `.p5z` name of a file a receive left (`<name>.maxpack-recv`, `name` a plain one by `valid_name`), else None.
+pub fn leftover_name(file_name: &str) -> Option<&str> {
+    file_name.strip_suffix(PARTIAL_SUFFIX).filter(|n| valid_name(n))
+}
+
+/// The page's delete of a leftover file: only a path the list of leftovers has now, and never the file the receive
+/// under way writes (`under_way`).
+pub fn may_delete_leftover(path: &str, listed: &[String], under_way: Option<&str>) -> bool {
+    listed.iter().any(|l| l == path) && under_way != Some(path)
+}
+
 /// The mount of a drive id: `internal` is `/data`, `usb0`..`usb7` and `ext0`..`ext1` are `/mnt/<id>`.
 pub fn drive_mount(id: &str) -> Option<String> {
     if id == "internal" {
@@ -648,6 +659,22 @@ pub fn status_json(have: u64, size: u64, state: State, verify: Option<&VerifyPro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leftovers_are_partial_files_of_plain_names() {
+        assert_eq!(leftover_name("Game [PPSA01234].p5z.maxpack-recv"), Some("Game [PPSA01234].p5z"));
+        for no in ["Game.p5z", "Game.maxpack-recv", ".p5z.maxpack-recv", "x.pkg.maxpack-recv", "a..b.p5z.maxpack-recv",
+            "Game.p5z.maxpack-recv.tmp", "Game.p5z.MAXPACK-RECV", ""] {
+            assert_eq!(leftover_name(no), None, "{no:?}");
+        }
+        let listed = vec!["/mnt/usb0/homebrew/A.p5z.maxpack-recv".to_string(), "/data/homebrew/B.p5z.maxpack-recv".to_string()];
+        assert!(may_delete_leftover("/data/homebrew/B.p5z.maxpack-recv", &listed, None));
+        // Only what the list has, never the file a receive under way writes.
+        assert!(!may_delete_leftover("/data/homebrew/C.p5z.maxpack-recv", &listed, None));
+        assert!(!may_delete_leftover("/data/homebrew/B.p5z", &listed, None));
+        assert!(!may_delete_leftover("/data/homebrew/B.p5z.maxpack-recv", &listed, Some("/data/homebrew/B.p5z.maxpack-recv")));
+        assert!(may_delete_leftover("/data/homebrew/B.p5z.maxpack-recv", &listed, Some("/mnt/usb0/homebrew/A.p5z.maxpack-recv")));
+    }
 
     #[test]
     fn only_the_console_turns_it_on() {

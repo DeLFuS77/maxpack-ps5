@@ -503,6 +503,9 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
 /* Settings > "Receive games from the PC": the pairing code, large enough to read from the sofa. */
 .recv-code { display: block; margin-top: 0.4rem; font: 800 2.2rem/1.2 var(--mono); letter-spacing: 0.25em; }
 .recv-code[hidden] { display: none; }
+/* The files sends left: the path and its size, Delete at the end of the line. */
+.left-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.7rem; }
+.left-row .mono { font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
 #confirm { z-index: 20; }
 .dialog {
   width: 100%; max-width: 34rem; max-height: 100%; overflow: auto; padding: 1.6rem;
@@ -792,6 +795,9 @@ button.inst-item[aria-checked="true"] {
     <ul class="tls-list" id="tlslist" hidden></ul>
     <label class="row"><span><span class="lbl" data-i18n="recvLbl">Receive games from the PC</span><span class="hint" data-i18n="recvHint">MaxPack on the PC can send a .p5z here (maxpack send, or Send to the console in its window). The console checks it as it arrives and the library finds it. Off, nothing on the network can write to the drives.</span><span class="hint" id="recv-where" hidden></span><span class="hint bad" id="recvmsg" role="status" hidden></span></span><input type="checkbox" id="recv-on"></label>
     <div class="row" id="recv-code-row" hidden><span><span class="lbl" data-i18n="recvCodeLbl">Pairing code</span><span class="recv-code" id="recv-code"></span><span class="hint" id="recv-code-hint"></span></span><button type="button" id="recv-new" data-i18n="recvNew">New code</button></div>
+    <div class="row col" id="recv-left" hidden><span class="lbl" data-i18n="recvLeftTitle">Unfinished games from the PC</span>
+      <span class="hint" data-i18n="recvLeftHint">What sends left on the drives: paused, damaged or never finished. A send of the same .p5z goes on from its file; delete the ones you no longer want.</span>
+      <div id="recv-left-list"></div></div>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
     <label class="row"><span class="lbl" data-i18n="scanInterval">Scan interval, seconds (1-3600)</span><input type="number" id="f_scan_interval_seconds" min="1" max="3600"></label>
     <label class="row"><span class="lbl" data-i18n="stabilityWait">Wait for a copy to finish, seconds (0-3600, 0 = off)</span><input type="number" id="f_stability_wait_seconds" min="0" max="3600"></label>
@@ -1167,7 +1173,9 @@ var MSG = {
     recvDeleteTitle: "Delete what arrived of {name}?",
     recvDeleteText: "{path} ({size}) will be deleted. This cannot be undone: a send of it again starts from the beginning.",
     recvPaused: "The receive of {name} is paused: {have} of {size} arrived and stays as {path}. Send it again from the PC to go on where it was.",
-    recvPausedWhy: "The receive of {name} stopped ({error}): {have} of {size} arrived and stays as {path}. Send it again from the PC to go on where it was."
+    recvPausedWhy: "The receive of {name} stopped ({error}): {have} of {size} arrived and stays as {path}. Send it again from the PC to go on where it was.",
+    recvLeftTitle: "Unfinished games from the PC",
+    recvLeftHint: "What sends left on the drives: paused, damaged or never finished. A send of the same .p5z goes on from its file; delete the ones you no longer want."
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1472,7 +1480,9 @@ var MSG = {
     recvDeleteTitle: "Удалить полученное для {name}?",
     recvDeleteText: "{path} ({size}) будет удалён. Это нельзя отменить: следующая отправка начнётся с начала.",
     recvPaused: "Приём {name} приостановлен: получено {have} из {size}, это остаётся как {path}. Отправьте его с ПК ещё раз, чтобы продолжить с того же места.",
-    recvPausedWhy: "Приём {name} остановлен ({error}): получено {have} из {size}, это остаётся как {path}. Отправьте его с ПК ещё раз, чтобы продолжить с того же места."
+    recvPausedWhy: "Приём {name} остановлен ({error}): получено {have} из {size}, это остаётся как {path}. Отправьте его с ПК ещё раз, чтобы продолжить с того же места.",
+    recvLeftTitle: "Незавершённые игры с ПК",
+    recvLeftHint: "Что оставили на дисках отправки: приостановленные, повреждённые или не законченные. Отправка того же .p5z продолжит с его файла; удалите те, что больше не нужны."
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1777,7 +1787,9 @@ var MSG = {
     recvDeleteTitle: "删除 {name} 已收到的部分？",
     recvDeleteText: "将删除 {path}（{size}）。此操作无法撤销：再次发送时会从头开始。",
     recvPaused: "{name} 的接收已暂停：已收到 {size} 中的 {have}，保留为 {path}。从电脑再次发送即可从中断处继续。",
-    recvPausedWhy: "{name} 的接收已停止（{error}）：已收到 {size} 中的 {have}，保留为 {path}。从电脑再次发送即可从中断处继续。"
+    recvPausedWhy: "{name} 的接收已停止（{error}）：已收到 {size} 中的 {have}，保留为 {path}。从电脑再次发送即可从中断处继续。",
+    recvLeftTitle: "来自电脑的未完成游戏",
+    recvLeftHint: "发送留在磁盘上的文件：暂停的、损坏的或从未完成的。再次发送同一个 .p5z 会从它的文件继续；不再需要的请删除。"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -2082,7 +2094,9 @@ var MSG = {
     recvDeleteTitle: "Das Angekommene von {name} löschen?",
     recvDeleteText: "{path} ({size}) wird gelöscht. Das lässt sich nicht rückgängig machen: ein erneutes Senden beginnt von vorn.",
     recvPaused: "Der Empfang von {name} ist angehalten: {have} von {size} sind angekommen und bleiben als {path}. Sende es vom PC erneut, um dort weiterzumachen.",
-    recvPausedWhy: "Der Empfang von {name} wurde gestoppt ({error}): {have} von {size} sind angekommen und bleiben als {path}. Sende es vom PC erneut, um dort weiterzumachen."
+    recvPausedWhy: "Der Empfang von {name} wurde gestoppt ({error}): {have} von {size} sind angekommen und bleiben als {path}. Sende es vom PC erneut, um dort weiterzumachen.",
+    recvLeftTitle: "Unfertige Spiele vom PC",
+    recvLeftHint: "Was Sendungen auf den Laufwerken zurückgelassen haben: angehalten, beschädigt oder nie fertig. Ein erneutes Senden derselben .p5z macht mit ihrer Datei weiter; lösche, was du nicht mehr willst."
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2332,7 +2346,9 @@ var MSG = {
     recvDeleteTitle: "¿Borrar lo que llegó de {name}?",
     recvDeleteText: "Se borrará {path} ({size}). No se puede deshacer: si lo envías otra vez, empieza desde el principio.",
     recvPaused: "La recepción de {name} está en pausa: han llegado {have} de {size} y se quedan como {path}. Envíalo otra vez desde el PC para seguir donde iba.",
-    recvPausedWhy: "La recepción de {name} se ha parado ({error}): han llegado {have} de {size} y se quedan como {path}. Envíalo otra vez desde el PC para seguir donde iba."
+    recvPausedWhy: "La recepción de {name} se ha parado ({error}): han llegado {have} de {size} y se quedan como {path}. Envíalo otra vez desde el PC para seguir donde iba.",
+    recvLeftTitle: "Juegos del PC sin terminar",
+    recvLeftHint: "Lo que dejaron los envíos en los discos: en pausa, dañados o sin terminar. Un envío del mismo .p5z sigue desde su archivo; borra los que ya no quieras."
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2637,7 +2653,9 @@ var MSG = {
     recvDeleteTitle: "Supprimer ce qui est arrivé de {name} ?",
     recvDeleteText: "{path} ({size}) sera supprimé. Action irréversible : un nouvel envoi recommencera depuis le début.",
     recvPaused: "La réception de {name} est en pause : {have} sur {size} sont arrivés et restent sous {path}. Renvoyez-le depuis le PC pour reprendre là où il en était.",
-    recvPausedWhy: "La réception de {name} s'est arrêtée ({error}) : {have} sur {size} sont arrivés et restent sous {path}. Renvoyez-le depuis le PC pour reprendre là où il en était."
+    recvPausedWhy: "La réception de {name} s'est arrêtée ({error}) : {have} sur {size} sont arrivés et restent sous {path}. Renvoyez-le depuis le PC pour reprendre là où il en était.",
+    recvLeftTitle: "Jeux du PC inachevés",
+    recvLeftHint: "Ce que des envois ont laissé sur les disques : en pause, endommagés ou jamais finis. Un envoi du même .p5z reprend à partir de son fichier ; supprimez ceux dont vous ne voulez plus."
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2942,7 +2960,9 @@ var MSG = {
     recvDeleteTitle: "{name} の届いた分を削除しますか？",
     recvDeleteText: "{path}（{size}）を削除します。元に戻せません。もう一度送ると最初からになります。",
     recvPaused: "{name} の受信は一時停止中です: {size} 中 {have} が届き、{path} として残っています。PC からもう一度送ると続きから再開します。",
-    recvPausedWhy: "{name} の受信は止まりました（{error}）: {size} 中 {have} が届き、{path} として残っています。PC からもう一度送ると続きから再開します。"
+    recvPausedWhy: "{name} の受信は止まりました（{error}）: {size} 中 {have} が届き、{path} として残っています。PC からもう一度送ると続きから再開します。",
+    recvLeftTitle: "PC からの未完了のゲーム",
+    recvLeftHint: "送信がドライブに残したもの（一時停止、破損、未完了）。同じ .p5z をもう一度送るとそのファイルから続きます。不要なものは削除してください。"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -3247,7 +3267,9 @@ var MSG = {
     recvDeleteTitle: "Apagar o que chegou de {name}?",
     recvDeleteText: "{path} ({size}) será apagado. Não dá para desfazer: um novo envio começa do início.",
     recvPaused: "O recebimento de {name} está pausado: {have} de {size} chegaram e ficam como {path}. Envie de novo do PC para continuar de onde parou.",
-    recvPausedWhy: "O recebimento de {name} parou ({error}): {have} de {size} chegaram e ficam como {path}. Envie de novo do PC para continuar de onde parou."
+    recvPausedWhy: "O recebimento de {name} parou ({error}): {have} de {size} chegaram e ficam como {path}. Envie de novo do PC para continuar de onde parou.",
+    recvLeftTitle: "Jogos do PC não terminados",
+    recvLeftHint: "O que envios deixaram nos discos: pausados, danificados ou nunca terminados. Um envio do mesmo .p5z continua a partir do arquivo dele; apague os que não quiser mais."
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3552,7 +3574,9 @@ var MSG = {
     recvDeleteTitle: "Eliminare ciò che è arrivato di {name}?",
     recvDeleteText: "{path} ({size}) verrà eliminato. L'operazione non è reversibile: un nuovo invio riparte dall'inizio.",
     recvPaused: "La ricezione di {name} è in pausa: sono arrivati {have} di {size} e restano come {path}. Invialo di nuovo dal PC per riprendere da dove era.",
-    recvPausedWhy: "La ricezione di {name} si è fermata ({error}): sono arrivati {have} di {size} e restano come {path}. Invialo di nuovo dal PC per riprendere da dove era."
+    recvPausedWhy: "La ricezione di {name} si è fermata ({error}): sono arrivati {have} di {size} e restano come {path}. Invialo di nuovo dal PC per riprendere da dove era.",
+    recvLeftTitle: "Giochi dal PC non finiti",
+    recvLeftHint: "Ciò che gli invii hanno lasciato sui dischi: in pausa, danneggiati o mai finiti. Un invio dello stesso .p5z riprende dal suo file; elimina quelli che non vuoi più."
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3857,7 +3881,9 @@ var MSG = {
     recvDeleteTitle: "{name}의 도착한 부분을 삭제할까요?",
     recvDeleteText: "{path}({size})이(가) 삭제됩니다. 되돌릴 수 없습니다. 다시 보내면 처음부터 시작합니다.",
     recvPaused: "{name} 받기가 일시 중지되었습니다: {size} 중 {have}이(가) 도착해 {path}(으)로 남아 있습니다. PC에서 다시 보내면 이어서 받습니다.",
-    recvPausedWhy: "{name} 받기가 멈췄습니다({error}): {size} 중 {have}이(가) 도착해 {path}(으)로 남아 있습니다. PC에서 다시 보내면 이어서 받습니다."
+    recvPausedWhy: "{name} 받기가 멈췄습니다({error}): {size} 중 {have}이(가) 도착해 {path}(으)로 남아 있습니다. PC에서 다시 보내면 이어서 받습니다.",
+    recvLeftTitle: "PC에서 온 미완료 게임",
+    recvLeftHint: "보내기가 드라이브에 남긴 파일입니다(일시 중지, 손상, 미완료). 같은 .p5z를 다시 보내면 그 파일에서 이어집니다. 필요 없는 것은 삭제하세요."
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -4162,7 +4188,9 @@ var MSG = {
     recvDeleteTitle: "حذف ما وصل من {name}؟",
     recvDeleteText: "سيُحذف {path} ({size}). لا يمكن التراجع عن ذلك: يبدأ الإرسال التالي من البداية.",
     recvPaused: "استقبال {name} متوقف مؤقتًا: وصل {have} من {size} ويبقى باسم {path}. أرسله من الحاسوب مرة أخرى للمتابعة من حيث توقف.",
-    recvPausedWhy: "توقف استقبال {name} ({error}): وصل {have} من {size} ويبقى باسم {path}. أرسله من الحاسوب مرة أخرى للمتابعة من حيث توقف."
+    recvPausedWhy: "توقف استقبال {name} ({error}): وصل {have} من {size} ويبقى باسم {path}. أرسله من الحاسوب مرة أخرى للمتابعة من حيث توقف.",
+    recvLeftTitle: "ألعاب غير مكتملة من الحاسوب",
+    recvLeftHint: "ما تركته عمليات الإرسال على الأقراص: متوقفة مؤقتًا أو تالفة أو لم تكتمل. إرسال ملف .p5z نفسه يتابع من ملفه؛ احذف ما لم تعد تريده."
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -5601,6 +5629,34 @@ function renderPairing() {
   setText($('recv-code-hint'), t(p.code ? 'recvCodeHint' : 'recvCodeElsewhere'));
   $('recv-new').hidden = !p.code;
 }
+// The .maxpack-recv files sends left (state.receive_left): each with Delete, behind a confirmation.
+function renderLeft() {
+  var list = state && Array.isArray(state.receive_left) ? state.receive_left : [], box = $('recv-left-list');
+  $('recv-left').hidden = !list.length;
+  var key = lang + JSON.stringify(list);
+  if (box._key === key) return;
+  box._key = key;
+  box.textContent = '';
+  list.forEach(function (l) {
+    var row = el('div', 'left-row'), btn = el('button', 'small', t('delete'));
+    row.appendChild(el('span', 'mono', l.path + ' (' + fmtSize(l.size) + ')'));
+    btn.type = 'button';
+    btn.onclick = function () {
+      ask(t('recvDeleteTitle', { name: l.name }), t('recvDeleteText', { path: l.path, size: fmtSize(l.size) }), t('delete'), async function () {
+        recvMsg('');
+        try {
+          var r = await fetch('/api/pairing/left', { method: 'POST', body: l.path });
+          if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+          if (state) state.receive_left = list.filter(function (x) { return x.path !== l.path; });
+          renderLeft();
+        } catch (e) { recvMsg(e.message); }
+        schedule(300);
+      });
+    };
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
 function recvMsg(text) {
   setText($('recvmsg'), text);
   $('recvmsg').hidden = !text;
@@ -5669,6 +5725,7 @@ function readSettings() {
 function renderSettingsInfo() {
   renderTls();
   renderPairing();
+  renderLeft();
   // The ampr-emu-ng update waits for the secure-connection check, as the self-update does.
   var tc = state && state.tls_check;
   $('amprtls').hidden = !tc || tc.passed === true;

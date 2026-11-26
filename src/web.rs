@@ -547,6 +547,11 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool, peer: std::net:
         // The page's "Stop (keep what arrived)" and "Delete what arrived" for the receive of this run.
         ("POST", "/api/pairing/stop") => receive_reply(crate::receive::stop_receive()),
         ("POST", "/api/pairing/cancel") => receive_reply(crate::receive::cancel(None)),
+        // A .maxpack-recv a send left (state.receive_left), body its path.
+        ("POST", "/api/pairing/left") => match crate::receive::delete_leftover(state, body) {
+            Ok(()) => no_content(),
+            Err((code, why)) => reply(code, "text/plain", why),
+        },
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
         ("GET", p) if p.starts_with("/api/report/") => report(state, &p["/api/report/".len()..]),
         ("GET", "/api/settings") => {
@@ -1099,6 +1104,8 @@ fn api_state(state: &State, loopback: bool) -> Vec<u8> {
         // PC": the switch, and the pairing code only for the page open on the console itself (anyone on the network
         // can read this page; the code is what keeps them from writing to the drives).
         "receive": crate::receive::json(),
+        // The .maxpack-recv files sends left on the drives: [{path, name, size}].
+        "receive_left": crate::receive::leftovers_json(state),
         "pairing": {
             "on": settings.receive_from_pc,
             "code": (loopback && maxpack_logic::receive::valid_code(&settings.receive_code)).then_some(settings.receive_code.as_str()),

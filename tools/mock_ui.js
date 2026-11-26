@@ -309,6 +309,7 @@ function apiState(req) {
     cache: { path: '/data/maxpack/caches', size: 2 * GB, free: 311 * GB, low_space: false, ampr_present: true },
     verify: verifyJob,
     receive: recvState(),
+    receive_left: leftState(),
     pairing: { on: pairing.on, code: isLoopback(req) && pairing.code ? pairing.code : null, here: isLoopback(req) },
     log: ['2026-11-23 20:00:00Z [1000] web UI on port 8095', '2026-11-23 20:00:02Z [3000] installer: ready in 412 ms'],
   };
@@ -472,6 +473,15 @@ const RECV_DRIVES = [
   { id: 'usb0', mount: '/mnt/usb0', free: 412 * GB, total: 1000 * GB, fs: 'exfatfs' },
 ];
 const received = new Set();
+// The files sends left (src/receive.rs scan_leftovers): one from an earlier, abandoned send; a paused or failed
+// receive's file joins them.
+let leftovers = [{ path: '/mnt/usb0/homebrew/Old Send [PPSA05555].p5z.maxpack-recv', name: 'Old Send [PPSA05555].p5z', size: 7 * GB }];
+function leftState() {
+  const l = leftovers.slice();
+  if (recvJob && (recvJob.state === 'paused' || recvJob.state === 'failed') && !l.some((x) => x.path === recvJob.partial))
+    l.push({ path: recvJob.partial, name: recvJob.name, size: recvJob.have });
+  return l;
+}
 function mockCode() { return String(Math.floor(Math.random() * 1e6)).padStart(6, '0'); }
 if (pairing.on) pairing.code = mockCode();
 function isLoopback(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress); }
@@ -730,6 +740,12 @@ http.createServer((req, res) => {
       clearInterval(recvTimer);
       Object.assign(recvJob, { state: 'paused', mbps: null });
       return json(res, 200, recvStatus(recvJob));
+    }
+    if (req.method === 'POST' && p === '/api/pairing/left') {
+      if (!leftState().some((x) => x.path === chunks)) return send(res, 404, 'text/plain', 'not a file a send left');
+      leftovers = leftovers.filter((x) => x.path !== chunks);
+      if (recvJob && recvJob.partial === chunks) recvJob.state = 'cancelled';
+      return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p === '/api/pairing/cancel') {
       if (!recvJob) return json(res, 404, { error: 'unknown_id', detail: 'no receive' });

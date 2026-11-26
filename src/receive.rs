@@ -749,6 +749,72 @@ pub fn json() -> Value {
     })
 }
 
+/// The `.maxpack-recv` files sends left in the homebrew of each drive the PC may send to (a paused, damaged or
+/// abandoned receive; maxpack_logic::receive::leftover_name), but the one a receive under way writes: (path, size).
+fn scan_leftovers(state: &State) -> Vec<(String, u64)> {
+    let under_way = recv().as_ref().filter(|r| r.stage.active()).map(|r| r.partial.clone());
+    let mut out = Vec::new();
+    for (_, d) in usable_drives(state) {
+        let hb = PathBuf::from(&d.mount).join("homebrew");
+        let Ok(entries) = fs::read_dir(&hb) else { continue };
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if logic::leftover_name(&name).is_none() {
+                continue;
+            }
+            let path = hb.join(&name);
+            match fs::symlink_metadata(&path) {
+                Ok(m) if m.is_file() && under_way.as_ref() != Some(&path) => out.push((path.to_string_lossy().into_owned(), m.len())),
+                _ => {}
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The leftovers as /api/state lists them, read again at most every 10 s (a folder listing per drive).
+static LEFT: Mutex<Option<(u64, Vec<(String, u64)>)>> = Mutex::new(None);
+
+/// `/api/state` `receive_left`: `[{path, name, size}]`.
+pub fn leftovers_json(state: &State) -> Value {
+    let now = crate::sys::uptime_ms();
+    let mut g = LEFT.lock().unwrap_or_else(|e| e.into_inner());
+    if g.as_ref().is_none_or(|(at, _)| now.saturating_sub(*at) >= 10_000) {
+        *g = Some((now, scan_leftovers(state)));
+    }
+    let list = g.as_ref().map(|(_, l)| l.as_slice()).unwrap_or(&[]);
+    Value::Array(list.iter().map(|(p, size)| {
+        let name = Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        json!({"path": p, "name": logic::leftover_name(&name).unwrap_or(&name), "size": size})
+    }).collect())
+}
+
+/// POST /api/pairing/left, body: a leftover's path as the page showed it: deleted when the list has it now and no
+/// receive under way writes it (maxpack_logic::receive::may_delete_leftover); the receive of this run that left
+/// it (paused or failed) becomes cancelled. 204, else 404.
+pub fn delete_leftover(state: &State, body: &[u8]) -> Result<(), (u16, String)> {
+    let path = String::from_utf8_lossy(body).into_owned();
+    let listed: Vec<String> = scan_leftovers(state).into_iter().map(|(p, _)| p).collect();
+    let mut g = recv();
+    let under_way = g.as_ref().filter(|r| r.stage.active()).map(|r| r.partial.to_string_lossy().into_owned());
+    if !logic::may_delete_leftover(&path, &listed, under_way.as_deref()) {
+        return Err((404, "not a file a send left".into()));
+    }
+    if let Err(e) = delete(Path::new(&path)) {
+        log!("receive: {e}");
+        return Err((500, e));
+    }
+    if let Some(r) = g.as_mut().filter(|r| r.partial == Path::new(&path)) {
+        (r.stage, r.ended_ms) = (Stage::Cancelled, r.ended_ms.or(Some(crate::sys::uptime_ms())));
+    }
+    drop(g);
+    FAILED.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != Path::new(&path));
+    *LEFT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    log!("receive: deleted {path}, left by an earlier send");
+    Ok(())
+}
+
 /// POST /api/pairing, body `on` or `off`: the switch, saved in config.toml; turned on with no code, a code is made.
 /// Off is refused while a receive is under way (cancel it first).
 pub fn set_on(state: &State, on: bool) -> Result<(), (u16, String)> {
