@@ -27,6 +27,7 @@ pub use maxpack_logic::cache::{DONE, P5Z_MOUNT_DIR, PKG_MOUNT_DIR};
 use maxpack_logic::fakelib;
 use maxpack_logic::fresh::{self, Input};
 use maxpack_logic::p5z::{image_text, loose_dest, space_short, BuildRefusals, LooseDest, NeedMemo, Refusal};
+use maxpack_logic::recommended::Effective;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Error, ErrorKind, Result, Write};
@@ -593,7 +594,12 @@ fn same_files(src: &Source, s: &Settings, old: &serde_json::Value) -> bool {
 /// regular files (libkernel.sprx never copied), or null when fakelib/ gets none (`injects_ampr`).
 /// main.rs's inputs_key has it too, so a failed build (an OldNg) is tried again when they change.
 pub fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value {
-    if !injects_ampr(src, s) {
+    ampr_state_with(src, s, &effective(src, s))
+}
+
+/// ampr_state for the settings `eff`.
+fn ampr_state_with(src: &Source, s: &Settings, eff: &Effective) -> serde_json::Value {
+    if !injects_ampr(src, s, eff) {
         return serde_json::Value::Null;
     }
     let mut m = serde_json::Map::new();
@@ -612,21 +618,28 @@ pub fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value {
 /// read the file named in kraken.image or maxpack.image. The fakelib mode changes it
 /// (maxpack_logic::fakelib::sources): without the game's lib dir a packed folder gets ours too, and
 /// in Off a plain folder gets none.
-fn injects_ampr(src: &Source, s: &Settings) -> bool {
-    fakelib_sources(src, s).ampr
+fn injects_ampr(src: &Source, s: &Settings, eff: &Effective) -> bool {
+    fakelib_sources(src, s, eff).ampr
+}
+
+/// The title's Fakelib mode, PlayGo stub and notice as used now (src/recommended.rs): the user's
+/// choice, else the recommended settings'. Read once for a composition and once for its record, so
+/// a list swapped in meanwhile (the refresh thread) cannot record a mode `fakelib/` was not made with.
+fn effective(src: &Source, s: &Settings) -> Effective {
+    crate::recommended::effective(&src.title_id, s)
 }
 
 /// The title's fakelib mode (maxpack_logic::fakelib) as used: the fakelib_emulators and fakelib_off settings
 /// when the user chose it, else the recommended settings' (src/recommended.rs).
 pub fn fakelib_mode(src: &Source, s: &Settings) -> fakelib::Mode {
-    crate::recommended::effective(&src.title_id, s).fakelib
+    effective(src, s).fakelib
 }
 
 /// What this title's fakelib/ is composed from, for its mode, kind and the settings.
-fn fakelib_sources(src: &Source, s: &Settings) -> fakelib::Sources {
+fn fakelib_sources(src: &Source, s: &Settings, eff: &Effective) -> fakelib::Sources {
     let (kind, packing) = crate::scan::kind_names(src.kind);
-    let sw = fakelib::Switches { add_emulators: s.add_emulators, inject_ampr: s.inject_ampr, playgo_off: playgo_off(src, s) };
-    fakelib::sources(fakelib_mode(src, s), kind, packing, sw)
+    let sw = fakelib::Switches { add_emulators: s.add_emulators, inject_ampr: s.inject_ampr, playgo_off: eff.playgo_off };
+    fakelib::sources(eff.fakelib, kind, packing, sw)
 }
 
 /// libkernel.sprx from the ampr dir would replace the system one for every game: never copied.
@@ -734,8 +747,8 @@ fn eboot(src: &Source) -> PathBuf {
 /// What the emulator choice depends on, stat only (no eboot read): null without add_emulators, and in
 /// the fakelib mode Off (no emulators either way).
 /// ponytail: a pkg's own dlc_emu.ini is not here; a pkg change rebuilds through the stamp.
-fn emu_state(src: &Source, s: &Settings) -> serde_json::Value {
-    if !fakelib_sources(src, s).emulators {
+fn emu_state(src: &Source, s: &Settings, eff: &Effective) -> serde_json::Value {
+    if !fakelib_sources(src, s, eff).emulators {
         return serde_json::Value::Null;
     }
     let eboot = fs::metadata(eboot(src)).ok().map(|m| (m.len(), m.modified().map(secs).unwrap_or(0)));
@@ -744,14 +757,14 @@ fn emu_state(src: &Source, s: &Settings) -> serde_json::Value {
         "pgo_stub": PGO_STUB_VERSION.trim(),
         "dlc_ini": dlc_ini_on_disk(src),
         "eboot": eboot,
-        "playgo_off": playgo_off(src, s),
+        "playgo_off": eff.playgo_off,
     })
 }
 
 /// Whether the PlayGo stub is turned off for this title: the playgo_off setting when the user chose it,
 /// else the recommended settings' (src/recommended.rs).
 pub fn playgo_off(src: &Source, s: &Settings) -> bool {
-    crate::recommended::effective(&src.title_id, s).playgo_off
+    effective(src, s).playgo_off
 }
 
 /// The memoized "the eboot imports PlayGo" (AMPR_STATE "playgo"[2]) of title `tid`; None when unknown.
@@ -770,14 +783,15 @@ pub fn overlay_off(src: &Source, s: &Settings) -> bool {
     maxpack_logic::overlay::off(kind, packing, s.overlay_off.iter().any(|t| *t == src.title_id))
 }
 
-/// The AMPR_STATE contents for `src` now. "overlay_off" only when set, and the fakelib mode only when
-/// not full (fakelib::record), so a cache written before either setting existed stays fresh.
-fn fakelib_state(src: &Source, s: &Settings) -> serde_json::Value {
-    let mut state = serde_json::json!({"ampr": ampr_state(src, s), "emus": emu_state(src, s)});
+/// The AMPR_STATE contents for `src` now, with the settings `eff`. "overlay_off" only when set, and
+/// the fakelib mode only when not full (fakelib::record), so a cache written before either setting
+/// existed stays fresh.
+fn fakelib_state(src: &Source, s: &Settings, eff: &Effective) -> serde_json::Value {
+    let mut state = serde_json::json!({"ampr": ampr_state_with(src, s, eff), "emus": emu_state(src, s, eff)});
     if overlay_off(src, s) {
         state["overlay_off"] = true.into();
     }
-    fakelib::record(&mut state, fakelib_mode(src, s));
+    fakelib::record(&mut state, eff.fakelib);
     state
 }
 
@@ -897,7 +911,7 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
     // also drops a libSceSaveData.native.sprx that an older build copied (keep_game_lib).
     // Only "ampr", "emus", "overlay_off" and the fakelib mode count: the "playgo" memo never triggers a
     // refresh. A `.ampr` without the mode (older builds, or full) reads as full (fakelib::recorded).
-    let new = fakelib_state(src, s);
+    let new = fakelib_state(src, s, &effective(src, s));
     if ["ampr", "emus", "overlay_off"].iter().any(|&k| had.get(k) != new.get(k))
         || fakelib::recorded(&had) != fakelib::recorded(&new)
     {
@@ -1005,8 +1019,11 @@ enum Inside<'a> {
 /// Off) and the emulators (Off), and decides the ampr files with the kind; one log line when not full.
 /// Writes AMPR_STATE. Freshness needs no new state: the game's libs
 /// are inputs (pkg, .p5z: stamp), AMPR_DIR is ampr_state, the bundled versions are emu_state, the
-/// mode is fakelib::record's key.
+/// mode is fakelib::record's key. The mode and the stub are read once (`effective`): what is composed
+/// and what AMPR_STATE records come from the same list, even when a newer one is put in use meanwhile
+/// (the next check then sees the difference and refreshes again).
 fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result<()> {
+    let eff = effective(src, s);
     let dir = dir(&src.title_id);
     let fakelib = dir.join(FAKELIB);
     match fs::remove_dir_all(&fakelib) {
@@ -1017,7 +1034,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
     if overlay_off(src, s) {
         // Empty fakelib/: launch.rs then mounts nothing for this title. The playgo memo is kept (keyed by the eboot).
         log!("{}: fakelib: overlay off (overlay_off)", src.title_id);
-        let mut state = fakelib_state(src, s);
+        let mut state = fakelib_state(src, s, &eff);
         if let Some(memo) = fs::read(dir.join(AMPR_STATE)).ok()
             .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
             .and_then(|v| v.get("playgo").cloned()) {
@@ -1025,8 +1042,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         }
         return fs::write(dir.join(AMPR_STATE), state.to_string());
     }
-    let uses = fakelib_sources(src, s);
-    let eff = crate::recommended::effective(&src.title_id, s);
+    let uses = fakelib_sources(src, s, &eff);
     if let Some(note) = fakelib::note(eff.fakelib, uses) {
         let from = if eff.fakelib_recommended { ", recommended setting" } else { "" };
         log!("{}: fakelib: {note}{from}", src.title_id);
@@ -1077,7 +1093,7 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
     // Our ampr-emu-ng on top of whatever the game or backport ships (its own libSceAmpr.sprx included).
     // State read before the copy: a file replaced mid-copy (ampr auto-update) then differs at the
     // next check and refreshes fakelib again, instead of being recorded as already copied.
-    let mut state = fakelib_state(src, s);
+    let mut state = fakelib_state(src, s, &eff);
     let had: serde_json::Value =
         fs::read(dir.join(AMPR_STATE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     // An unused memo is kept: it is keyed by the eboot's size and mtime.

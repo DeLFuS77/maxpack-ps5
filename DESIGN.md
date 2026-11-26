@@ -218,7 +218,9 @@ is ignored as a whole). The web UI edits the same file.
   A title in `playgo_off` skips pgo_stub entirely (no add, no upgrade, the eboot is not searched), logged
   `<TID>: fakelib: PlayGo stub off (playgo_off or the recommended settings)`; `fakelib/` starts from scratch, so a stub added earlier is gone.
   Here and below, `playgo_off` and the fakelib mode are the effective ones (`recommended::effective`): the user's
-  choice, else the recommended settings' (see Recommended settings).
+  choice, else the recommended settings' (see Recommended settings). A composition reads them once
+  (`cache::effective`) for what it composes and for the `.ampr` it writes, so a list put in use meanwhile is never
+  recorded as composed: the next `check` sees it and refreshes again.
   A plain folder title in `overlay_off` (`cache::overlay_off`) stops right after `fakelib/` is emptied (no base, no
   emulators, no ampr), logged `<TID>: fakelib: overlay off (overlay_off)`; `.ampr` is written with `"overlay_off": true`
   and the earlier "playgo" memo kept. Launch then mounts nothing (empty `fakelib/`).
