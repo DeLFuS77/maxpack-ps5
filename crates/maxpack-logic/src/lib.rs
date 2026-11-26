@@ -12,6 +12,7 @@ pub mod inst;
 pub mod lang;
 pub mod mounter;
 pub mod overlay;
+pub mod pack;
 pub mod p5z;
 pub mod play;
 pub mod presence;
