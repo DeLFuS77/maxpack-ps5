@@ -109,6 +109,52 @@ pub fn answer_ok(body: &[u8]) -> bool {
     serde_json::from_slice::<Value>(body).is_ok_and(|v| v.get("ok") == Some(&Value::Bool(true)))
 }
 
+/// The installer's `state` and `probe` answers with what the console's own reader knows of each .p5z (src/web.rs):
+/// a found item of kind p5z (a missing kind is one, as the page reads it) that grew gets `"grown": true`, so the
+/// Install tab marks it as not installable at once; the engine refuses it only when its job starts (`grown_p5z`).
+/// `grew`: by its path, None when not known. None: the answer as it is (nothing marked, or not JSON).
+pub fn mark_grown(body: &[u8], mut grew: impl FnMut(&str) -> Option<bool>) -> Option<Vec<u8>> {
+    let mut v: Value = serde_json::from_slice(body).ok()?;
+    let mut changed = false;
+    let mut mark = |item: &mut Value| {
+        let p5z = item.get("kind").map_or(Some("p5z"), Value::as_str) == Some("p5z");
+        if p5z && item.get("path").and_then(Value::as_str).is_some_and(|p| grew(p) == Some(true)) {
+            item["grown"] = true.into();
+            changed = true;
+        }
+    };
+    match v.get_mut("found") {
+        Some(Value::Array(list)) => list.iter_mut().for_each(&mut mark),
+        Some(item @ Value::Object(_)) => mark(item),
+        _ => {}
+    }
+    changed.then(|| v.to_string().into_bytes())
+}
+
+/// An installer refusal of a .p5z as bad (`bad_p5z`: its `probe` or `install` could not open it) whose own index
+/// the console reads as made by a newer MaxPack for the PC (`newer`: its version; src/p5z.rs index_version and
+/// p5z::index_verdict): `newer_p5z` instead, never "damaged". `newer` is asked only for such a refusal. None: the
+/// answer as it is.
+pub fn newer_refusal(body: &[u8], newer: impl FnOnce() -> Option<u32>) -> Option<Vec<u8>> {
+    let v: Value = serde_json::from_slice(body).ok()?;
+    if v.get("ok") != Some(&Value::Bool(false)) || v.get("code").and_then(Value::as_str) != Some("bad_p5z") {
+        return None;
+    }
+    let version = newer()?;
+    let detail = format!("made by a newer MaxPack for the PC (index version {version}): update MaxPack for the console to install or play it");
+    Some(serde_json::json!({"ok": false, "code": "newer_p5z", "detail": detail}).to_string().into_bytes())
+}
+
+/// The .p5z a `probe` (`path`) or an `install` (`p5z`) request of the installer names.
+pub fn request_p5z(route: &str, body: &[u8]) -> Option<String> {
+    let key = match route {
+        "/api/probe" => "path",
+        "/api/install" => "p5z",
+        _ => return None,
+    };
+    serde_json::from_slice::<Value>(body).ok()?.get(key)?.as_str().map(str::to_string)
+}
+
 /// Where an accepted uninstall of a title stands, seen in the installer's `/api/state`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Uninstall {
@@ -361,6 +407,52 @@ mod tests {
         let mut w = UninstallWatch::default();
         assert_eq!(w.see(&st(&[t], Some(("install", "PPSA05678")), 1, Some(("uninstall", t, "io_error"))), t),
             Uninstall::Pending);
+    }
+
+    #[test]
+    fn a_p5z_that_grew_is_marked_in_the_found_list() {
+        let state = br#"{"ok":true,"found":[{"path":"/mnt/usb0/a.p5z","kind":"p5z","title_id":"PPSA00001"},
+            {"path":"/mnt/usb0/b.p5z","kind":"p5z"},{"path":"/mnt/usb0/c.p5z"},{"path":"/mnt/usb0/PPSA00004","kind":"folder"},
+            {"path":"/mnt/usb0/d.p5z","kind":"p5z"}],"job":null}"#;
+        let grew = |p: &str| match p {
+            "/mnt/usb0/a.p5z" | "/mnt/usb0/c.p5z" | "/mnt/usb0/PPSA00004" => Some(true),
+            "/mnt/usb0/b.p5z" => Some(false),
+            _ => None,
+        };
+        let v: Value = serde_json::from_slice(&mark_grown(state, grew).expect("marked")).unwrap();
+        let marks: Vec<Option<bool>> = v["found"].as_array().unwrap().iter().map(|f| f.get("grown").and_then(Value::as_bool)).collect();
+        // One that grew (a missing kind is a .p5z, as the page reads it); never a folder, nothing when unknown.
+        assert_eq!(marks, [Some(true), None, Some(true), None, None]);
+        assert_eq!(v["found"][0]["title_id"], "PPSA00001");
+        assert!(v["job"].is_null());
+        // A probe's answer: its one item.
+        let probe = br#"{"ok":true,"found":{"path":"/mnt/usb0/a.p5z","kind":"p5z"}}"#;
+        let v: Value = serde_json::from_slice(&mark_grown(probe, grew).expect("marked")).unwrap();
+        assert_eq!(v["found"]["grown"], true);
+        // Nothing that grew, not JSON, or no list: the answer as it is.
+        assert_eq!(mark_grown(state, |_| Some(false)), None);
+        for b in [&b""[..], b"<html>", br#"{"ok":false,"code":"starting"}"#, br#"{"found":5}"#, br#"[]"#] {
+            assert_eq!(mark_grown(b, |_| Some(true)), None, "{}", String::from_utf8_lossy(b));
+        }
+    }
+
+    #[test]
+    fn a_newer_p5z_is_never_refused_as_bad() {
+        let bad = br#"{"ok":false,"code":"bad_p5z","detail":"invalid .p5z: index"}"#;
+        let v: Value = serde_json::from_slice(&newer_refusal(bad, || Some(3)).expect("told apart")).unwrap();
+        assert_eq!((v["ok"].as_bool(), v["code"].as_str()), (Some(false), Some("newer_p5z")));
+        assert!(v["detail"].as_str().unwrap().contains("index version 3"));
+        // Damaged after all, or another answer: as it is (and the file is not even looked at).
+        assert_eq!(newer_refusal(bad, || None), None);
+        for b in [&br#"{"ok":true,"found":{}}"#[..], br#"{"ok":false,"code":"bad_source"}"#, b"", b"x"] {
+            assert_eq!(newer_refusal(b, || panic!("looked at")), None, "{}", String::from_utf8_lossy(b));
+        }
+        // The .p5z of a probe (path) and of an install (p5z).
+        assert_eq!(request_p5z("/api/probe", br#"{"path":"/mnt/usb0/a.p5z"}"#).as_deref(), Some("/mnt/usb0/a.p5z"));
+        assert_eq!(request_p5z("/api/install", br#"{"p5z":"/mnt/usb0/a.p5z","dest":"/data"}"#).as_deref(), Some("/mnt/usb0/a.p5z"));
+        assert_eq!(request_p5z("/api/install", br#"{"path":"/mnt/usb0/a.p5z"}"#), None);
+        assert_eq!(request_p5z("/api/verify", br#"{"path":"/mnt/usb0/a.p5z"}"#), None);
+        assert_eq!(request_p5z("/api/probe", b"x"), None);
     }
 
     #[test]

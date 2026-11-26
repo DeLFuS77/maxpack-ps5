@@ -706,9 +706,27 @@ fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8],
     // The library's copy of that title now: the one MaxPack mounts, if any.
     let source = uninstall.as_deref().and_then(|t| state.source(t)).map(|s| s.path);
     let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
-    let a = crate::installer::call(method, &path, host, ctype, body, loopback);
+    let mut a = crate::installer::call(method, &path, host, ctype, body, loopback);
     if let (Some(tid), true) = (uninstall, a.status == 200 && answer_ok(&a.body)) {
         crate::installer::after_uninstall(tid, source);
+    }
+    // What the console's own reader knows of the .p5z files the installer lists or refuses: one that grew is
+    // marked (the page says at once that it is not installable), one made by a newer MaxPack for the PC is never
+    // refused as bad.
+    if a.status == 200 {
+        let route = path.split('?').next().unwrap_or("");
+        let marked = match (method, route) {
+            ("GET", "/api/state") | ("POST", "/api/probe") => {
+                maxpack_logic::inst::mark_grown(&a.body, |p| crate::p5z::grew(Path::new(p)))
+            }
+            _ => None,
+        };
+        let told = maxpack_logic::inst::request_p5z(route, body).and_then(|p5z| {
+            maxpack_logic::inst::newer_refusal(&a.body, || crate::p5z::newer(Path::new(&p5z)))
+        });
+        if let Some(b) = told.or(marked) {
+            a.body = b;
+        }
     }
     reply(a.status, a.ctype, a.body)
 }

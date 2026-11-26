@@ -221,6 +221,38 @@ impl Play {
     }
 }
 
+/// Whether the .p5z at `path` grew (index version 2: PlayInfo::grew), by the console's own reader, kept by path for
+/// as long as its size and mtime stay (the Install tab asks every second); None when it does not open now.
+pub fn grew(path: &Path) -> Option<bool> {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+    use std::time::SystemTime;
+    type Memo = BTreeMap<PathBuf, (u64, SystemTime, Option<bool>)>;
+    static MEMO: Mutex<Memo> = Mutex::new(BTreeMap::new());
+    let m = std::fs::metadata(path).ok()?;
+    let (size, mtime) = (m.len(), m.modified().ok()?);
+    if let Some((s, t, g)) = MEMO.lock().unwrap_or_else(|e| e.into_inner()).get(path) {
+        if (*s, *t) == (size, mtime) {
+            return *g;
+        }
+    }
+    // Opened without the lock held: another .p5z's look does not wait for this one.
+    let g = open(path).ok().map(|p| p.info.grew());
+    let mut memo = MEMO.lock().unwrap_or_else(|e| e.into_inner());
+    if memo.len() >= 256 {
+        memo.clear();
+    }
+    memo.insert(path.to_path_buf(), (size, mtime, g));
+    g
+}
+
+/// The index version of a .p5z made by a newer MaxPack for the PC (index_version, above the ones read here), else
+/// None.
+pub fn newer(path: &Path) -> Option<u32> {
+    index_version(path).filter(|v| maxpack_logic::p5z::index_verdict(*v).is_some())
+}
+
 /// The identity of the .p5z at `path` (maxpack_logic::p5z::p5z_id): its size, its 64-byte header
 /// and 32-byte footer. Survives a rename or a move.
 pub fn id(path: &Path) -> io::Result<String> {

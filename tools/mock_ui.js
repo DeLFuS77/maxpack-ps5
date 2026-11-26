@@ -45,7 +45,10 @@
 // notice from the list (its sheet tags both values and shows the notice); "Chosen Example", a zstd folder, has a
 // recommendation the user overrode by hand, so its sheet offers "Back to the recommended setting" (POST
 // /api/recommended); a hand change of Fakelib or PlayGo (POST /api/fakelib, /api/playgo) makes a game's settings
-// the user's, as the payload does. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
+// the user's, as the payload does. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive);
+// "Grown Example" in the found list grew on the PC, so the page says it is not installed and Install refuses it; a
+// path added by hand with "grown" in its name is marked so too, and one with "newer" is refused as made by a newer
+// MaxPack for the PC (newer_p5z), as the payload answers.
 // "Grown Example", a .p5z that grew, is not started with the ampr-emu-ng in use (error_code old_ng: its sheet says why).
 // That ampr-emu-ng is one put in /data/maxpack/ampr/ by hand, of a version MaxPack does not know (the only way a
 // console gets one that does not play it: the bundled one does, and no update installs an older release), so
@@ -340,6 +343,10 @@ const found = [
   // Larger than the internal SSD's free space (311 GB): fits only on the USB drive.
   { path: '/mnt/usb0/Huge Example.p5z', kind: 'p5z', packed: true, title_id: 'PPSA08000', version: '01.000.000',
     name: 'Huge Example', p5z_size: 280 * GB, install_size: 330 * GB, original_size: 400 * GB },
+  // A .p5z that grew on the PC: the payload marks it (src/web.rs, maxpack_logic::inst::mark_grown), so the page says at
+  // once that it is not installed and refuses Install for it.
+  { path: '/mnt/usb0/homebrew/Grown Example.p5z', kind: 'p5z', packed: true, title_id: 'PPSA00000', version: '01.001.000',
+    name: 'Grown Example', p5z_size: 24 * GB, install_size: 26 * GB, original_size: 40 * GB, grown: true },
 ];
 let installed = [
   { title_id: 'PPSA09012', name: 'Installed Example', version: '01.000.000', dir: '/data/homebrew/PPSA09012',
@@ -402,9 +409,12 @@ function instPost(name, body) {
       const p = String(body.path || '');
       if (!p.startsWith('/data/') && !p.startsWith('/mnt/')) return err('bad_path', 'ruta no permitida');
       const leaf = p.split('/').pop();
+      // As the payload answers: a .p5z made by a newer MaxPack for the PC (maxpack_logic::inst::newer_refusal), one that
+      // grew marked (mark_grown).
+      if (/newer/i.test(leaf) && /\.p5z$/i.test(p)) return err('newer_p5z', 'made by a newer MaxPack for the PC (index version 3): update MaxPack for the console to install or play it');
       return { ok: true, found: { path: p, kind: /\.p5z$/i.test(p) ? 'p5z' : /\.(exfat|ffpkg|ffpfs|ffpfsc)$/i.test(p) ? 'image' : 'folder',
         packed: false, title_id: 'PPSA09999', version: '', name: leaf.replace(/\.[^.]+$/, ''), p5z_size: 8 * GB,
-        install_size: 9 * GB, original_size: 15 * GB } };
+        install_size: 9 * GB, original_size: 15 * GB, ...(/grown/i.test(leaf) && /\.p5z$/i.test(p) ? { grown: true } : {}) } };
     }
     case 'install': {
       const p = String(body.p5z || '');
