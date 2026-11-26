@@ -137,7 +137,8 @@ fn build_and_register(state: &State, s: &Settings, src: &Source, fresh: &Fresh, 
         if !retrying {
             log!("{tid}: {why}; refreshing fakelib only");
         }
-        cache::refresh_fakelib(src, s)?;
+        // "checking" while it refreshes (main::process); "building" once it turns into a rebuild.
+        cache::refresh_fakelib(src, s, || state.update(&src.path, |g| g.status = "building"))?;
     }
     let stale = forced || !matches!(fresh, Fresh::Fresh | Fresh::Fakelib(_));
     let app0 = cache::app0(src);

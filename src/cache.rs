@@ -1131,8 +1131,9 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
 
 /// Recomposes only fakelib/ (Fresh::Fakelib): no extraction besides a pkg's or .p5z's own fakelib, no
 /// index, no re-registration. ponytail: a launch reads fakelib/ while this runs only if a game
-/// starts mid-refresh (the scan loop is paused while one runs).
-pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
+/// starts mid-refresh (the scan loop is paused while one runs). `rebuilding` is called when the refresh
+/// turns into a rebuild (an OldNg below), so the page says "building" from then on.
+pub fn refresh_fakelib(src: &Source, s: &Settings, rebuilding: impl FnOnce()) -> Result<()> {
     let pkg = if src.kind == Kind::Pkg { Some(open(&src.path)?) } else { None };
     // A TryAgain here goes back to main.rs as it is, tried again next pass, quietly.
     let play = if src.kind == Kind::P5z { Some(open_p5z(src)?) } else { None };
@@ -1147,6 +1148,7 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
             // `.done` first: a build that fails before it clears the cache (an I/O error) must not leave
             // one that still says it is built, with the refused copy in its fakelib/.
             let _ = fs::remove_file(dir(&src.title_id).join(DONE));
+            rebuilding();
             return build(src, s);
         }
         r => r,
