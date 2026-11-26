@@ -880,3 +880,83 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
   - Expected: the console plays the `.p5z` as it was before that update (the engine reads it through
     that file, and never cuts it), or as it grew if the update had ended before the process was stopped;
     MaxPack on the PC settles it the next time it opens it.
+
+## 12. Compress on the console (test build)
+
+With a build of the branch `consola-comprimir`, MaxPack alone. This is a prototype that measures, not the feature:
+it packs a game folder into a `.p5z` on the console, as `maxpack pack --p5z` does on the PC, and tells how fast
+each level is, how much memory it takes, whether the console stays usable meanwhile, and whether the volumes are
+the same as the PC's. It does not pause when a game starts and does not keep the console awake.
+
+You need: a small game you have as a folder (a few GB, a plain dump: no `ampr_zstd.index` or
+`ampr_assets.index` in it) and, for 12.6, a large one; a MaxPack for the PC of the same engine as this build
+(its branch `pc-ampliar` at b3b526f, or a later build that says it packs the same), and the same folder on the PC,
+byte for byte (copied over FTP in binary mode, or the other way round).
+
+Where to look: the game's sheet (the row "Compress on the console (test)" at the bottom), the log
+(`/data/maxpack/maxpack.log` or the page's log: every line of the job starts with `pack:`), and `/api/state`,
+field `pack`.
+
+- [ ] **12.1. The folder and the test build.**
+  - Copy the small game's folder to `/data/homebrew` over FTP in binary mode, if it is not there yet. Wait until it
+    shows as ready in the library.
+  - Send this build's `maxpack.elf` (port 9021).
+  - Expected: the folder game's sheet ends with "Compress on the console (test)", with Level (3, 9, 19) and
+    Threads (4, 5). A `.p5z` game's sheet and a packed folder's do not have it.
+- [ ] **12.2. Level 3.**
+  - On the small game's sheet: Level 3, Threads 5, "Compress (test)". Write down the time it shows at the end.
+  - Expected while it runs: "measuring the memory" for a second or two, then "loose files", then "packs", with
+    the percentage, the MB/s and the time; the bar moves. In the log, first
+    `pack: memory probe: N MiB in steps of 64 MiB, ...; stopped by ...` (keep that line: it is how much memory the
+    payload gets), a `pack:` line every minute, then one line per phase (`Copying the loose files: ... MB/s`,
+    `Packing (zstd level 3): ... MB/s`), the payload's RSS at its peak, and `pack: done: <folder>.p5z
+    (archive_id ..., N volumes)`.
+  - Expected at the end: "Done in ...", a box with the lines, and "Copy the lines". Next to the folder there is
+    `<folder>.p5z` (and no `.maxpack-pack` file); the library lists it as a duplicate of the folder.
+  - Press "Copy the lines" and keep them (paste them into a text file on the PC). They hold no game name.
+  - While it runs, use the console: go to the home screen, open a menu or two, scroll the page. Note anything slow.
+- [ ] **12.3. Levels 9 and 19, and 4 threads.**
+  - MaxPack never overwrites a `.p5z`: before each run, delete `<folder>.p5z` over FTP (or move it somewhere
+    else). If you start one with the file there, the sheet says it is there already and nothing starts.
+  - Run level 9 with 5 threads, then level 9 with 4 threads, then level 3 with 4 threads. Level 19 with 5 threads
+    once (it can take a long time; with 4 threads only if you have the time). Copy the lines of each run.
+  - Expected: each run ends with "Done", and each run's lines say its level and threads (the lines that start with
+    `#`). Two runs at the same level give the same `archive_id` and volume lines, whatever the threads.
+- [ ] **12.4. The same lines on the PC.**
+  - On the PC, for each level you ran: `maxpack pack "<folder>" -o "<game>-L<level>.p5z" --p5z --level <level>`.
+  - Get its lines. No command of the PC prints them yet; until one does: `maxpack unpack "<game>-L<level>.p5z"
+    --folder -o "<dir>"`, then for each volume `tail -c +65 "<dir>/ampr_zstd-000.pak" | sha256sum` (Git Bash on
+    Windows has both), and `maxpack info --play "<game>-L<level>.p5z"` for the `archive_id`.
+  - Expected: the same `archive_id`, the same volume names and sizes, and the same SHA-256 as the console's lines
+    of that level. Send both sets of lines.
+- [ ] **12.5. Play the `.p5z` the console made.**
+  - Keep the last `.p5z` the console made. In Settings, add the game's folder to "Excluded paths" and save, so the
+    `.p5z` is the library's copy (while the folder is listed, the folder wins).
+  - Expected: the game builds again as a `.p5z` and shows as ready. Start it: the notice says "(p5z) running", it
+    loads, and a save and its load work. Play 10 minutes.
+  - Take the folder off "Excluded paths" when you are done: the folder is the game again.
+- [ ] **12.6. A large game at level 3.**
+  - Only if the small game went well. With the large game's folder (on the internal SSD or a USB drive with room
+    for one more copy of it): level 3, Threads 5.
+  - Expected: it ends with "Done". Note the time, the MB/s of the packs (the `pack:` line of each minute shows if
+    the speed holds), the peak memory and how loud the fan gets.
+  - Once, while it runs, start another game from the home screen, play 2 minutes and close it. Expected: the job
+    goes on (this test build does not pause); the log says `pack: a game started while compressing (...)` with the
+    speed before it, `pack: a game runs (...)` every 30 s, and `pack: the game exited (...)` with the speed while it
+    ran. Note whether the game stutters or loads slowly.
+  - Optional: leave the console alone until it goes into rest mode during a run, wake it, and note whether the job
+    went on (the time and the `pack:` lines say it) or the page shows it failed.
+- [ ] **12.7. Cancel and refusals.**
+  - Start a run and press "Cancel the compression" during the packs. Expected: "Cancelled: the partial .p5z was
+    deleted.", no `<folder>.p5z` and no `<folder>.p5z.maxpack-pack` next to the folder; in the log
+    `pack: cancelled after ... s in the engine: cancelled`.
+  - With `<folder>.p5z` there, press "Compress (test)". Expected: the sheet says it is there already; the file is
+    not touched.
+  - During a run, press Install or Verify in the Install tab. Expected: "A test compression is running: try again
+    when it ends." and nothing starts.
+  - During a run, open another folder game's sheet. Expected: it says another test compression is running, with its
+    button off.
+
+What passes: the `archive_id` and the volumes' SHA-256 are the PC's; level 9 goes over about 80 MB/s; the peak
+memory stays under about 500 MB; and the console stays usable meanwhile. Send the lines of each run, the `pack:`
+lines of the log, and what you noted (times, fan, menus, the game you started).

@@ -14,6 +14,9 @@ What changed in each version of MaxPack for the console. The format follows
 - MaxPack carries a new build of ampr-emu-ng, `v0.5.2-maxpack.1`, whose p5z mode reads those files. For
   now it is a build of its CI, not a release yet (`vendor/ampr-emu-ng/SOURCE` says which); its launch
   notice still says v0.5.1.
+- **Compress on the console (test).** On a test build, a folder game's sheet can pack the folder into a `.p5z`
+  beside it (level 3, 9 or 19, with 4 or 5 threads) and shows the `archive_id` and each volume's SHA-256 to compare
+  with the PC; the speed and the memory go to the log. A prototype to measure, before the real feature.
 
 ### Changed
 

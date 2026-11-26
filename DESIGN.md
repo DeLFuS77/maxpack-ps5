@@ -615,6 +615,15 @@ pub fn check(tid: &str, pid: libc::pid_t, status: &str, when: &str) -> bool; // 
 pub fn launch_app(title_id: &str) -> Result<(), String>; // sceLncUtilLaunchApp, then sceSystemServiceLaunchApp
 pub fn firmware() -> Option<String>;                     // "13.60" from the SDK's kernel_get_fw_version
 
+// pack.rs (the test compression, ps5/pack.c; Refusal = maxpack_logic::pack::Refusal)
+pub fn start(state: &State, body: &[u8]) -> Result<(), Refusal>; // POST /api/pack: checks, then its own thread
+pub fn cancel() -> bool;                                          // POST /api/pack/cancel; false when none runs
+pub fn stop();                                                    // before exit: cancel, wait 3 s at most
+pub fn running() -> bool;
+pub fn hold_off() -> Option<std::sync::MutexGuard<'static, ()>>;  // held while an installer job is forwarded; None while one runs
+pub fn uses(path: &std::path::Path) -> bool;                      // a running job reads or writes at or under path
+pub fn json() -> serde_json::Value;                               // /api/state pack
+
 // net.rs (blocking GET over sceHttp/sceSsl, 4 pinned root CAs; Err on non-200, sce error or > max bytes)
 pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
 ```
@@ -703,7 +712,7 @@ minute):
   playgo_off: bool|null}|null (what the list says of the two for this title on this firmware; null when it says nothing
   of them), notice: "long_first_boot"|null (the list's notice for the title)}],
   unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
-  drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
+  drives:[{mount, label, kind, total, free, ejectable}], pack: {...}|null (the test compression of this run: see Test compression), cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
   without `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`, `manual_settings` or `exclude` keeps that current list
   from the file (the settings form sends `exclude` only); then a title in both fakelib lists is kept in `fakelib_off`
@@ -766,6 +775,8 @@ minute):
   one in use: nothing installed; `amprFail_older`), 500 `install`. The page shows its own text for `tls_unchecked`,
   `update_running`, `download`, `checksum` and `older`, the detail for the rest.
 - `POST /api/rescan`, `POST /api/rebuild/<TID>`, `POST /api/rebuild-all`, `POST /api/purge` -> 204.
+- `POST /api/pack` (JSON `{path, level, threads}`) and `POST /api/pack/cancel`: the test compression of a plain
+  folder game, a prototype that only the game sheet's test button calls (Test compression, below).
 - `GET /api/sizes/<TID>` -> `{game: u64, dlc: u64, save: u64|null, cache: u64}` in bytes,
   measured on request; 404 for an invalid or absent library title. Game is the pkg file or folder,
   DLC is summed across `/user/addcont` and both extended drives' `user/addcont` and `ps5/user/addcont`,
@@ -776,8 +787,9 @@ minute):
   404 for an invalid or absent library title, 409 while the scan loop is in a pass (it holds
   `State::work` for scan, purge, build and register; delete only try-locks it), when the body is not
   the current library source, while a game runs, while MaxPack does not mount (another mounter runs,
-  or no kstuff: what is at `/system_ex/app/<TID>` may be that mounter's), this title builds, the source path is unsafe, or
-  its title mount cannot be unmounted; 500 on source or cache deletion failure. It validates the
+  or no kstuff: what is at `/system_ex/app/<TID>` may be that mounter's), this title builds, a test compression reads
+  the source (Test compression), the source path is unsafe, or its title mount cannot be unmounted; 500 on source or
+  cache deletion failure. It validates the
   source is inside a scan root with no symlink from the root down (links above the root are not checked), and is a .pkg or .p5z file or game
   directory, then unmounts `/system_ex/app/<TID>` without force and deletes the source. If that
   fails, the cache and tile stay and the next pass remounts the title (a folder partly removed stays so).
@@ -786,7 +798,7 @@ minute):
 - `POST /api/eject`, body: the drive's mount path (`/mnt/usb0`) -> 204 once the path is no longer a
   mount point; 400 when not ejectable, 404 when not mounted, 409 while the scan loop is in a pass
   (try-lock of `State::work`, held to the end so no pass builds, registers or remounts meanwhile),
-  while a game runs, while MaxPack does not mount (as delete), when another partition of the same disk (`/dev/daN` followed by the end, `p` or
+  while a game runs, while a test compression reads or writes on the drive, while MaxPack does not mount (as delete), when another partition of the same disk (`/dev/daN` followed by the end, `p` or
   `s`) is mounted, when a title mount from the drive cannot be unmounted (error text), or when the
   drive changed (`km_usb_eject` ENOENT/ESTALE); 502 with errno and native status in hex when the
   request fails, or when the mount is still there after 5 s (polled every 100 ms). Before the request it
@@ -848,7 +860,7 @@ minute):
   read limits (32 MiB, 64 KiB). Anything else is logged and not offered. The offer is `update` in `/api/state`.
 - `POST /api/self_update` (`update::install`): refused when the version is not the offer, while a game runs, while
   another update runs or one was sent less than 90 s ago, while a scan pass holds `State::work`, or while the
-  installer runs a job (`installer::idle`: quitting would pause it), or until the secure-connection self-test has
+  installer runs a job (`installer::idle`: quitting would pause it; a test compression counts as one), or until the secure-connection self-test has
   passed (below). Otherwise it probes elfldr
   (`127.0.0.1:9021`), downloads `SHA256SUMS` and `maxpack.elf` (one try each), and sends the ELF to elfldr only
   when its size is the asset's, it starts with the ELF (or SELF) magic and its SHA-256
@@ -913,7 +925,8 @@ toasts through `sys::notify` when `notify` is on. Its data stays in `/data/maxpa
 `tmp/`, `config.json`). It has no server: web.rs forwards `/api/inst/*` (one request at a time, as the engine's
 own server). Quitting pauses a running install (POST `/api/pause`, again for each queued job that starts) and
 waits up to 3 s for the queue (`mp_api_wait_idle`); a paused install is listed as unfinished at the next start,
-where Install resumes it.
+where Install resumes it. While a test compression runs (Test compression, below), `install`, `verify` and
+`uninstall` answer 409 `{ok:false, code:"pack_running"}` before they reach the engine (the page's `iPackRunning`).
 The page's **Install** tab is phase 2's page (the engine's `web/index.html`, gone since its commit f8e931a) in this UI's style: the job with
 progress, speed and time left (Pause), unfinished installs (Resume, Discard), what can be installed (icon,
 saving or "copied as is", Search again, a path added by hand through `probe`), the destination drives with
@@ -930,7 +943,83 @@ Host and Origin checks as the payload (with a hidden game, a recorded crash, Pla
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
 ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
-refuses, or with `--ampr-fail older` refuses an older release).
+refuses, or with `--ampr-fail older` refuses an older release; a test compression of 15 s on a plain folder game's
+sheet, or with `--pack-fail <code>` its refusal).
+
+## Test compression (`src/pack.rs`, `ps5/pack.c`, `maxpack_logic::pack`)
+A prototype that measures (docs/console-tests.md, section 12): a plain folder game of the library packed on the
+console into a `.p5z` beside it, as `maxpack pack --p5z` does on the PC. It tells how fast each level is with 4 and
+5 threads, how much memory it takes, whether the console stays usable meanwhile, and whether the volumes are the
+PC's. Not the feature yet: no queue, no pause while a game runs, no size estimate, no wake-up notices against rest
+mode, and the button says it is a test.
+- `POST /api/pack`, JSON `{path, level, threads}` (`maxpack_logic::pack::request`): `path` is a library entry's
+  `path` (a duplicate copy too) of kind `folder` and packing `plain`; `level` 3, 9 or 19 (9 when left out or null);
+  the packs' `threads` 4 or 5 (5): the console reports 16 CPUs and gives a payload 5 (`ps5/compat.c`), and the
+  engine's default (`mp_cpu_count`) would be 16. The loose files get 1 thread (`LOOSE_THREADS`: each long-window
+  zstd context takes about 120 MB). 204 once the job's thread started, else `{code, detail}`
+  (`maxpack_logic::pack::Refusal`, the first that applies): 400 `bad_request`; 404 `not_found` (no library entry at
+  that path); 409 `not_folder` (a pkg, a `.p5z` or a packed folder), `pack_running`, `install_running`
+  (`installer::idle` is false: the installer runs or queues a job), `game_running` (`State::paused`), `exists`
+  (`<folder>.p5z` is there, or cannot be looked at: it is never overwritten), `no_space` with `missing_bytes` (the
+  folder's bytes, `cache::du`, plus `SPACE_MARGIN` must fit in the free space where the `.p5z` goes, since a `.p5z`
+  can be as large as the folder). Behind the same Host and Origin checks as every POST. `POST /api/pack/cancel` ->
+  204, or 409 when no job runs. Both are only for the page's test button: nothing else calls them.
+- The `.p5z` goes beside the folder, so on the same drive: `<folder>.p5z`. It is written as
+  `<folder>.p5z.maxpack-pack` (not a `.p5z` name, so the scan never takes the growing file) and renamed at the end,
+  only if `<folder>.p5z` is still not there (ponytail: checked, then renamed). A `.maxpack-pack` file found when a
+  job starts (left by one this payload no longer runs: it quit or crashed) is removed and logged. Once renamed, the
+  `.p5z` is a game of the scan like any other: while the folder is there it is the folder's duplicate (Flow,
+  Duplicate title ids).
+- The job (`pack::run`, its own thread): the memory probe, then the engine (`ps5/pack.c` `maxpack_pack_p5z`:
+  `mp_pack_opts_default` with the level and the threads set and no progress on stderr, `mp_pack_out_p5z` with 1
+  thread, `mp_pack_run`, then the writer's destroy, which deletes a `.p5z` it did not finish), the rename, and the
+  sums (`maxpack_p5z_sums`: `mp_p5z_open` of the file written, and from its index the header's `archive_id` and
+  level and each volume record's name, size and SHA-256, which the format keeps of the volume's bytes from 64 to its
+  end; the C reads them through `mp_p5z_internal.h`, as no public call gives them; `maxpack_logic::pack::parse_sums`
+  checks them). C does that setup, as `ps5/installer.c` does, so Rust never mirrors the engine's structs.
+- One job at a time, never beside an installer job: the engine's progress hook and cancel flag are one per process
+  (`vendor/maxpack src/analyze/mp_parallel.h`) and the installer's copies and checks use them. So the installer's
+  `install`, `verify` and `uninstall` are refused while a job runs (`maxpack_logic::pack::blocks_installer`); one
+  lock (`pack::hold_off`) is held across that check and the request's forwarding, and `pack::start` holds it across
+  its own check of `installer::idle` and the job's start, so neither slips in beside the other. The cancel flag is
+  cleared before the engine starts and again once it returned, both under the job's lock, which a cancel takes too:
+  it never stays set for the installer. A cancel during the probe stops it, and the engine never starts.
+  `/api/delete` of that folder and `/api/eject` of its drive answer 409 while the job runs. Quitting (`/api/quit`, or
+  another copy taking the port) cancels it and waits up to 3 s for its file to go (`pack::stop`), before
+  `installer::stop`. The self-update counts a running job as the installer's (`install_running`, a ponytail).
+- The memory probe (`pack::probe`, `maxpack_logic::pack::probe_next`), before the engine: how much memory the payload
+  gets, up to 2 GiB, in steps of 64 MiB, each an anonymous `mmap` with every 4 KiB of it written (so the memory is
+  really there), until the cap, the first `mmap` that fails (its errno), a step that takes over 2 s (the system is
+  making room), the system's free memory (`vm.stats.vm.v_free_count` times the page size, through
+  `sysctl.name2oid` and `sysctl`) under 512 MiB plus a step, or a cancel; then every mapping is unmapped. The free
+  memory counts only once what the probe holds shows there (it went down by half of that at least): on a console
+  whose memory is split into budgets that figure may be another pool's. `mmap`, not the allocator: a failed step is
+  a clean ENOMEM that leaves the heap as it was, and the up to 64 MiB it could not have are still there for the
+  payload's other threads (a Rust allocation that fails ends the payload); the room for every mapping's address is
+  taken before the first one. One log line: what it got, why it stopped, its time, the free memory before and at
+  its lowest, the payload's RSS before and after.
+- The log (`pack: ...`): the start (the folder's size, the free space, the level and the threads); the probe; a line
+  a minute (phase, percentage, MB/s over the last minute, RSS); then each phase of the engine with its bytes, time
+  and MB/s (10^6 bytes a second; `maxpack_logic::pack::Progress`: the first phase from its first report, each next
+  one from the last report of the one before), the time before the first phase (the folder's list read and checked)
+  and after the last (the indexes), and in all; the payload's RSS at its peak (`kern.proc.pid`'s `ki_rssize`, every
+  250 ms) and before the job; the counts of loose and packed files; the `archive_id` and each volume's line. A game
+  started while the job runs does not stop it: its start and exit are logged with the speed before it and while it
+  ran, and one line every 30 s while it runs.
+- `/api/state` `pack`: null until a job ran in this run, else the last one: `{state: "probe"|"running"|"sums"|
+  "done"|"failed"|"cancelled", cancelling, source, dest, level, threads, phase: "loose"|"packs"|"other"|null, done,
+  total (of the current phase), mbps (its average), elapsed_ms, error, lines, size}`. `lines`
+  (`maxpack_logic::pack::lines`): notes first, each after `# ` (MaxPack's version and the engine's commit, the level
+  and threads, each phase's line, the `.p5z`'s size, the probe and the peak memory), then `level N`,
+  `archive_id <32 hex>` and one `ampr_zstd-NNN.pak <size> <sha256>` line per volume, as the `.p5z`'s index records
+  them. No path and no name: a folder is often named after its game.
+- The PC's side: the same values are in the PC's `.p5z` index, but no command of the PC prints them yet
+  (`maxpack info --json` gives neither the `archive_id` nor the volumes' SHA-256; `info --play` gives the
+  `archive_id`). Meanwhile `maxpack unpack <game.p5z> --folder -o <dir>`, then
+  `tail -c +65 <dir>/ampr_zstd-NNN.pak | sha256sum` for each volume, gives the same SHA-256. The threads do not
+  change the output: on the PC, the engine at b3b526f with this file's setup (5 threads for the packs, 1 for the
+  loose files) wrote a `.p5z` byte for byte the one `maxpack pack --p5z` wrote with its default threads, from the
+  same folder.
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -973,6 +1062,13 @@ under "Scan paths", one path per line (`exclude`), and "Download updated recomme
 The sheet's error line says in the page's language why a `.p5z` short of space (`no_space`) or a `.p5z` that grew with
 an ampr-emu-ng too old for it (`old_ng`: what to do, restart MaxPack or make a compact copy on the PC) is not built; any
 other error shows the payload's English text.
+A plain folder game's sheet (a duplicate copy too) ends with "Compress on the console (test)" (Test compression): the
+level (3, 9 or 19; 9 first), the packs' threads (4 or 5; 5 first) and "Compress (test)", which posts the game's `path`;
+a refusal shows in the error line, in the page's words for `exists`, `no_space`, `game_running`, `install_running`
+and `pack_running`. While the job of that folder runs (`state.pack.source` is its `path`) the row shows its phase,
+percentage, MB/s and time, a bar and "Cancel the compression"; once done, `state.pack.lines` in a box and "Copy the
+lines" (as Copy report copies); a cancel or a failure says so. Another folder's sheet says a compression is running,
+with the button off. These controls are in the D-pad's list only while the row shows.
 Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
 an extra one, changes a `{placeholder}` or keeps the English text.
 
@@ -991,6 +1087,7 @@ an extra one, changes a `{placeholder}` or keeps the English text.
 | `src/p5z.rs` | the engine's `mp_play_*` (describe a `.p5z`, extract its loose files) |
 | `src/web.rs`, `src/ui.html` | HTTP server and the single-file UI |
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
+| `src/pack.rs`, `ps5/pack.c` | the test compression of a folder game into a `.p5z` beside it (`POST /api/pack`, a prototype) |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
 | `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update, recommended settings) and the self-test's HEAD probe |
 | `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update and the ampr-emu-ng update wait for |
@@ -1031,7 +1128,8 @@ an extra one, changes a `{placeholder}` or keeps the English text.
   0 errors and 0 warnings (CI sets `RUSTFLAGS=-Dwarnings`).
 - Payload: `ps5/build.sh` (Docker, two stages: stage 1 is the saved copy, stage 2 embeds it) ->
   `target/ps5/maxpack.elf`. A link error like `undefined symbol: X@FBSD_1.0` means the PS5 libc lacks that
-  versioned symbol: add an adapter in `ps5/compat.c` (see `statfs`, `getmntinfo`).
+  versioned symbol: add an adapter in `ps5/compat.c` (see `statfs`, `getmntinfo`). build.sh checks in lld's link
+  map that `mp_api_call`, `mp_inst_install`, `mp_play_open` and `mp_pack_run` are in `maxpack.elf`.
 - The payload crate builds only for the PS5/FreeBSD target, so it has no `cargo test`. Pure logic goes in
   `crates/maxpack-logic` (`cargo test -p maxpack-logic`, any host), tests first. Logic that cannot move there is
   checked by copying its pure functions into a scratch file, compiled with `rustc` on the host and asserted on a fake
