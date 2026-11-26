@@ -309,6 +309,24 @@ pub fn old_ng(l: Lang, name: &str) -> String {
     }
 }
 
+/// `old_ng` for `n` games at once (an older ampr-emu-ng stops every .p5z that grew): one toast, as
+/// `failed_many`, instead of one per game.
+pub fn old_ng_many(l: Lang, n: usize) -> String {
+    match l {
+        Lang::En => format!("{n} games need a newer ampr-emu-ng: see them on MaxPack's page"),
+        Lang::Ru => format!("Нужен более новый ampr-emu-ng играм: {n}, подробности на странице MaxPack"),
+        Lang::Zh => format!("{n} 款游戏需要更新的 ampr-emu-ng：请在 MaxPack 页面查看这些游戏"),
+        Lang::De => format!("{n} Spiele brauchen ein neueres ampr-emu-ng: siehe die Spiele auf der Seite von MaxPack"),
+        Lang::Es => format!("{n} juegos necesitan un ampr-emu-ng más nuevo: míralos en la página de MaxPack"),
+        Lang::Fr => format!("{n} jeux demandent un ampr-emu-ng plus récent\u{202f}: voir les jeux sur la page de MaxPack"),
+        Lang::Ja => format!("{n} 本のゲームには新しい ampr-emu-ng が必要です：MaxPack のページでゲームを確認してください"),
+        Lang::Pt => format!("{n} jogos precisam de um ampr-emu-ng mais novo: veja os jogos na página do MaxPack"),
+        Lang::It => format!("{n} giochi richiedono un ampr-emu-ng più recente: vedi i giochi nella pagina di MaxPack"),
+        Lang::Ko => format!("게임 {n}개에 더 새로운 ampr-emu-ng가 필요합니다: MaxPack 페이지에서 게임을 확인하세요"),
+        Lang::Ar => format!("ألعاب تحتاج إلى ampr-emu-ng أحدث: {n}، راجعها في صفحة MaxPack"),
+    }
+}
+
 /// The install call for a batch of `n` games failed; each error is in maxpack.log and the UI.
 pub fn failed_many(l: Lang, n: usize) -> String {
     match l {

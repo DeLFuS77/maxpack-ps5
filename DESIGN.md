@@ -163,7 +163,8 @@ is ignored as a whole). The web UI edits the same file.
   needs ampr-emu-ng v0.5.1-maxpack.2 or later; the ampr-emu-ng in use is <v> (...): not started with it`): a failed
   build, so the cache has no game files and neither Play nor the tile can start the game half-way (an older
   ampr-emu-ng refuses the grown index at the game's start and serves none of its packed files). `main.rs` shows status
-  `error` with `error_code` `old_ng`, toasts `i18n::old_ng` once and memoizes it; `inputs_key` holds the ampr dir's
+  `error` with `error_code` `old_ng`, toasts `i18n::old_ng` once and memoizes it (the games a pass stops so are toasted
+  together after its last game: one `i18n::old_ng_many` with their count when more than one); `inputs_key` holds the ampr dir's
   state (`cache::ampr_state`) and the mark's text (`main::ampr_mark`), so another `libSceAmpr.sprx`, or a mark
   written after it, tries the build again (a restart too: the bundled copy replaces an older one of ours at start).
   The check before extraction only spares the work: the one that counts is `compose_fakelib`'s, on the copy that

@@ -95,6 +95,21 @@ fn backport_of(src: &Source) -> Option<&std::path::Path> {
 static RETRYING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 static SPACE_WARNED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 static OPEN_LOGGED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// The names of the games this pass stopped with an OldNg (a .p5z that grew, an ampr-emu-ng that does
+/// not play it): toasted together after the pass's games (`toast_old_ng`), since an older ampr-emu-ng
+/// stops every such game at once and the console shows queued toasts one by one.
+static OLD_NG: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The OldNg toast of this pass: the game's name for one, a count for more (as `install_staged`).
+fn toast_old_ng(s: &Settings) {
+    let names = std::mem::take(&mut *OLD_NG.lock().unwrap_or_else(|e| e.into_inner()));
+    let l = i18n::lang();
+    match names.as_slice() {
+        [] => {}
+        [name] => toast(s, &i18n::old_ng(l, name)),
+        _ => toast(s, &i18n::old_ng_many(l, names.len())),
+    }
+}
 
 /// What build_and_register did with a title.
 #[derive(PartialEq)]
@@ -278,7 +293,7 @@ fn install_staged(
 /// A build short of space (cache::NoSpace) or whose .p5z the engine could not open just now
 /// (cache::TryAgain) is not recorded in `failed`: it is tried again every pass. A .p5z that grew,
 /// with an ampr-emu-ng that does not play it (cache::OldNg), is a failure with error_code `old_ng`
-/// and its own toast.
+/// and its own toast, sent with the pass's others (`toast_old_ng`).
 fn finish(
     state: &State, s: &Settings, src: &Source, registered: &mut HashSet<String>, failed: &mut HashMap<PathBuf, String>,
     r: std::io::Result<bool>, notify: bool,
@@ -348,9 +363,10 @@ fn finish(
                 (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
                 (g.error_code, g.missing_bytes) = (old_ng.then_some("old_ng"), None);
             });
-            if notify {
-                let l = i18n::lang();
-                toast(s, &if old_ng { i18n::old_ng(l, &src.title_name) } else { i18n::failed(l, &src.title_name) });
+            if notify && old_ng {
+                OLD_NG.lock().unwrap_or_else(|e| e.into_inner()).push(src.title_name.clone());
+            } else if notify {
+                toast(s, &i18n::failed(i18n::lang(), &src.title_name));
             }
         }
     }
@@ -1127,6 +1143,7 @@ fn main() {
             }
             process(&state, &s, src, &mut registered, &mut failed, &mut staged);
         }
+        toast_old_ng(&s);
         // Not once a game has started (nothing registers while a game runs) or another mounter
         // runs: the staged titles are not in `registered`, so the pass after that stages them again
         // and installs them.
