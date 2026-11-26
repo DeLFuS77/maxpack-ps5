@@ -433,18 +433,19 @@ mod tests {
     #[test]
     fn a_grown_p5z_needs_an_ampr_emu_ng_that_knows_it() {
         assert_eq!(GROWN_NG, "v0.5.2-maxpack.1");
-        assert_eq!(crate::version::parse_version(GROWN_NG), Some((0, 5, 2)));
+        assert_eq!(crate::version::parse_version(GROWN_NG), Some((0, 5, 2, 1)));
         let v1 = parse_play_json(ENGINE_V1).unwrap();
         let v2 = parse_play_json(ENGINE_V2).unwrap();
         // A .p5z that never grew plays as before, with any ampr-emu-ng that has the p5z mode.
         for ng in [None, Some("v0.5.1-maxpack.1"), Some("not a version")] {
             assert_eq!(ng_plays(&v1, ng), Ok(()), "{ng:?}");
         }
-        for ng in ["v0.5.2-maxpack.1", "v0.5.2-maxpack.7", "0.5.2", "v0.6.0-maxpack.1", "v1.0.0-maxpack.1"] {
+        for ng in ["v0.5.2-maxpack.1", "v0.5.2-maxpack.7", "0.5.3", "v0.6.0-maxpack.1", "v1.0.0-maxpack.1"] {
             assert_eq!(ng_plays(&v2, Some(ng)), Ok(()), "{ng}");
         }
-        // Older, or a version MaxPack cannot tell (a file put there by hand, none): never half-way.
-        for ng in [Some("v0.5.1-maxpack.1"), Some("v0.5.1-maxpack.9"), Some("v0.5.0"), Some("v0.4.0"), Some("v0.5.2-beta"), Some(""), None] {
+        // Older (upstream's own build of that version too: no p5z mode), or a version MaxPack cannot tell
+        // (a file put there by hand, none): never half-way.
+        for ng in [Some("v0.5.1-maxpack.1"), Some("v0.5.1-maxpack.9"), Some("v0.5.2"), Some("v0.5.0"), Some("v0.4.0"), Some("v0.5.2-beta"), Some(""), None] {
             let why = ng_plays(&v2, ng).expect_err("refused");
             assert!(why.contains(GROWN_NG), "{ng:?}: {why}");
             if let Some(v) = ng.filter(|v| !v.is_empty()) {

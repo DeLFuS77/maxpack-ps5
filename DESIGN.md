@@ -594,7 +594,7 @@ pub fn installed_copy(title_id: &str) -> Option<std::path::PathBuf>; // the path
 pub fn is_ours(title_id: &str) -> Result<(), std::path::PathBuf>; // Err(path) = an installed copy, or no staged param.json: never auto-remove
 
 // main.rs (shared version compare, used by cache.rs for ampr-emu-ng identities)
-pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32)>; // "X.Y.Z", leading "v" allowed
+pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32, u32)>; // "X.Y.Z" or "X.Y.Z-maxpack.N", leading "v" allowed: (X, Y, Z, N), N = 0 without the suffix
 pub(crate) fn newer(a: Option<&str>, b: Option<&str>) -> bool;   // a strictly newer than b; an unknown version is older than any
 pub(crate) fn ampr_version_of(path: &std::path::Path) -> Option<String>; // a libSceAmpr.sprx (ampr dir's or a fakelib copy): bundled VERSION or ampr.bundled's; None = unknown
 pub(crate) fn ampr_mark() -> Option<String>;                     // ampr.bundled's text (inputs_key)
