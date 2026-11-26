@@ -978,11 +978,16 @@ already copied there), "Does not fit: N more needed" when not, and Install then 
 the engine checks again when it plans the install (`no_space`). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
 the UI's words (`grown_p5z` among them), its `detail` (the engine's, in English) under them. The engine's probe says
 nothing of a `.p5z`'s index, so web.rs marks the state's `found` items and a probe's answer with what the console's
-own reader knows (`maxpack_logic::inst::mark_grown`; `src/p5z.rs` `grew`: `mp_play_open`'s description, kept by path while
-its size and mtime stay): one that grew gets `"grown": true`, its row says at once that it plays from the `.p5z` and
+own reader knows (`maxpack_logic::inst::mark_grown`; `src/p5z.rs` `grew`: the index version from `index_version`, the
+footer, one CRC pass over the compressed index and its first 12 bytes, no `ampr_zstd.index` and no volume headers;
+`maxpack_logic::p5z::LookMemo` keeps it by path while the file's size and mtime stay, and a look that read nothing
+only for 30 s): one at index version 2 gets `"grown": true`, its row says at once that it plays from the `.p5z` and
 is not installed, and Install refuses it without asking the engine (which would refuse it with `grown_p5z` only when
 the job starts). A probe or an install the engine refuses as `bad_p5z` whose index `src/p5z.rs` (`index_version`) reads as made
-by a newer MaxPack for the PC answers `newer_p5z` instead (`inst::newer_refusal`), never "damaged". Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
+by a newer MaxPack for the PC answers `newer_p5z` instead (`inst::newer_refusal`), never "damaged". The file looked at is
+the request's `path` (probe) or `p5z` (install) only when that key is given once (`inst::request_p5z`, a derived parse that
+refuses a repeated field): the engine reads the first copy of a repeated key, so the console never reads a file the
+engine did not check. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
@@ -1111,20 +1116,33 @@ on the page's server (port 8095), as the shared contract of both sides says:
 - `POST /api/receive/discard`, `{"name","drive"}` (`drive` as in start, `internal` when missing; the contract's v3)
   -> 200 `{"deleted":true,"bytes":N}`, or `{"deleted":false}` when nothing of it is there: what a send left of that file
   deleted without a start, so it works on a full drive (`receive::discard_gate`, in this order): 400 `bad_request`; 400
-  `bad_name` (start's rules); 404 `no_drive` (as start's); a receive of that file under way (receiving or verifying)
-  409 `busy`. It deletes `<homebrew>/<name>.maxpack-recv` when a file is there, whatever its size and with no space
+  `bad_name` (start's rules); 404 `no_drive` (as start's); a receive of that file verifying, 409 `busy`; a receive of
+  that file receiving (v3.1): when no data request is in flight (the writer lock is free) and none came for 60 s
+  (`receive::DISCARD_QUIET_MS`, above the PC's longest wait between retries, 30 s; each receive keeps the time of its
+  last PUT or start), it pauses first (reason `idle`) and goes on as for a paused one, else 409 `busy` with
+  `retry_after` (the seconds until those 60 s are up, at least 1). "That file" is the same drive and the same name
+  in any ASCII case (`receive::same_file`: exFAT and FAT32 ignore case), and then that receive's own path is the one
+  deleted. It deletes `<homebrew>/<name>.maxpack-recv` when a file is there, whatever its size and with no space
   check, and never anything else (something there that is not a file stays); a failed delete is 500 `delete_failed`
   with the OS error in `detail`, and the file and its receive stay. This run's receive of that file that is paused,
   failed or cancelled ends: its token is forgotten (a later status or PUT is 404 `unknown_id`) and the page's banner
   goes; one that is done is the library's `.p5z` and stays. It holds the jobs gate, as a start, so neither looks at the
   file while the other changes it. One log line per discard (`receive: discard of <name> from the PC: deleted <path> (N
-  bytes)`, `nothing of it at <path>`, or why it was refused); the code is never logged.
+  bytes)`, `nothing of it at <path>`, or why it was refused, with "...was paused and ended" when it let go of a quiet
+  receive); the code is never logged.
+- `POST /api/receive/leave?id=` (v3.1): the PC stopped the send and kept what arrived (its Cancel, its window closed,
+  Ctrl+C) and says so, best effort. A receive that is receiving pauses with reason `left` (`receive::leave_pauses`;
+  as `idle`); any other is left as it is. 200 `{"have":N}`; 404 `unknown_id` for a token this run does not know. The
+  console then no longer shows "receiving" for 10 minutes, and the other jobs and a discard go on at once.
 - **Paused** (`State::Paused(PauseReason)`). A receive with no request carrying its token for 10 minutes (reason `idle`,
   `receive::idle`), one whose write or flush failed (`write_error`), and one stopped from the page or by a quit during its
-  verify (`stopped`) pause: the file stays and the receive no longer holds the other jobs, but it keeps its token while
+  verify (`stopped`), and one the PC left (`left`, `POST /api/receive/leave`) pause: the file stays and the receive no
+  longer holds the other jobs, but it keeps its token while
   the payload runs. Its status answers 200 `paused` with the reason; PUT data and finish answer 409 `paused` with the
-  reason and `have`; a start of the same file goes on with that token. The PC goes on by itself after `idle` and
-  `write_error`, and never after `stopped` (the user stopped it on the console). A token this run does not know (after a
+  reason and `have`; a start of the same file goes on with that token (exactly where it was after `idle`, `left` or
+  `stopped`). The PC goes on by itself after `idle`, `left` and `write_error`, and never after `stopped` (the user
+  stopped it on the console). Every "same file" check (start's resume and unpause, discard, the failed-verify list, the
+  leftovers) compares the name without regard to ASCII case. A token this run does not know (after a
   restart, or once another receive took its place) is 404 `unknown_id`, and the PC starts again.
 - **The page.** A receive shows in a banner over every screen: progress and MB/s, the verify, how it ended. While it is
   under way, "Stop (keep what arrived)" (`POST /api/pairing/stop`) pauses it (a verify under way stops first, the file
@@ -1132,8 +1150,9 @@ on the page's server (port 8095), as the shared contract of both sides says:
   D-pad reaches Stop or Close first, never Delete. A cancel whose delete failed says so in amber, with the error and
   where the file stays (Settings lists it with Delete). Settings lists the `.maxpack-recv` files sends left on the drives
   (`/api/state` `receive_left`: `[{path, name, size}]`, each drive the PC may send to, read again at most every 10 s, never
-  the file of a receive under way), each with Delete behind a confirmation (`POST /api/pairing/left`, body the path: only
-  a path the list has now, `receive::may_delete_leftover`).
+  the file of a receive under way, in any ASCII case), each with Delete behind a confirmation (`POST /api/pairing/left`, body
+  the path: only a path the list has now, `receive::may_delete_leftover`; it holds the jobs gate, as a start and a discard,
+  so a start never resumes a file it deleted meanwhile).
 - Nothing else is written: the bytes go only to `<drive>/homebrew/<name>.maxpack-recv` and its rename.
 
 ## Library page (`src/ui.html`)

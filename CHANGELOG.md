@@ -21,7 +21,9 @@ What changed in each version of MaxPack for the console. The format follows
   **Delete what arrived** (asks first); a send nobody finishes pauses after 10 minutes, and Settings lists the
   files sends left behind. Off by default, and only the console's own browser turns it on; wrong codes lock
   the sender out for a minute. MaxPack for the PC can delete what a send left without starting another, also
-  on a full drive, and a refusal for space says how much of that game is already there. If what arrived
+  on a full drive, and a refusal for space says how much of that game is already there. A send cancelled on
+  the PC pauses on the console at once (one the PC could not end is let go after a minute without data when
+  the PC deletes it), and a file name that differs only in case is the same file, as on exFAT. If what arrived
   cannot be deleted, the banner says why and where it stays.
 
 ### Fixed
@@ -34,7 +36,7 @@ What changed in each version of MaxPack for the console. The format follows
   incomplete"; Install no longer calls it damaged either.
 - Install marks a `.p5z` that grew on the PC as not installable as soon as it is listed (play it from the
   `.p5z`, or make a compact copy on the PC), and Install refuses it at once, instead of only when its job
-  starts.
+  starts. It tells from the file's index alone, so the list stays quick with many large `.p5z` files.
 - A game whose `fakelib/` refresh turns into a rebuild (an ampr-emu-ng too old for a `.p5z` that grew)
   shows "Building", not "Checking".
 - When an older ampr-emu-ng stops several `.p5z` games that grew at once, the console shows one notice with

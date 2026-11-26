@@ -330,10 +330,11 @@ The whole flow, from packing on the PC:
 - **Checked on arrival:** the console reads what arrived and checks each volume and loose file against the SHA-256
   the `.p5z` was written with. A copy that checks out shows up in the library; one that does not stays aside as
   `<name>.maxpack-recv`, and the banner says what does not match.
-- **Cut short?** Run the same command again: it goes on where it was, also after a restart of the console. A send
-  nobody finishes pauses after 10 minutes and keeps what arrived; **Stop** keeps it too, **Delete what arrived**
-  (it asks first) removes it, and Settings lists what sends left behind. MaxPack on the PC can delete what a send
-  left too (`maxpack send --discard`), also when the drive is full.
+- **Cut short?** Run the same command again: it goes on where it was, also after a restart of the console. When you
+  cancel a send on the PC, the console keeps what arrived and lets go of it at once; a send that vanishes (the PC
+  turned off) pauses after 10 minutes. **Stop** on the console keeps what arrived too, **Delete what arrived** (it asks
+  first) removes it, and Settings lists what sends left behind. MaxPack on the PC can delete what a send left too
+  (`maxpack send --discard`), also when the drive is full.
 - **Safe by default:** without the code nothing is written; wrong codes lock the sender out for a minute; only a plain
   `.p5z` name is taken, and only into a drive's `homebrew/`.
 

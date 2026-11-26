@@ -1014,15 +1014,19 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
     back-off), and it ends as in 13.4.
   - During another send, Delete what arrived and confirm. Expected: the PC stops with a "cancelled" answer, the
     `.maxpack-recv` is gone, the log says `cancelled at N of M bytes`.
-  - Start a send and end the PC's command (Ctrl+C) without running it again. Expected: within 10 minutes the
-    banner says the receive is paused (`nothing from the PC for 10 min` in the log, reason `idle`) and installs,
-    verifies and the switch work again; the same send run again goes on with its token. Settings lists the `.maxpack-recv` under "Unfinished games from the PC" with its size;
-    Delete asks first and removes it.
+  - Start a send and end the PC's command (Ctrl+C), or Cancel it in the window, without running it again. Expected
+    at once: the banner says the receive is paused, the log says `paused at N of M bytes (the PC stopped the send and
+    kept what arrived)`, `/api/receive/status?id=...` answers `"state":"paused","reason":"left"`, and installs,
+    verifies and the switch work again; the same send run again goes on with its token, exactly where it was.
+  - Start a send and end the PC's process from the Task Manager (or pull its network cable) so it cannot say it left.
+    Expected: within 10 minutes the banner says the receive is paused (`nothing from the PC for 10 min` in the log,
+    reason `idle`); the same send run again goes on with its token. Settings lists the `.maxpack-recv` under
+    "Unfinished games from the PC" with its size; Delete asks first and removes it.
   - Fill a USB drive's free space to less than the game (optional). Expected: the PC is refused with how much is
     missing; if the drive fills during the send, the receive pauses with "the drive is full: N more bytes needed".
   - "New code" in Settings. Expected: the PC's old code is refused, the new one works.
-- [ ] **13.9. Delete what a send left, from the PC (the contract's v3).**
-  - Start a send of the large game to `usb0` and press Stop on the console halfway (or end the PC's command). On
+- [ ] **13.9. Delete what a send left, from the PC (the contract's v3 and v3.1).**
+  - Start a send of the large game to `usb0` and press Stop on the console halfway. On
     the PC, Delete what arrived (`maxpack send --discard "<large game>.p5z" <ip> --code <code> --drive usb0`, or the
     window's button). Expected: the PC says what it deleted; `/mnt/usb0/homebrew/<name>.maxpack-recv` is gone;
     Settings no longer lists it; the banner goes; the log has one line, `receive: discard of <name> from the PC:
@@ -1030,8 +1034,17 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
     The old token's status (`/api/receive/status?id=...` with the code) answers 404 `unknown_id`.
   - The same again. Expected: the PC says nothing of it is on the console (not "deleted"); the log says
     `nothing of it at ...`.
-  - During a send of that game, Delete what arrived from another window. Expected: refused as busy; the send
-    goes on.
+  - Start the send again, Cancel it on the PC (the window's Cancel, or Ctrl+C), then Delete what arrived at once.
+    Expected: deleted at once (the PC said it left, so the receive was paused with reason `left`); the log has
+    `... (the PC stopped the send and kept what arrived)`, then the discard's one line.
+  - Start the send again and end the PC's process from the Task Manager (it cannot say it left), then Delete what
+    arrived from another window right away. Expected: the PC says the console is letting go of it and tries again
+    (the console answers 409 `busy` with `retry_after`, the seconds until 60 s without data are up); within about
+    a minute it is deleted, and the log's line says the receive, with nothing from the PC for about 60 s, was paused
+    and ended. With curl the same: `busy` with `retry_after` at first, deleted once 60 s passed with no data.
+  - During a send of that game, Delete what arrived from another window. Expected: refused as busy (with
+    `retry_after`); the send goes on. Also with the name in another case (curl, `"name":"<NAME IN CAPITALS>.p5z"`):
+    busy, and the file is not touched.
   - With curl: `curl -X POST -H "X-MaxPack-Code: <code>" --data '{"name":"../x.p5z"}' http://<ip>:8095/api/receive/discard`
     answers 400 `bad_name`; with `"drive":"usb7"` (nothing there) 404 `no_drive`; with no drive at all it looks on
     the internal drive.
