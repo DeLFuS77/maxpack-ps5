@@ -31,16 +31,16 @@ int mpi_read_small(const char *path, size_t max, char **out, size_t *len, mp_err
     }
     if (size > max) {
         mp_file_close(f);
-        mp_err_set(e, "%s es demasiado grande", path);
+        mp_err_set(e, "%s is too large", path);
         return -1;
     }
     char *b = malloc((size_t)size + 1);
     size_t got = 0;
     int rc = b ? mp_file_pread(f, b, (size_t)size, 0, &got, e) : -1;
     mp_file_close(f);
-    if (!b) mp_err_set(e, "sin memoria");
+    if (!b) mp_err_set(e, "out of memory");
     if (rc == 0 && got != size) {
-        mp_err_set(e, "no se pudo leer entero %s", path);
+        mp_err_set(e, "could not read all of %s", path);
         rc = -1;
     }
     if (rc) {
@@ -56,7 +56,7 @@ int mpi_read_small(const char *path, size_t max, char **out, size_t *len, mp_err
 int mpi_write_replace(const char *path, const void *p, size_t n, mp_err *e) {
     char *tmp = malloc(strlen(path) + 5);
     if (!tmp) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     sprintf(tmp, "%s.tmp", path);
@@ -154,7 +154,7 @@ int mpi_file_sha(const char *path, uint64_t skip, uint8_t sha[32], uint64_t *siz
     uint8_t *buf = malloc(PIECE);
     if (!buf) {
         mp_file_close(f);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     mp_sha256 s;
@@ -164,7 +164,7 @@ int mpi_file_sha(const char *path, uint64_t skip, uint8_t sha[32], uint64_t *siz
         size_t k = total - off < PIECE ? (size_t)(total - off) : PIECE, got = 0;
         rc = mp_file_pread(f, buf, k, off, &got, e);
         if (rc == 0 && got != k) {
-            mp_err_set(e, "%s: lectura incompleta", path);
+            mp_err_set(e, "%s: incomplete read", path);
             rc = -1;
         }
         if (rc == 0) mp_sha256_update(&s, buf, k);

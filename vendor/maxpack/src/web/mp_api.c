@@ -26,12 +26,12 @@ typedef struct {
 } job_t;
 
 struct mp_api {
-    mp_inst_env env;    // con los callbacks de la API
-    mp_inst_env user;   // los de quien la creó
+    mp_inst_env env;    // with the API's callbacks
+    mp_inst_env user;   // those of whoever created it
     mp_smp_cfg smp;
     unsigned smp_retry_ms;
-    mp_mutex *mu;       // estado compartido
-    mp_mutex *run_mu;   // un trabajo o una sincronización con ShadowMountPlus a la vez
+    mp_mutex *mu;       // shared state
+    mp_mutex *run_mu;   // one job or one ShadowMountPlus sync at a time
     mp_inst_found *found;
     size_t nfound;
     job_t queue[QUEUE_MAX];
@@ -42,14 +42,12 @@ struct mp_api {
     uint64_t done, total;
     int has_last, last_counts;
     uint64_t last_ok, last_bad;
-    mp_inst_existing *last_ex;   // con needs_confirm: lo que hay que confirmar
+    mp_inst_existing *last_ex;   // with needs_confirm: what needs confirming
     size_t last_nex;
     char last_src[1024], last_dest[1024];
     char last_kind[16], last_title[16], last_code[32], last_detail[600];
     int smp_alive;
     char smp_version[32];
-    const unsigned char *page;
-    size_t page_len;
     volatile int quit;
     void (*quit_cb)(void *);   // POST /api/quit
     void *quit_ctx;
@@ -62,7 +60,7 @@ static void job_free(job_t *j) {
     memset(j, 0, sizeof *j);
 }
 
-// ---- callbacks del motor --------------------------------------------------------------------
+// ---- engine callbacks -----------------------------------------------------------------------
 
 static int api_io(void *ctx, uint64_t written, mp_err *e) {
     mp_api *a = ctx;
@@ -96,7 +94,7 @@ static void api_notify(void *ctx, const char *msg) {
     if (a->user.notify) a->user.notify(a->user.ctx, msg);
 }
 
-// ---- rutas permitidas -----------------------------------------------------------------------
+// ---- allowed paths -----------------------------------------------------------------------
 
 static int dotdot(const char *p) {
     return strstr(p, "/../") || !strncmp(p, "../", 3) || (strlen(p) >= 3 && !strcmp(p + strlen(p) - 3, "/..")) ||
@@ -125,8 +123,8 @@ static int game_dir(const char *path) {
 
 static int dest_ok(const mp_api *a, const char *dest);
 
-// Lo que se puede instalar: un .p5z, una imagen o una carpeta de juego, dentro de /data o de una
-// unidad (y nunca una raíz).
+// What can be installed: a .p5z, an image or a game folder, inside /data or a
+// drive (and never a root).
 static int source_ok(const mp_api *a, const char *path) {
     if (!path || !*path || dotdot(path) || !inside_roots(a, path) || dest_ok(a, path)) return 0;
     int k = mp_path_kind(path);
@@ -144,7 +142,7 @@ static int dest_ok(const mp_api *a, const char *dest) {
     return 0;
 }
 
-// Rutas de title_id que conoce ShadowMountPlus, solo si están dentro de las raíces (y no son una).
+// Paths of title_id that ShadowMountPlus knows, only if they are inside the roots (and are not one).
 static void smp_known(mp_api *a, const char *title, char ***out, size_t *n) {
     *out = NULL;
     *n = 0;
@@ -160,7 +158,7 @@ static void smp_known(mp_api *a, const char *title, char ***out, size_t *n) {
     for (size_t i = 0; v && i < ng; i++) {
         if (strcmp(g[i].title_id, title) != 0 || !g[i].path[0] || dotdot(g[i].path) || !inside_roots(a, g[i].path))
             continue;
-        if (!strcmp(g[i].path, a->env.internal) || dest_ok(a, g[i].path)) continue;   // nunca una raíz
+        if (!strcmp(g[i].path, a->env.internal) || dest_ok(a, g[i].path)) continue;   // never a root
         v[k] = mp_strdup(g[i].path);
         if (v[k]) k++;
     }
@@ -174,7 +172,7 @@ static void free_strs(char **v, size_t n) {
     free(v);
 }
 
-// ---- trabajos -------------------------------------------------------------------------------
+// ---- jobs -----------------------------------------------------------------------------------
 
 static void set_last(mp_api *a, const char *kind, const char *title, const char *code, const char *detail) {
     mp_mutex_lock(a->mu);
@@ -220,7 +218,7 @@ static void run_install(mp_api *a, job_t *j) {
     free_strs(known, nknown);
     char detail[600];
     if (r.status == MP_INST_NO_SPACE)
-        snprintf(detail, sizeof detail, "faltan %llu bytes", (unsigned long long)(r.need - r.avail));
+        snprintf(detail, sizeof detail, "%llu bytes missing", (unsigned long long)(r.need - r.avail));
     else
         snprintf(detail, sizeof detail, "%s", e.msg);
     if (r.status == MP_INST_DONE) {
@@ -229,11 +227,11 @@ static void run_install(mp_api *a, job_t *j) {
     }
     else if (r.status == MP_INST_FAILED && a->user.notify) {
         char msg[800];
-        snprintf(msg, sizeof msg, "No se pudo instalar %s: %s", j->name[0] ? j->name : j->title, e.msg);
+        snprintf(msg, sizeof msg, "Could not install %s: %s", j->name[0] ? j->name : j->title, e.msg);
         a->user.notify(a->user.ctx, msg);
     }
     set_last(a, "install", j->title, r.code ? r.code : "io_error", detail);
-    if (r.status == MP_INST_NEEDS_CONFIRM) {   // algo cambió desde que se encoló: la página vuelve a preguntar
+    if (r.status == MP_INST_NEEDS_CONFIRM) {   // something changed since it was queued: the page asks again
         mp_mutex_lock(a->mu);
         a->last_ex = r.existing;
         a->last_nex = r.nexisting;
@@ -254,8 +252,8 @@ static void run_verify(mp_api *a, job_t *j) {
         return;
     }
     char detail[200];
-    snprintf(detail, sizeof detail, "%llu correctos, %llu con fallos%s", (unsigned long long)r.files_ok,
-             (unsigned long long)r.files_bad, r.p5z_checked ? "" : " (sin el .p5z para comparar los sueltos)");
+    snprintf(detail, sizeof detail, "%llu OK, %llu failed%s", (unsigned long long)r.files_ok,
+             (unsigned long long)r.files_bad, r.p5z_checked ? "" : " (without the .p5z to compare the loose files)");
     set_last(a, "verify", j->title, r.files_bad ? "verify_bad" : "done", detail);
     mp_mutex_lock(a->mu);
     a->last_counts = 1;
@@ -281,7 +279,7 @@ static void run_uninstall(mp_api *a, job_t *j) {
     set_last(a, "uninstall", j->title, "done", "");
     if (a->user.notify) {
         char msg[300];
-        snprintf(msg, sizeof msg, "%s desinstalado", rec.name[0] ? rec.name : j->title);
+        snprintf(msg, sizeof msg, "%s uninstalled", rec.name[0] ? rec.name : j->title);
         a->user.notify(a->user.ctx, msg);
     }
 }
@@ -484,7 +482,7 @@ static void handle_state(mp_api *a, mp_http_resp *rs) {
     key(&b, "pending", 0);
     mp_jbuf_raw(&b, "[");
     for (size_t i = 0, first = 1; i < npend; i++) {
-        if (!strcmp(pend[i].title_id, busy_title)) continue;   // la que está en marcha no es "a medias"
+        if (!strcmp(pend[i].title_id, busy_title)) continue;   // the one in progress is not "half-done"
         mp_jbuf_raw(&b, first ? "{" : ",{");
         first = 0;
         key(&b, "title_id", 1);
@@ -591,7 +589,7 @@ static int title_busy(mp_api *a, const char *title) {
     return busy;
 }
 
-// Encola j (se queda con su memoria). 0 si cabe y el título no está ocupado.
+// Queues j (takes over its memory). 0 if it fits and the title is not busy.
 static const char *enqueue(mp_api *a, job_t *j) {
     const char *err = NULL;
     mp_mutex_lock(a->mu);
@@ -605,7 +603,7 @@ static const char *enqueue(mp_api *a, job_t *j) {
 static void handle_probe(mp_api *a, const mp_json *in, mp_http_resp *rs) {
     const char *path = mp_json_str(mp_json_get(in, "path"));
     if (!source_ok(a, path)) {
-        respond_err(rs, 200, "bad_path", "ruta no permitida");
+        respond_err(rs, 200, "bad_path", "path not allowed");
         return;
     }
     mp_inst_found f;
@@ -625,11 +623,11 @@ static void handle_probe(mp_api *a, const mp_json *in, mp_http_resp *rs) {
 static void handle_install(mp_api *a, const mp_json *in, mp_http_resp *rs) {
     const char *path = mp_json_str(mp_json_get(in, "p5z")), *dest = mp_json_str(mp_json_get(in, "dest"));
     if (!source_ok(a, path)) {
-        respond_err(rs, 200, "bad_path", "ruta no permitida");
+        respond_err(rs, 200, "bad_path", "path not allowed");
         return;
     }
     if (!dest_ok(a, dest)) {
-        respond_err(rs, 200, "bad_dest", "destino no disponible");
+        respond_err(rs, 200, "bad_dest", "destination not available");
         return;
     }
     mp_inst_found f;
@@ -643,7 +641,7 @@ static void handle_install(mp_api *a, const mp_json *in, mp_http_resp *rs) {
     mp_mutex_unlock(a->mu);
     if (busy) {
         free(f.path);
-        respond_err(rs, 200, "busy", "ese juego ya se está instalando o está en cola");
+        respond_err(rs, 200, "busy", "that game is already being installed or is queued");
         return;
     }
     job_t j;
@@ -663,7 +661,7 @@ static void handle_install(mp_api *a, const mp_json *in, mp_http_resp *rs) {
         const char *s = mp_json_str(mp_json_at(rep, i));
         if (s && (j.replace[j.nreplace] = mp_strdup(s)) != NULL) j.nreplace++;
     }
-    // La misma decisión que tomará el motor (mp_inst_plan_make), para contestar ya.
+    // The same decision the engine will make (mp_inst_plan_make), to answer right away.
     char **known = NULL;
     size_t nknown = 0;
     smp_known(a, f.title_id, &known, &nknown);
@@ -709,7 +707,7 @@ static void handle_install(mp_api *a, const mp_json *in, mp_http_resp *rs) {
     }
     mp_inst_plan_free(&pl);
     const char *err = enqueue(a, &j);
-    if (err) respond_err(rs, 200, err, "ese juego ya se está instalando o la cola está llena");
+    if (err) respond_err(rs, 200, err, "that game is already being installed or the queue is full");
     else respond_ok(rs);
 }
 
@@ -717,14 +715,14 @@ static void handle_title_job(mp_api *a, const mp_json *in, mp_http_resp *rs, int
     const char *title = mp_json_str(mp_json_get(in, "title_id"));
     mp_inst_record rec;
     if (!title || !mp_inst_title_ok(title) || mp_inst_record_load(&a->env, title, &rec, NULL) != 0) {
-        respond_err(rs, 200, "not_found", "ese juego no está instalado con MaxPack");
+        respond_err(rs, 200, "not_found", "that game is not installed with MaxPack");
         return;
     }
     mp_mutex_lock(a->mu);
     int busy = title_busy(a, title);
     mp_mutex_unlock(a->mu);
     if (busy) {
-        respond_err(rs, 200, "busy", "ese juego se está instalando o está en cola");
+        respond_err(rs, 200, "busy", "that game is being installed or is queued");
         return;
     }
     int confirm = 0;
@@ -739,22 +737,22 @@ static void handle_title_job(mp_api *a, const mp_json *in, mp_http_resp *rs, int
     snprintf(j.title, sizeof j.title, "%s", title);
     snprintf(j.name, sizeof j.name, "%s", rec.name);
     const char *err = enqueue(a, &j);
-    if (err) respond_err(rs, 200, err, "ese juego está ocupado o la cola está llena");
+    if (err) respond_err(rs, 200, err, "that game is busy or the queue is full");
     else respond_ok(rs);
 }
 
-// Descartar una instalación a medias: borra su estado y su temporal.
+// Discard a half-done install: deletes its state and its temporary folder.
 static void handle_discard(mp_api *a, const mp_json *in, mp_http_resp *rs) {
     const char *title = mp_json_str(mp_json_get(in, "title_id"));
     if (!title || !mp_inst_title_ok(title)) {
-        respond_err(rs, 200, "not_found", "no hay ninguna instalación a medias de ese juego");
+        respond_err(rs, 200, "not_found", "there is no half-done install of that game");
         return;
     }
     mp_mutex_lock(a->mu);
     int busy = title_busy(a, title);
     mp_mutex_unlock(a->mu);
     if (busy) {
-        respond_err(rs, 200, "busy", "ese juego se está instalando o está en cola");
+        respond_err(rs, 200, "busy", "that game is being installed or is queued");
         return;
     }
     mp_err e = {{0}};
@@ -773,7 +771,7 @@ typedef struct {
 static int icon_sink(void *ctx, const void *p, size_t n, mp_err *e) {
     icon_buf *b = ctx;
     if (b->n + n > b->cap) {
-        mp_err_set(e, "icono demasiado grande");
+        mp_err_set(e, "icon too large");
         return -1;
     }
     memcpy(b->buf + b->n, p, n);
@@ -786,7 +784,7 @@ static void handle_icon(mp_api *a, const mp_http_req *rq, mp_http_resp *rs) {
     rs->status = 404;
     rs->content_type = "text/plain";
     if (mp_http_query_get(rq->query, "p5z", path, sizeof path) != 0 || !source_ok(a, path)) return;
-    if (mp_path_kind(path) == 2) {   // carpeta de juego: su sce_sys/icon0.png
+    if (mp_path_kind(path) == 2) {   // game folder: its sce_sys/icon0.png
         char *icon = mpi_join(path, "sce_sys/icon0.png"), *buf = NULL;
         size_t n = 0;
         if (icon && mp_path_kind(icon) == 1 && mpi_read_small(icon, ICON_MAX, &buf, &n, NULL) == 0) {
@@ -818,8 +816,8 @@ static void handle_icon(mp_api *a, const mp_http_req *rq, mp_http_resp *rs) {
     mp_p5z_close(p);
 }
 
-// Host tiene que ser una IP, [IPv6] o localhost (con puerto o sin él): así una web cualquiera no
-// puede leer la API con un nombre que apunte a la consola (rebinding de DNS).
+// Host must be an IP, [IPv6] or localhost (with a port or without): so that an arbitrary website
+// cannot read the API with a name that points to the console (DNS rebinding).
 static int host_ok(const char *h) {
     if (!h || !*h) return 0;
     if (h[0] == '[') return strchr(h, ']') != NULL;
@@ -833,8 +831,8 @@ static int host_ok(const char *h) {
     return dots == 3;
 }
 
-// Un POST de otra web sin preflight solo puede llevar text/plain, form o multipart: exigir JSON
-// hace que el navegador pida permiso antes (y este servidor no lo da).
+// A POST from another website without a preflight can only carry text/plain, form or multipart: requiring JSON
+// makes the browser ask for permission first (and this server does not give it).
 static int json_ok(const char *ct) {
     const char *want = "application/json";
     if (!ct) return 0;
@@ -850,24 +848,10 @@ void mp_api_handle(void *ctx, const mp_http_req *rq, mp_http_resp *rs) {
     mp_api *a = ctx;
     if (!strncmp(rq->path, "/api/", 5) &&
         (!host_ok(rq->host) || (!strcmp(rq->method, "POST") && !json_ok(rq->content_type)))) {
-        respond_err(rs, 403, "forbidden", "petición rechazada: solo se acepta la página de MaxPack");
+        respond_err(rs, 403, "forbidden", "request rejected: only MaxPack's page is accepted");
         return;
     }
     int get = !strcmp(rq->method, "GET"), post = !strcmp(rq->method, "POST");
-    if (get && !strcmp(rq->path, "/")) {
-        if (!a->page) {
-            rs->status = 404;
-            return;
-        }
-        rs->status = 200;
-        rs->content_type = "text/html; charset=utf-8";
-        rs->body = malloc(a->page_len + 1);
-        if (rs->body) {
-            memcpy(rs->body, a->page, a->page_len);
-            rs->body_len = a->page_len;
-        }
-        return;
-    }
     if (get && !strcmp(rq->path, "/api/state")) {
         handle_state(a, rs);
         return;
@@ -881,13 +865,13 @@ void mp_api_handle(void *ctx, const mp_http_req *rq, mp_http_resp *rs) {
         return;
     }
     if (!strcmp(rq->path, "/api/quit")) {
-        // Solo desde esta misma consola: otra copia de MaxPack pide que se deje el puerto libre.
+        // Only from this same console: another copy of MaxPack asks for the port to be left free.
         if (!rq->loopback) {
-            respond_err(rs, 403, "forbidden", "solo se acepta desde la propia consola");
+            respond_err(rs, 403, "forbidden", "only accepted from the console itself");
             return;
         }
         if (!a->quit_cb) {
-            respond_err(rs, 403, "forbidden", "no hay a quién avisar");
+            respond_err(rs, 403, "forbidden", "nobody to notify");
             return;
         }
         respond_ok(rs);
@@ -896,7 +880,7 @@ void mp_api_handle(void *ctx, const mp_http_req *rq, mp_http_resp *rs) {
     }
     mp_json *in = mp_json_parse(rq->body_len ? rq->body : "{}", rq->body_len ? rq->body_len : 2, NULL);
     if (!in) {
-        respond_err(rs, 400, "bad_json", "el cuerpo no es JSON válido");
+        respond_err(rs, 400, "bad_json", "the body is not valid JSON");
         return;
     }
     const char *r = rq->path + 5;
@@ -929,7 +913,7 @@ void mp_api_handle(void *ctx, const mp_http_req *rq, mp_http_resp *rs) {
 mp_api *mp_api_new(const mp_inst_env *env, const mp_smp_cfg *smp, unsigned smp_retry_ms, mp_err *e) {
     mp_api *a = calloc(1, sizeof *a);
     if (!a) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return NULL;
     }
     a->user = *env;
@@ -938,7 +922,7 @@ mp_api *mp_api_new(const mp_inst_env *env, const mp_smp_cfg *smp, unsigned smp_r
     a->env.io_check = api_io;
     a->env.progress = api_progress;
     a->env.notify = api_notify;
-    if (env->free_space) a->env.free_space = api_free_space;   // con el ctx de quien la creó
+    if (env->free_space) a->env.free_space = api_free_space;   // with the ctx of whoever created it
     a->smp = *smp;
     if (smp->fakelib_mode == smp->mode_buf) a->smp.fakelib_mode = a->smp.mode_buf;
     a->smp_retry_ms = smp_retry_ms ? smp_retry_ms : 60000;
@@ -946,14 +930,14 @@ mp_api *mp_api_new(const mp_inst_env *env, const mp_smp_cfg *smp, unsigned smp_r
     a->run_mu = mp_mutex_new();
     if (!a->mu || !a->run_mu) {
         mp_api_free(a);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return NULL;
     }
-    mp_inst_recover(&a->env);   // un corte a mitad de reemplazar deja lo viejo apartado
+    mp_inst_recover(&a->env);   // a cut-off in the middle of a replace leaves the old one set aside
     rescan(a);
     if (mp_thread_start(&a->worker, worker, a) != 0 || mp_thread_start(&a->smp_thread, smp_loop, a) != 0) {
         mp_api_free(a);
-        mp_err_set(e, "no se pudieron crear los hilos");
+        mp_err_set(e, "could not create the threads");
         return NULL;
     }
     return a;
@@ -968,11 +952,6 @@ int mp_api_wait_idle(mp_api *a, unsigned timeout_ms) {
         if (t >= timeout_ms) return -1;
         mp_sleep_ms(10);
     }
-}
-
-void mp_api_set_page(mp_api *a, const unsigned char *html, size_t len) {
-    a->page = html;
-    a->page_len = len;
 }
 
 void mp_api_set_quit(mp_api *a, mp_api_quit_cb cb, void *ctx) {

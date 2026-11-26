@@ -1,0 +1,6 @@
+; SPDX-License-Identifier: GPL-3.0-or-later
+; maxpack-thumbs.dll exports only what COM needs to load it; it never registers itself (the window does).
+LIBRARY maxpack-thumbs
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

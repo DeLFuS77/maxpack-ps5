@@ -25,7 +25,7 @@ typedef SOCKET sock_t;
 #define close_sock closesocket
 static void net_init(void) {
     WSADATA w;
-    WSAStartup(MAKEWORD(2, 2), &w);   // con contador: se puede llamar varias veces
+    WSAStartup(MAKEWORD(2, 2), &w);   // counted: can be called several times
 }
 static int last_err(void) { return WSAGetLastError(); }
 #else
@@ -106,7 +106,7 @@ static void send_simple(sock_t s, int status) {
     send_response(s, status, "application/json", body, (size_t)n);
 }
 
-// Busca el valor de una cabecera (sin distinguir mayúsculas) en head (acabado en NUL).
+// Finds a header's value (case-insensitive) in head (NUL-terminated).
 static const char *find_header(const char *head, const char *name) {
     size_t n = strlen(name);
     for (const char *p = strstr(head, "\r\n"); p; p = strstr(p + 2, "\r\n")) {
@@ -127,8 +127,8 @@ static const char *find_header(const char *head, const char *name) {
     return NULL;
 }
 
-// Lee hasta el final de las cabeceras. Devuelve los bytes leídos (puede incluir parte del cuerpo)
-// y en *hend la posición del cuerpo; -1 si se corta o es demasiado largo.
+// Reads up to the end of the headers. Returns the bytes read (may include part of the body)
+// and in *hend the position of the body; -1 if it is cut off or too long.
 static long read_head(sock_t s, char *buf, size_t cap, size_t *hend) {
     size_t n = 0;
     while (n < cap - 1) {
@@ -166,7 +166,7 @@ static void serve_one(mp_http_server *srv, sock_t c, int loopback) {
         free(buf);
         return;
     }
-    // Línea de petición: MÉTODO SP destino SP HTTP/x.y
+    // Request line: METHOD SP target SP HTTP/x.y
     char *line_end = strstr(buf, "\r\n");
     *line_end = 0;
     char *sp1 = strchr(buf, ' '), *sp2 = sp1 ? strchr(sp1 + 1, ' ') : NULL;
@@ -177,11 +177,11 @@ static void serve_one(mp_http_server *srv, sock_t c, int loopback) {
     }
     *sp1 = 0;
     *sp2 = 0;
-    *line_end = '\r';   // para que find_header vea "\r\n" tras la línea
+    *line_end = '\r';   // so that find_header sees "\r\n" after the line
     char method[16], target[2048];
     snprintf(method, sizeof method, "%s", buf);
     snprintf(target, sizeof target, "%s", sp1 + 1);
-    buf[hend - 2] = 0;   // las cabeceras acaban en NUL para buscarlas
+    buf[hend - 2] = 0;   // the headers end in NUL so they can be searched
     const char *cl = find_header(line_end, "Content-Length");
     char ctype[128] = "", host[256] = "";
     const char *ct = find_header(line_end, "Content-Type"), *ho = find_header(line_end, "Host");
@@ -253,20 +253,20 @@ mp_http_server *mp_http_start(const char *bind_addr, uint16_t port, mp_http_hand
     a.sin_family = AF_INET;
     a.sin_port = htons(port);
     if (inet_pton(AF_INET, bind_addr, &a.sin_addr) != 1) {
-        mp_err_set(e, "dirección no válida: %s", bind_addr);
+        mp_err_set(e, "invalid address: %s", bind_addr);
         return NULL;
     }
     sock_t s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == BAD_SOCK) {
-        mp_err_set(e, "no se puede crear el socket (%d)", last_err());
+        mp_err_set(e, "cannot create the socket (%d)", last_err());
         return NULL;
     }
 #ifndef _WIN32
-    int one = 1;   // en Windows SO_REUSEADDR permitiría robar un puerto en uso
+    int one = 1;   // on Windows SO_REUSEADDR would allow stealing a port in use
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 #endif
     if (bind(s, (struct sockaddr *)&a, sizeof a) != 0 || listen(s, 16) != 0) {
-        mp_err_set(e, "no se puede escuchar en %s:%u (¿está ocupado?) (%d)", bind_addr, (unsigned)port, last_err());
+        mp_err_set(e, "cannot listen on %s:%u (is it busy?) (%d)", bind_addr, (unsigned)port, last_err());
         close_sock(s);
         return NULL;
     }
@@ -275,7 +275,7 @@ mp_http_server *mp_http_start(const char *bind_addr, uint16_t port, mp_http_hand
     mp_http_server *srv = calloc(1, sizeof *srv);
     if (!srv) {
         close_sock(s);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return NULL;
     }
     srv->ls = s;
@@ -285,7 +285,7 @@ mp_http_server *mp_http_start(const char *bind_addr, uint16_t port, mp_http_hand
     if (mp_thread_start(&srv->t, accept_loop, srv) != 0) {
         close_sock(s);
         free(srv);
-        mp_err_set(e, "no se pudo crear el hilo del servidor");
+        mp_err_set(e, "could not create the server thread");
         return NULL;
     }
     return srv;
@@ -301,7 +301,7 @@ void mp_http_stop(mp_http_server *s) {
     free(s);
 }
 
-// ---- cliente --------------------------------------------------------------------------------
+// ---- client ---------------------------------------------------------------------------------
 
 static int set_nonblock(sock_t s, int on) {
 #ifdef _WIN32
@@ -344,17 +344,17 @@ int mp_http_request(const char *host, uint16_t port, const char *method, const c
     a.sin_family = AF_INET;
     a.sin_port = htons(port);
     if (inet_pton(AF_INET, host, &a.sin_addr) != 1) {
-        mp_err_set(e, "dirección no válida: %s", host);
+        mp_err_set(e, "invalid address: %s", host);
         return -1;
     }
     sock_t s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == BAD_SOCK) {
-        mp_err_set(e, "no se puede crear el socket");
+        mp_err_set(e, "cannot create the socket");
         return -1;
     }
     if (connect_timeout(s, &a, timeout_ms) != 0) {
         close_sock(s);
-        mp_err_set(e, "no se puede conectar con %s:%u", host, (unsigned)port);
+        mp_err_set(e, "cannot connect to %s:%u", host, (unsigned)port);
         return -1;
     }
     set_timeouts(s, timeout_ms);
@@ -366,7 +366,7 @@ int mp_http_request(const char *host, uint16_t port, const char *method, const c
     if (k < 0 || (size_t)k >= sizeof head || send_all(s, head, (size_t)k) != 0 ||
         (body_len && send_all(s, body, body_len) != 0)) {
         close_sock(s);
-        mp_err_set(e, "no se pudo enviar la petición a %s:%u", host, (unsigned)port);
+        mp_err_set(e, "could not send the request to %s:%u", host, (unsigned)port);
         return -1;
     }
     size_t cap = 64u << 10, n = 0;
@@ -417,7 +417,7 @@ int mp_http_request(const char *host, uint16_t port, const char *method, const c
         }
     }
     free(buf);
-    if (rc) mp_err_set(e, "%s:%u no respondió bien", host, (unsigned)port);
+    if (rc) mp_err_set(e, "%s:%u did not respond properly", host, (unsigned)port);
     return rc;
 }
 

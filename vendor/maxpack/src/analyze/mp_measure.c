@@ -8,8 +8,8 @@
 #include "mp_platform.h"
 
 struct mp_measurer {
-    ZSTD_CCtx *cctx;      // sin diccionario; se reinicia en cada bloque
-    ZSTD_CCtx *dctx[2];   // dctx[p] lleva cargado dict[p] (NULL si no hay)
+    ZSTD_CCtx *cctx;      // no dictionary; reset on every block
+    ZSTD_CCtx *dctx[2];   // dctx[p] has dict[p] loaded (NULL if none)
     z_stream zs;
     int zs_ok;
     uint8_t *out;
@@ -137,7 +137,7 @@ void mp_measure_window(mp_measurer *m, const uint8_t *data, size_t len, unsigned
     if (dc) {
         dict_cfg(m, dc, data, len, &st[MP_CFG_DICT_L19]);
     } else {
-        // Sin diccionario para esta paridad, el resultado es exactamente el de v1-l19.
+        // Without a dictionary for this parity, the result is exactly v1-l19's.
         st[MP_CFG_DICT_L19].raw += l19.raw;
         st[MP_CFG_DICT_L19].stored += l19.stored;
         st[MP_CFG_DICT_L19].ns += l19.ns;

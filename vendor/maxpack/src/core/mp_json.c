@@ -12,8 +12,8 @@ enum { J_NULL, J_BOOL, J_NUM, J_STR, J_ARR, J_OBJ };
 struct mp_json {
     int type;
     int b;
-    char *key;   // en un miembro de objeto
-    char *s;     // cadena o texto del número
+    char *key;   // in an object member
+    char *s;     // string, or the number's text
     mp_json **kids;
     size_t nkids;
 };
@@ -25,7 +25,7 @@ typedef struct {
 } parser;
 
 static void fail(parser *ps, const char *why) {
-    if (!ps->failed) mp_err_set(ps->e, "JSON no válido: %s", why);
+    if (!ps->failed) mp_err_set(ps->e, "invalid JSON: %s", why);
     ps->failed = 1;
 }
 
@@ -45,7 +45,7 @@ void mp_json_free(mp_json *j) {
 static int add_kid(parser *ps, mp_json *parent, mp_json *kid) {
     mp_json **k = realloc(parent->kids, (parent->nkids + 1) * sizeof *k);
     if (!k) {
-        fail(ps, "sin memoria");
+        fail(ps, "out of memory");
         return -1;
     }
     parent->kids = k;
@@ -55,7 +55,7 @@ static int add_kid(parser *ps, mp_json *parent, mp_json *kid) {
 
 static int hex4(parser *ps, unsigned *out) {
     if (ps->end - ps->p < 4) {
-        fail(ps, "\\u incompleto");
+        fail(ps, "incomplete \\u");
         return -1;
     }
     unsigned v = 0;
@@ -66,7 +66,7 @@ static int hex4(parser *ps, unsigned *out) {
         else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
         else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
         else {
-            fail(ps, "\\u con un carácter que no es hexadecimal");
+            fail(ps, "\\u with a character that is not hexadecimal");
             return -1;
         }
     }
@@ -97,25 +97,25 @@ static size_t put_utf8(char *o, unsigned cp) {
     return 4;
 }
 
-// Lee una cadena (ps->p en la comilla de apertura). Devuelve malloc o NULL.
+// Reads a string (ps->p at the opening quote). Returns malloc or NULL.
 static char *parse_string(parser *ps) {
     ps->p++;
-    // Cada escape ocupa al menos tantos bytes como su UTF-8: el tamaño de la entrada basta.
+    // Each escape takes at least as many bytes as its UTF-8: the input size is enough.
     const char *q = ps->p;
     while (q < ps->end && *q != '"') q += (*q == '\\' && q + 1 < ps->end) ? 2 : 1;
     if (q >= ps->end) {
-        fail(ps, "cadena sin cerrar");
+        fail(ps, "unterminated string");
         return NULL;
     }
     char *out = malloc((size_t)(q - ps->p) + 1), *o = out;
     if (!out) {
-        fail(ps, "sin memoria");
+        fail(ps, "out of memory");
         return NULL;
     }
     while (ps->p < ps->end && *ps->p != '"') {
         unsigned char c = (unsigned char)*ps->p;
         if (c < 0x20) {
-            fail(ps, "carácter de control sin escapar en una cadena");
+            fail(ps, "unescaped control character in a string");
             break;
         }
         if (c != '\\') {
@@ -140,27 +140,27 @@ static char *parse_string(parser *ps) {
             if (hex4(ps, &cp) != 0) break;
             if (cp >= 0xD800 && cp <= 0xDBFF) {
                 if (ps->end - ps->p < 6 || ps->p[0] != '\\' || ps->p[1] != 'u') {
-                    fail(ps, "sustituto UTF-16 sin pareja");
+                    fail(ps, "unpaired UTF-16 surrogate");
                     break;
                 }
                 ps->p += 2;
                 if (hex4(ps, &lo) != 0) break;
                 if (lo < 0xDC00 || lo > 0xDFFF) {
-                    fail(ps, "sustituto UTF-16 sin pareja");
+                    fail(ps, "unpaired UTF-16 surrogate");
                     break;
                 }
                 cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
             } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
-                fail(ps, "sustituto UTF-16 sin pareja");
+                fail(ps, "unpaired UTF-16 surrogate");
                 break;
             } else if (cp == 0) {
-                fail(ps, "carácter NUL en una cadena");
+                fail(ps, "NUL character in a string");
                 break;
             }
             o += put_utf8(o, cp);
             break;
         }
-        default: fail(ps, "escape desconocido");
+        default: fail(ps, "unknown escape");
         }
         if (ps->failed) break;
     }
@@ -168,7 +168,7 @@ static char *parse_string(parser *ps) {
         free(out);
         return NULL;
     }
-    ps->p++;   // comilla de cierre
+    ps->p++;   // closing quote
     *o = 0;
     return out;
 }
@@ -177,7 +177,7 @@ static mp_json *parse_value(parser *ps, int depth);
 
 static mp_json *new_node(parser *ps, int type) {
     mp_json *j = calloc(1, sizeof *j);
-    if (!j) fail(ps, "sin memoria");
+    if (!j) fail(ps, "out of memory");
     else j->type = type;
     return j;
 }
@@ -186,7 +186,7 @@ static mp_json *parse_number(parser *ps) {
     const char *s = ps->p;
     if (ps->p < ps->end && *ps->p == '-') ps->p++;
     if (ps->p >= ps->end || *ps->p < '0' || *ps->p > '9') {
-        fail(ps, "número mal formado");
+        fail(ps, "malformed number");
         return NULL;
     }
     if (*ps->p == '0') ps->p++;
@@ -195,7 +195,7 @@ static mp_json *parse_number(parser *ps) {
     if (ps->p < ps->end && *ps->p == '.') {
         ps->p++;
         if (ps->p >= ps->end || *ps->p < '0' || *ps->p > '9') {
-            fail(ps, "número mal formado");
+        fail(ps, "malformed number");
             return NULL;
         }
         while (ps->p < ps->end && *ps->p >= '0' && *ps->p <= '9') ps->p++;
@@ -204,7 +204,7 @@ static mp_json *parse_number(parser *ps) {
         ps->p++;
         if (ps->p < ps->end && (*ps->p == '+' || *ps->p == '-')) ps->p++;
         if (ps->p >= ps->end || *ps->p < '0' || *ps->p > '9') {
-            fail(ps, "número mal formado");
+        fail(ps, "malformed number");
             return NULL;
         }
         while (ps->p < ps->end && *ps->p >= '0' && *ps->p <= '9') ps->p++;
@@ -215,7 +215,7 @@ static mp_json *parse_number(parser *ps) {
     j->s = malloc(len + 1);
     if (!j->s) {
         free(j);
-        fail(ps, "sin memoria");
+        fail(ps, "out of memory");
         return NULL;
     }
     memcpy(j->s, s, len);
@@ -234,7 +234,7 @@ static int word(parser *ps, const char *w) {
 
 static mp_json *parse_container(parser *ps, int depth, int obj) {
     if (depth >= MAX_DEPTH) {
-        fail(ps, "demasiados niveles");
+        fail(ps, "too many levels");
         return NULL;
     }
     ps->p++;
@@ -250,7 +250,7 @@ static mp_json *parse_container(parser *ps, int depth, int obj) {
         if (obj) {
             skip_ws(ps);
             if (ps->p >= ps->end || *ps->p != '"') {
-                fail(ps, "se esperaba el nombre de un miembro");
+                fail(ps, "expected a member name");
                 break;
             }
             key = parse_string(ps);
@@ -258,7 +258,7 @@ static mp_json *parse_container(parser *ps, int depth, int obj) {
             skip_ws(ps);
             if (ps->p >= ps->end || *ps->p != ':') {
                 free(key);
-                fail(ps, "falta ':'");
+                fail(ps, "missing ':'");
                 break;
             }
             ps->p++;
@@ -282,7 +282,7 @@ static mp_json *parse_container(parser *ps, int depth, int obj) {
             ps->p++;
             return j;
         }
-        fail(ps, obj ? "falta ',' o '}'" : "falta ',' o ']'");
+        fail(ps, obj ? "missing ',' or '}'" : "missing ',' or ']'");
         break;
     }
     mp_json_free(j);
@@ -292,7 +292,7 @@ static mp_json *parse_container(parser *ps, int depth, int obj) {
 static mp_json *parse_value(parser *ps, int depth) {
     skip_ws(ps);
     if (ps->p >= ps->end) {
-        fail(ps, "falta un valor");
+        fail(ps, "missing a value");
         return NULL;
     }
     char c = *ps->p;
@@ -318,7 +318,7 @@ static mp_json *parse_value(parser *ps, int depth) {
     } else if (word(ps, "null")) {
         j = new_node(ps, J_NULL);
     } else {
-        fail(ps, "valor desconocido");
+        fail(ps, "unknown value");
     }
     return j;
 }
@@ -329,7 +329,7 @@ mp_json *mp_json_parse(const char *s, size_t n, mp_err *e) {
     if (j) {
         skip_ws(&ps);
         if (ps.p != ps.end) {
-            fail(&ps, "hay texto después del valor");
+            fail(&ps, "text after the value");
             mp_json_free(j);
             j = NULL;
         }
@@ -386,7 +386,7 @@ const mp_json *mp_json_at(const mp_json *arr, size_t i) {
     return arr && arr->type == J_ARR && i < arr->nkids ? arr->kids[i] : NULL;
 }
 
-// ---- salida -------------------------------------------------------------------------------
+// ---- output -------------------------------------------------------------------------------
 
 static void put(mp_jbuf *b, const char *s, size_t n) {
     if (b->oom) return;
@@ -408,7 +408,7 @@ static void put(mp_jbuf *b, const char *s, size_t n) {
 
 void mp_jbuf_raw(mp_jbuf *b, const char *s) { put(b, s, strlen(s)); }
 
-// Longitud de una secuencia UTF-8 válida que empieza en s, o 0.
+// Length of a valid UTF-8 sequence starting at s, or 0.
 static size_t utf8_len(const unsigned char *s) {
     unsigned c = s[0];
     if (c < 0x80) return 1;

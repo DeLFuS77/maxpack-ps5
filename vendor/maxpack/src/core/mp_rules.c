@@ -26,7 +26,19 @@ static int istarts_n(const char *a, size_t an, const char *prefix) {
     return an >= pn && ieq_n(a, pn, prefix);
 }
 
-// Un segmento con '*' y '?' (sin '/').
+// The sce_sys/ of a DLC packed with its game: in addcont0/ to addcont99/ at the root (fn is the length
+// of the first folder of path), as pack --dlc names them (mp_dlc.h). It stays loose as the game's own
+// does, so the DLC's folder is a real one on the disk the game runs from.
+static int dlc_sce_sys(const char *path, size_t fn) {
+    if (fn < 8 || fn > 9 || !istarts_n(path, fn, "addcont")) return 0;
+    for (size_t i = 7; i < fn; i++)
+        if (path[i] < '0' || path[i] > '9') return 0;
+    if (fn == 9 && path[7] == '0') return 0;   // no leading zeros: addcont01 is no DLC's folder
+    const char *rest = path + fn + 1, *slash = strchr(rest, '/');
+    return slash && ieq_n(rest, (size_t)(slash - rest), "sce_sys") && slash[1];
+}
+
+// A segment with '*' and '?' (no '/').
 static int seg_match(const char *p, const char *pe, const char *s, const char *se) {
     while (p < pe) {
         if (*p == '*') {
@@ -53,10 +65,10 @@ int mp_glob_match(const char *g, const char *p) {
     if (!*g) return !*p;
     const char *ge = seg_end(g), *gnext = *ge ? ge + 1 : ge;
     if (ge - g == 2 && g[0] == '*' && g[1] == '*') {
-        if (mp_glob_match(gnext, p)) return 1;   // '**' = cero segmentos
+        if (mp_glob_match(gnext, p)) return 1;   // '**' = zero segments
         if (!*p) return 0;
         const char *pe = seg_end(p);
-        return mp_glob_match(g, *pe ? pe + 1 : pe);   // '**' se come un segmento más
+        return mp_glob_match(g, *pe ? pe + 1 : pe);   // '**' eats one more segment
     }
     if (!*p) return 0;
     const char *pe = seg_end(p);
@@ -68,11 +80,11 @@ mp_rules *mp_rules_new(void) { return calloc(1, sizeof(mp_rules)); }
 
 int mp_rules_add_keep_loose(mp_rules *r, const char *glob, mp_err *e) {
     if (!glob || !*glob) {
-        mp_err_set(e, "--keep-loose necesita un patrón");
+        mp_err_set(e, "--keep-loose needs a pattern");
         return -1;
     }
     if (strchr(glob, '\\')) {
-        mp_err_set(e, "--keep-loose usa '/' como separador, no '\\': %s", glob);
+        mp_err_set(e, "--keep-loose uses '/' as the separator, not '\\': %s", glob);
         return -1;
     }
     char **v = realloc(r->keep, (r->n + 1) * sizeof *v);
@@ -80,7 +92,7 @@ int mp_rules_add_keep_loose(mp_rules *r, const char *glob, mp_err *e) {
     if (!v || !copy) {
         free(copy);
         if (v) r->keep = v;
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     r->keep = v;
@@ -102,12 +114,12 @@ mp_class mp_rules_classify(const mp_rules *r, const char *path, uint64_t size) {
             ieq_n(dot, en, ".sprx") || ieq_n(dot, en, ".ini"))
             return MP_LOOSE;
     }
-    if (slash) {   // carpetas de la raíz que carga el sistema
+    if (slash) {   // root folders the system loads
         size_t fn = (size_t)(slash - path);
         if (ieq_n(path, fn, "sce_sys") || ieq_n(path, fn, "sce_module") ||
-            istarts_n(path, fn, "fakelib") || istarts_n(path, fn, "ampr_assets"))
+            istarts_n(path, fn, "fakelib") || istarts_n(path, fn, "ampr_assets") || dlc_sce_sys(path, fn))
             return MP_LOOSE;
-    } else {       // archivos AMPR de la raíz
+    } else {       // AMPR files in the root
         if (ieq_n(path, bn, "ampr_emu.index") || ieq_n(path, bn, "ampr_zstd.index") ||
             ieq_n(path, bn, "ampr_commands.bin") || ieq_n(path, bn, "apr_emu.log") ||
             ieq_n(path, bn, "ampr_emu.log") || istarts_n(path, bn, "ampr_assets") ||

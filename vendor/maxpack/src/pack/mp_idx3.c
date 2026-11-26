@@ -10,7 +10,7 @@
 #define IDX3_HEADER 48u
 #define IDX3_RECORD 24u
 #define IDX3_SLOT 16u
-#define IDX3_SLOT_ALIGN 8u   // lo que exige leer un slot: mp_idx3_build alinea a 16, otros generadores a 8
+#define IDX3_SLOT_ALIGN 8u   // what reading a slot requires: mp_idx3_build aligns to 16, other generators to 8
 #define APP0 "/app0/"
 #define APP0_LEN 6u
 
@@ -35,28 +35,28 @@ static uint64_t rd64(const uint8_t *p) { return rd32(p) | (uint64_t)rd32(p + 4) 
 int mp_pack_path_check(const char *rel, mp_err *e) {
     size_t len = strlen(rel);
     if (len == 0 || rel[0] == '/') {
-        mp_err_set(e, "ruta no válida (vacía o absoluta): %s", rel);
+        mp_err_set(e, "invalid path (empty or absolute): %s", rel);
         return -1;
     }
     if (APP0_LEN + len >= 1024) {
-        mp_err_set(e, "ruta demasiado larga para la PS5 (1024 bytes con /app0/): %s", rel);
+        mp_err_set(e, "path too long for the PS5 (1024 bytes with /app0/): %s", rel);
         return -1;
     }
     const char *part = rel;
     for (const char *p = rel;; p++) {
         unsigned char c = (unsigned char)*p;
         if (c == '\\' || c == '\t' || c == '\n' || c == '\r') {
-            mp_err_set(e, "ruta con un carácter no admitido (\\, tabulador o salto de línea): %s", rel);
+            mp_err_set(e, "path with an unsupported character (\\, tab or line break): %s", rel);
             return -1;
         }
         if (c == '/' || c == 0) {
             size_t k = (size_t)(p - part);
             if (k == 0 || (k == 1 && part[0] == '.') || (k == 2 && part[0] == '.' && part[1] == '.')) {
-                mp_err_set(e, "ruta con una parte vacía, '.' o '..': %s", rel);
+                mp_err_set(e, "path with an empty part, '.' or '..': %s", rel);
                 return -1;
             }
             if (k > 255) {
-                mp_err_set(e, "nombre de más de 255 bytes en: %s", rel);
+                mp_err_set(e, "name of more than 255 bytes in: %s", rel);
                 return -1;
             }
             if (!c) break;
@@ -81,7 +81,7 @@ static uint64_t slot_count(size_t n) {
 }
 
 static uint64_t row_hash(const char *rel) {
-    // Hash de "/app0/" + rel sin construir la cadena: misma cuenta byte a byte.
+    // Hash of "/app0/" + rel without building the string: same byte-by-byte count.
     uint64_t h = MP_FNV_BASIS_IDX3;
     for (const char *p = APP0; *p; p++) {
         h ^= (unsigned char)fold((unsigned char)*p);
@@ -98,14 +98,14 @@ int mp_idx3_build(const mp_idx3_row *rows, size_t n, uint8_t **out, size_t *out_
     *out = NULL;
     *out_len = 0;
     if (n == 0 || n > 0xFFFFFFFEu) {
-        mp_err_set(e, "ampr_emu.index: número de archivos no válido (%zu)", n);
+        mp_err_set(e, "ampr_emu.index: invalid number of files (%zu)", n);
         return -1;
     }
     for (size_t i = 0; i < n; i++)
         if (mp_pack_path_check(rows[i].path, e) != 0) return -1;
     srow *v = malloc(n * sizeof *v);
     if (!v) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     for (size_t i = 0; i < n; i++) v[i].r = &rows[i];
@@ -113,8 +113,8 @@ int mp_idx3_build(const mp_idx3_row *rows, size_t n, uint8_t **out, size_t *out_
     uint64_t blob = 0;
     for (size_t i = 0; i < n; i++) {
         if (i && fold_cmp(v[i - 1].r->path, v[i].r->path) == 0) {
-            mp_err_set(e, "dos rutas que solo se diferencian en mayúsculas: %s y %s (el runtime no "
-                          "las distingue)", v[i - 1].r->path, v[i].r->path);
+            mp_err_set(e, "two paths that differ only in case: %s and %s (the runtime does not "
+                          "tell them apart)", v[i - 1].r->path, v[i].r->path);
             free(v);
             return -1;
         }
@@ -124,14 +124,14 @@ int mp_idx3_build(const mp_idx3_row *rows, size_t n, uint8_t **out, size_t *out_
     uint64_t hash_off = (path_end + IDX3_SLOT - 1) & ~(uint64_t)(IDX3_SLOT - 1);
     uint64_t slots = slot_count(n), total = hash_off + IDX3_SLOT * slots;
     if (blob > 0xFFFFFFFFu || total > ((uint64_t)SIZE_MAX >> 1)) {
-        mp_err_set(e, "ampr_emu.index demasiado grande");
+        mp_err_set(e, "ampr_emu.index too large");
         free(v);
         return -1;
     }
     uint8_t *d = calloc(1, (size_t)total);
     if (!d) {
         free(v);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     memcpy(d, "AMPRIDX3", 8);
@@ -152,11 +152,11 @@ int mp_idx3_build(const mp_idx3_row *rows, size_t n, uint8_t **out, size_t *out_
         wr64(rec + 16, (uint64_t)v[i].r->mtime);
         memcpy(bp + off, APP0, APP0_LEN);
         memcpy(bp + off + APP0_LEN, v[i].r->path, pl);
-        off += (uint32_t)(APP0_LEN + pl + 1);   // el NUL ya está por calloc
+        off += (uint32_t)(APP0_LEN + pl + 1);   // the NUL is already there thanks to calloc
         rec += IDX3_RECORD;
     }
-    // Direccionamiento abierto lineal, como build_hash_slots: un hash repetido marca flag 1 en el
-    // slot que ya estaba y también en el nuevo.
+    // Linear open addressing, like build_hash_slots: a repeated hash sets flag 1 on the
+    // slot that was already there and also on the new one.
     uint8_t *sl = d + hash_off;
     uint64_t mask = slots - 1;
     for (size_t i = 0; i < n; i++) {
@@ -182,7 +182,7 @@ int mp_idx3_build(const mp_idx3_row *rows, size_t n, uint8_t **out, size_t *out_
 }
 
 static int bad(mp_err *e, const char *why) {
-    mp_err_set(e, "ampr_emu.index no válido: %s", why);
+    mp_err_set(e, "invalid ampr_emu.index: %s", why);
     return -1;
 }
 
@@ -211,7 +211,7 @@ int mp_idx3_set_row(const uint8_t *idx, size_t n, const char *rel, uint64_t size
     mp_idx3_row *rows = malloc((m + 1) * sizeof *rows);
     if (!rows) {
         mp_idx3_entries_free(v, m);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     size_t k = 0;
@@ -220,7 +220,7 @@ int mp_idx3_set_row(const uint8_t *idx, size_t n, const char *rel, uint64_t size
         rows[k].path = v[i].app0_path + APP0_LEN;
         rows[k].size = v[i].size;
         rows[k].mtime = v[i].mtime;
-        if (fold_cmp(rows[k].path, rel) == 0) {   // el runtime no distingue mayúsculas
+        if (fold_cmp(rows[k].path, rel) == 0) {   // the runtime does not distinguish case
             rows[k].path = rel;
             rows[k].size = size;
             rows[k].mtime = mtime;
@@ -249,19 +249,19 @@ void mp_idx3_entries_free(mp_idx3_entry *v, size_t n) {
 int mp_idx3_parse(const uint8_t *d, size_t n, mp_idx3_entry **out, size_t *count, mp_err *e) {
     *out = NULL;
     *count = 0;
-    if (n < IDX3_HEADER || memcmp(d, "AMPRIDX3", 8) != 0) return bad(e, "cabecera");
+    if (n < IDX3_HEADER || memcmp(d, "AMPRIDX3", 8) != 0) return bad(e, "header");
     if (rd32(d + 8) != 3 || rd32(d + 12) != IDX3_RECORD || rd32(d + 40) != IDX3_SLOT)
-        return bad(e, "versión o tamaños de registro");
+        return bad(e, "version or record sizes");
     uint64_t rows = rd64(d + 16), blob = rd64(d + 24), hash_off = rd64(d + 32), slots = rd32(d + 44);
-    if (rows == 0 || rows > 0xFFFFFFFEu || rows > n / IDX3_RECORD) return bad(e, "número de filas");
+    if (rows == 0 || rows > 0xFFFFFFFEu || rows > n / IDX3_RECORD) return bad(e, "number of rows");
     uint64_t path_end = IDX3_HEADER + IDX3_RECORD * rows + blob;
     if (blob > n || path_end > hash_off || hash_off % IDX3_SLOT_ALIGN || slots < 2 || (slots & (slots - 1)) ||
-        slots < 2 * rows || hash_off > n || n - hash_off != IDX3_SLOT * slots)   // sin dar la vuelta
-        return bad(e, "posición o tamaño de las tablas");
+        slots < 2 * rows || hash_off > n || n - hash_off != IDX3_SLOT * slots)   // no wrapping around
+        return bad(e, "position or size of the tables");
     const uint8_t *bp = d + IDX3_HEADER + IDX3_RECORD * rows;
     mp_idx3_entry *v = calloc((size_t)rows, sizeof *v);
     if (!v) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     int rc = 0;
@@ -269,12 +269,12 @@ int mp_idx3_parse(const uint8_t *d, size_t n, mp_idx3_entry **out, size_t *count
         const uint8_t *r = d + IDX3_HEADER + IDX3_RECORD * i;
         uint32_t off = rd32(r), len = rd32(r + 4);
         if ((uint64_t)off + len >= blob || bp[off + len] != 0 || memchr(bp + off, 0, len)) {
-            rc = bad(e, "ruta fuera del blob o sin NUL");
+            rc = bad(e, "path outside the blob or without a NUL");
             break;
         }
         v[i].app0_path = malloc(len + 1u);
         if (!v[i].app0_path) {
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             rc = -1;
             break;
         }
@@ -285,15 +285,15 @@ int mp_idx3_parse(const uint8_t *d, size_t n, mp_idx3_entry **out, size_t *count
         if (len <= APP0_LEN || memcmp(v[i].app0_path, APP0, APP0_LEN) != 0 ||
             mp_pack_path_check(v[i].app0_path + APP0_LEN, e) != 0) {
             rc = -1;
-            if (!e || strncmp(e->msg, "ampr_emu", 8)) bad(e, "ruta que no empieza por /app0/ o no válida");
+            if (!e || strncmp(e->msg, "ampr_emu", 8)) bad(e, "path that does not start with /app0/ or is invalid");
             break;
         }
         if (i && fold_cmp(v[i - 1].app0_path, v[i].app0_path) >= 0) {
-            rc = bad(e, "filas desordenadas o repetidas sin mayúsculas");
+            rc = bad(e, "rows out of order, or repeated apart from case");
             break;
         }
     }
-    // Cada fila tiene que estar en la tabla hash.
+    // Each row has to be in the hash table.
     const uint8_t *sl = d + hash_off;
     for (uint64_t i = 0; i < rows && !rc; i++) {
         uint64_t h = mp_idx3_path_hash(v[i].app0_path), pos = h & (slots - 1);
@@ -303,7 +303,7 @@ int mp_idx3_parse(const uint8_t *d, size_t n, mp_idx3_entry **out, size_t *count
             if (rd32(s + 8) == 0) break;
             found = rd64(s) == h && rd32(s + 8) == i + 1;
         }
-        if (!found) rc = bad(e, "una fila no está en la tabla hash");
+        if (!found) rc = bad(e, "a row is not in the hash table");
     }
     if (rc) {
         mp_idx3_entries_free(v, (size_t)rows);

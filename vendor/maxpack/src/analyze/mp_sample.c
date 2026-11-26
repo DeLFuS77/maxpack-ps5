@@ -33,7 +33,7 @@ int mp_sample_select_ex(const uint64_t *sizes, size_t nfiles, uint32_t window, d
         if (want < (double)total) rate = want / (double)total;
     }
     out->rate = rate;
-    // Umbral sobre 53 bits: la ventana k entra si (splitmix(k ^ semilla) >> 11) < rate · 2^53.
+    // Threshold over 53 bits: window k is taken if (splitmix(k ^ seed) >> 11) < rate · 2^53.
     uint64_t thr = (uint64_t)(rate * 9007199254740992.0);
     size_t cap = 0;
     uint64_t ordinal = 0;
@@ -45,7 +45,7 @@ int mp_sample_select_ex(const uint64_t *sizes, size_t nfiles, uint32_t window, d
                 mp_window *w = realloc(out->w, cap * sizeof *w);
                 if (!w) {
                     mp_sample_free(out);
-                    mp_err_set(e, "sin memoria");
+                    mp_err_set(e, "out of memory");
                     return -1;
                 }
                 out->w = w;

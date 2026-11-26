@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Origen carpeta: cada lectura abre el archivo, lee de forma posicional y lo cierra.
+// Folder source: each read opens the file, reads positionally and closes it.
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,7 +51,7 @@ static int dir_read(mp_source *s, size_t i, uint64_t off, void *buf, size_t len,
     const dir_impl *d = s->impl;
     char *p = full_path(d, s->entries[i].path);
     if (!p) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     mp_file *f = NULL;
@@ -60,7 +60,7 @@ static int dir_read(mp_source *s, size_t i, uint64_t off, void *buf, size_t len,
         size_t got = 0;
         rc = mp_file_pread(f, buf, len, off, &got, e);
         if (rc == 0 && got != len) {
-            mp_err_set(e, "lectura incompleta de %s (¿ha cambiado el archivo?)", s->entries[i].path);
+            mp_err_set(e, "incomplete read of %s (has the file changed?)", s->entries[i].path);
             rc = -1;
         }
         mp_file_close(f);
@@ -79,11 +79,11 @@ int mp_dir_open(const char *path, mp_source **out, mp_err *e) {
     *out = NULL;
     collect c = {0};
     int rc = mp_dir_walk(path, collect_cb, &c, e);
-    if (rc == -2) mp_err_set(e, "sin memoria");
+    if (rc == -2) mp_err_set(e, "out of memory");
     mp_source *s = calloc(1, sizeof *s);
     dir_impl *d = calloc(1, sizeof *d);
     if (rc == 0 && (!s || !d || !(d->root = mp_strdup(path)))) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         rc = -1;
     }
     if (rc != 0) {

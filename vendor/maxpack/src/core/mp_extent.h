@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Tramos contiguos de un archivo dentro de una imagen.
+// Contiguous runs of a file inside an image.
 #ifndef MP_EXTENT_H
 #define MP_EXTENT_H
 
@@ -8,10 +8,10 @@
 
 typedef struct {
     uint64_t file_off, img_off, len;
-} mp_extent;   // ordenados por file_off y sin huecos
+} mp_extent;   // sorted by file_off and without gaps
 
-// Busca el tramo que contiene file_off. Devuelve su índice (y en *img_off la posición en la
-// imagen, en *run los bytes que quedan en ese tramo) o -1 si file_off cae fuera.
+// Finds the run that contains file_off. Returns its index (and in *img_off the position in the
+// image, in *run the bytes left in that run) or -1 if file_off falls outside.
 long mp_extent_find(const mp_extent *ex, size_t n, uint64_t file_off, uint64_t *img_off,
                     uint64_t *run);
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// maxpack.elf: el instalador en la PS5. Se carga con el cargador de ELF (puerto 9021) y sirve la
-// página en el puerto 8095. El motor y la web son los mismos que se prueban en el PC.
+// maxpack.elf: the installer on the PS5. Loaded with the ELF loader (port 9021) and serves the
+// page on port 8095. The engine and the web are the same ones tested on the PC.
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,7 +8,6 @@
 
 #include "mp_api.h"
 #include "mp_json.h"
-#include "mp_page.h"
 #include "mp_smp.h"
 #include "mp_version.h"
 
@@ -22,7 +21,7 @@ extern const unsigned char mp_runtime_sprx[];
 extern const size_t mp_runtime_sprx_len;
 #endif
 
-// Aviso en la consola, con la plantilla del ejemplo samples/notify del SDK.
+// Notification on the console, using the template from the SDK's samples/notify example.
 static void notify(void *ctx, const char *msg) {
     (void)ctx;
     mp_jbuf b = {0};
@@ -41,7 +40,7 @@ static void notify(void *ctx, const char *msg) {
 
 int main(void) {
     mp_inst_env env;
-    mp_inst_env_default(&env);   // /data y /mnt/usb0..7, /mnt/ext0..1
+    mp_inst_env_default(&env);   // /data and /mnt/usb0..7, /mnt/ext0..1
     env.notify = notify;
 #ifdef MAXPACK_HAVE_RUNTIME
     env.runtime.data = mp_runtime_sprx;
@@ -58,13 +57,12 @@ int main(void) {
         notify(NULL, e.msg);
         return 1;
     }
-    mp_api_set_page(api, mp_page_html, mp_page_html_len);
     mp_http_server *srv = mp_http_start("0.0.0.0", PORT, mp_api_handle, api, &e);
     if (!srv) {
-        notify(NULL, "MaxPack ya está en marcha: el puerto 8095 está ocupado");
+        notify(NULL, "MaxPack is already running: port 8095 is busy");
         mp_api_free(api);
         return 1;
     }
-    notify(NULL, "MaxPack " MP_VERSION " listo: abre el puerto 8095 de la consola en el navegador");
+        notify(NULL, "MaxPack " MP_VERSION " ready: open the console's port 8095 in the browser");
     for (;;) sleep(60);
 }

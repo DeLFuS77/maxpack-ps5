@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Releer una carpeta instalada y compararla con el SHA-256 de cada archivo del .p5z.
+// Re-read an installed folder and compare it with the SHA-256 of each file in the .p5z.
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,7 +47,7 @@ long mp_inst_check_dir(mp_p5z *p, const char *dir, int skip_runtime, unsigned th
     if (!idx || !bad) {
         free(idx);
         free(bad);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     for (size_t i = 0; i < p->nfiles; i++) {

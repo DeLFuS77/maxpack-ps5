@@ -10,9 +10,9 @@ int mp_api_call(mp_api *api, const char *method, const char *path, const char *h
     if (!out) return -1;
     memset(out, 0, sizeof *out);
     if (!api || !method || !path) return -1;
-    // La query va aparte, como la entrega el servidor.
+    // The query goes apart, as the server delivers it.
     char *p = malloc(strlen(path) + 1);
-    // El cuerpo acaba en NUL, como en el servidor.
+    // The body ends in NUL, as on the server.
     char *b = malloc(body_len + 1);
     if (!p || !b) {
         free(p);
@@ -33,7 +33,7 @@ int mp_api_call(mp_api *api, const char *method, const char *path, const char *h
     mp_api_handle(api, &rq, &rs);
     out->status = rs.status;
     snprintf(out->ctype, sizeof out->ctype, "%s", rs.content_type ? rs.content_type : "application/json");
-    out->body = (uint8_t *)rs.body;   // se queda con el malloc de la respuesta
+    out->body = (uint8_t *)rs.body;   // takes over the response's malloc
     out->len = rs.body ? rs.body_len : 0;
     free(p);
     free(b);

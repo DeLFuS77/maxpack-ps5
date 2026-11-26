@@ -34,8 +34,8 @@ void mp_smp_cfg_load(mp_smp_cfg *c, const mp_inst_env *env) {
     free(path);
 }
 
-// POST con cuerpo JSON. 0 con HTTP 200 (j: respuesta analizada, puede ser NULL); 1 si respondió
-// con otro código; -1 si no hay ShadowMountPlus.
+// POST with a JSON body. 0 with HTTP 200 (j: parsed response, may be NULL); 1 if it answered
+// with another code; -1 if there is no ShadowMountPlus.
 static int post(const mp_smp_cfg *c, const char *route, const char *body, mp_json **j, int *status) {
     char path[128];
     snprintf(path, sizeof path, "/api/v1/%s", route);
@@ -81,7 +81,7 @@ int mp_smp_games(const mp_smp_cfg *c, mp_smp_game **out, size_t *n, mp_err *e) {
     int rc = post(c, "games", "{\"include_size\":false}", &j, NULL);
     if (rc != 0) {
         mp_json_free(j);
-        mp_err_set(e, rc < 0 ? "ShadowMountPlus no está en marcha" : "ShadowMountPlus no dio la lista de juegos");
+        mp_err_set(e, rc < 0 ? "ShadowMountPlus is not running" : "ShadowMountPlus did not give the game list");
         return -1;
     }
     const mp_json *g = mp_json_get(j, "games");
@@ -89,7 +89,7 @@ int mp_smp_games(const mp_smp_cfg *c, mp_smp_game **out, size_t *n, mp_err *e) {
     mp_smp_game *v = calloc(k + 1, sizeof *v);
     if (!v) {
         mp_json_free(j);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     for (size_t i = 0; i < k; i++) {
@@ -97,11 +97,11 @@ int mp_smp_games(const mp_smp_cfg *c, mp_smp_game **out, size_t *n, mp_err *e) {
         v[i].title_id = dup_or_empty(mp_json_str(mp_json_get(it, "title_id")));
         v[i].path = dup_or_empty(mp_json_str(mp_json_get(it, "path")));
         v[i].source_type = dup_or_empty(mp_json_str(mp_json_get(it, "source_type")));
-        v[i].running = -1;   // la API 1.7 no tiene un campo para esto
+        v[i].running = -1;   // API 1.7 has no field for this
         if (!v[i].title_id || !v[i].path || !v[i].source_type) {
             mp_smp_games_free(v, i + 1);
             mp_json_free(j);
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             return -1;
         }
     }
@@ -124,15 +124,15 @@ static int rescan(const mp_smp_cfg *c, char *why, size_t wl) {
     mp_json *j = NULL;
     int rc = post(c, "scan", "{\"reset_attempts\":false}", &j, NULL);
     if (rc < 0) {
-        snprintf(why, wl, "ShadowMountPlus no está en marcha");
+        snprintf(why, wl, "ShadowMountPlus is not running");
     } else if (rc > 0) {
-        snprintf(why, wl, "ShadowMountPlus no aceptó el escaneo");
+        snprintf(why, wl, "ShadowMountPlus did not accept the scan");
     } else {
         int deferred = 0;
         mp_json_bool(mp_json_get(j, "scan_deferred"), &deferred);
         if (deferred) {
             const char *r = mp_json_str(mp_json_get(j, "scan_deferred_reason"));
-            snprintf(why, wl, "escaneo aplazado: %s", r && *r ? r : "sin motivo");
+            snprintf(why, wl, "scan postponed: %s", r && *r ? r : "no reason");
             rc = 1;
         }
     }
@@ -160,22 +160,22 @@ int mp_smp_register(const mp_smp_cfg *c, const char *title_id, const char *path,
         int rc = post(c, "games/fakelib", b.p ? b.p : "{}", NULL, NULL);
         mp_jbuf_free(&b);
         if (rc < 0) {
-            snprintf(why, wl, "ShadowMountPlus no está en marcha");
+            snprintf(why, wl, "ShadowMountPlus is not running");
             return -1;
         }
-        if (rc > 0) {   // aún no conoce el juego: después del escaneo se reintenta
-            snprintf(why, wl, "falta fijar el fakelib (ShadowMountPlus aún no conoce el juego)");
+        if (rc > 0) {   // it does not know the game yet: it is retried after the scan
+            snprintf(why, wl, "the fakelib still has to be set (ShadowMountPlus does not know the game yet)");
             pending = 1;
         }
     }
     path_body(body, sizeof body, path);
     int rc = post(c, "manual/add", body, NULL, NULL);
     if (rc < 0) {
-        snprintf(why, wl, "ShadowMountPlus no está en marcha");
+        snprintf(why, wl, "ShadowMountPlus is not running");
         return -1;
     }
     if (rc > 0) {
-        snprintf(why, wl, "ShadowMountPlus no aceptó la ruta %s", path);
+        snprintf(why, wl, "ShadowMountPlus did not accept the path %s", path);
         return 1;
     }
     char why2[256] = "";
@@ -194,7 +194,7 @@ int mp_smp_forget(const mp_smp_cfg *c, const char *path, char *why, size_t wl) {
     path_body(body, sizeof body, path);
     int rc = post(c, "manual/remove", body, NULL, NULL);
     if (rc < 0) {
-        snprintf(why, wl, "ShadowMountPlus no está en marcha");
+        snprintf(why, wl, "ShadowMountPlus is not running");
         return -1;
     }
     return rescan(c, why, wl);
@@ -212,7 +212,7 @@ int mp_inst_smp_sync(const mp_inst_env *env, const mp_smp_cfg *c, mp_err *e) {
         snprintf(v[i].smp_why, sizeof v[i].smp_why, "%s", rc ? why : "");
         mp_err se = {{0}};
         if (mp_inst_record_save(env, &v[i], &se) != 0 && env->notify) env->notify(env->ctx, se.msg);
-        if (rc < 0) break;   // sin ShadowMountPlus no tiene sentido seguir probando
+        if (rc < 0) break;   // without ShadowMountPlus there is no point in trying further
     }
     free(v);
     return 0;

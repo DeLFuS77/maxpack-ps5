@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Estado de una instalación a medias, para reanudarla:
-//   <internal>/maxpack/state/<TITLE_ID>.json  cabecera (archive_id, .p5z, destino)
-//   <internal>/maxpack/state/<TITLE_ID>.done  una ruta por línea, cada una tras el fsync de su archivo
-// Si se pierde una línea por un apagón, ese archivo se vuelve a escribir; al reanudar, todo lo
-// apuntado se relee y se compara con su SHA-256, así que el registro solo ahorra trabajo.
+// State of a half-done install, to resume it:
+//   <internal>/maxpack/state/<TITLE_ID>.json  header (archive_id, .p5z, destination)
+//   <internal>/maxpack/state/<TITLE_ID>.done  one path per line, each after its file's fsync
+// If a line is lost to a power cut, that file is written again; on resuming, everything
+// marked is re-read and compared with its SHA-256, so the log only saves work.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +28,7 @@ void mpi_state_remove(const mp_inst_env *env, const char *title_id) {
     mp_remove_file(d);
 }
 
-// p5z y dest_root de una cabecera de estado. 0 si se pudo leer.
+// p5z and dest_root of a state header. 0 if it could be read.
 static int read_header(const char *path, char *src, size_t scap, char *dest, size_t dcap, char *aid_hex, size_t acap) {
     char *buf = NULL;
     size_t n = 0;
@@ -59,7 +59,7 @@ static int header_matches(const char *path, const char *aid_hex, const char *des
     return ok;
 }
 
-// Líneas completas del registro de hechos (las que acaban en '\n').
+// Complete lines of the log of what was done (those that end in '\n').
 static int read_done(const char *path, char ***out, size_t *n, size_t *good_len, mp_err *e) {
     *out = NULL;
     *n = 0;
@@ -113,7 +113,7 @@ int mpi_state_begin(const mp_inst_env *env, const char *title_id, const uint8_t 
     if (mp_path_kind(tmp) == 2 && header_matches(jp, aid_hex, dest_root)) {
         size_t good = 0;
         if (read_done(dp, done, ndone, &good, e) != 0) return -1;
-        // Sin la línea a medias del final (si un corte la dejó así).
+        // Without the half-written last line (if a cut-off left it that way).
         uint64_t size = 0;
         if (mp_stat(dp, &size, NULL) == 0 && size != good) {
             char *buf = NULL;
@@ -125,7 +125,7 @@ int mpi_state_begin(const mp_inst_env *env, const char *title_id, const uint8_t 
         }
         *resumed = 1;
     } else {
-        // Lo de un intento anterior (otro .p5z u otro destino): su temporal también sobra.
+        // What an earlier attempt left (another .p5z or another destination): its temporary folder is surplus too.
         char osrc[1024], odest[1024], oaid[80];
         if (read_header(jp, osrc, sizeof osrc, odest, sizeof odest, oaid, sizeof oaid) == 0 && mp_path_kind(odest) == 2) {
             char otmp[1200];
@@ -143,14 +143,14 @@ int mpi_state_begin(const mp_inst_env *env, const char *title_id, const uint8_t 
         mp_jbuf_str(&b, dest_root);
         mp_jbuf_raw(&b, "}\n");
         int rc = b.oom ? -1 : mpi_write_replace(jp, b.p, b.n, e);
-        if (b.oom) mp_err_set(e, "sin memoria");
+        if (b.oom) mp_err_set(e, "out of memory");
         mp_jbuf_free(&b);
         if (rc == 0) rc = mp_write_file(dp, "", 0, e);
         if (rc != 0) return -1;
     }
     mpi_state *s = calloc(1, sizeof *s);
     if (!s) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     if (mp_wfile_reopen(dp, &s->done, e) != 0) {
@@ -193,7 +193,7 @@ int mp_inst_pending(const mp_inst_env *env, mp_inst_pending_item **out, size_t *
     mp_inst_pending_item *v = calloc(l.n + 1, sizeof *v);
     if (!v) {
         free(l.ids);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     size_t k = 0;
@@ -215,13 +215,13 @@ int mp_inst_pending(const mp_inst_env *env, mp_inst_pending_item **out, size_t *
 
 int mp_inst_discard(const mp_inst_env *env, const char *title_id, mp_err *e) {
     if (!mp_inst_title_ok(title_id)) {
-        mp_err_set(e, "TITLE_ID no válido: %s", title_id);
+        mp_err_set(e, "invalid TITLE_ID: %s", title_id);
         return -1;
     }
     char jp[1200], dp[1200], src[1024], dest[1024], aid[80], tmp[1200];
     state_paths(env, title_id, jp, dp, sizeof jp);
     if (mp_path_kind(jp) != 1) {
-        mp_err_set(e, "no hay ninguna instalación a medias de %s", title_id);
+        mp_err_set(e, "there is no half-done install of %s", title_id);
         return -1;
     }
     if (read_header(jp, src, sizeof src, dest, sizeof dest, aid, sizeof aid) == 0) {

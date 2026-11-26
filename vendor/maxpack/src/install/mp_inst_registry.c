@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Registro de lo instalado con MaxPack: <internal>/maxpack/installed/<TITLE_ID>.json.
+// Registry of what was installed with MaxPack: <internal>/maxpack/installed/<TITLE_ID>.json.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +25,7 @@ static void put_int(mp_jbuf *b, const char *key, int64_t v) {
 int mp_inst_record_save(const mp_inst_env *env, const mp_inst_record *r, mp_err *e) {
     char path[1200];
     if (mpi_record_path(env, r->title_id, path, sizeof path) != 0) {
-        mp_err_set(e, "TITLE_ID no válido: %s", r->title_id);
+        mp_err_set(e, "invalid TITLE_ID: %s", r->title_id);
         return -1;
     }
     char aid[33], rsha[65];
@@ -48,7 +48,7 @@ int mp_inst_record_save(const mp_inst_env *env, const mp_inst_record *r, mp_err 
     mp_jbuf_raw(&b, "}\n");
     if (b.oom) {
         mp_jbuf_free(&b);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     char dir[1200];
@@ -73,11 +73,11 @@ int mp_inst_record_load(const mp_inst_env *env, const char *title_id, mp_inst_re
     memset(r, 0, sizeof *r);
     char path[1200];
     if (mpi_record_path(env, title_id, path, sizeof path) != 0) {
-        mp_err_set(e, "TITLE_ID no válido: %s", title_id);
+        mp_err_set(e, "invalid TITLE_ID: %s", title_id);
         return -1;
     }
     if (mp_path_kind(path) != 1) {
-        mp_err_set(e, "no hay registro de %s", title_id);
+        mp_err_set(e, "there is no record of %s", title_id);
         return -1;
     }
     char *buf = NULL;
@@ -88,7 +88,7 @@ int mp_inst_record_load(const mp_inst_env *env, const char *title_id, mp_inst_re
     const char *id = mp_json_str(mp_json_get(j, "title_id"));
     if (!j || !id || strcmp(id, title_id) != 0) {
         mp_json_free(j);
-        mp_err_set(e, "registro dañado: %s", path);
+        mp_err_set(e, "damaged record: %s", path);
         return -1;
     }
     get_str(j, "title_id", r->title_id, sizeof r->title_id);
@@ -102,7 +102,7 @@ int mp_inst_record_load(const mp_inst_env *env, const char *title_id, mp_inst_re
     int64_t kind = 0;
     mp_json_i64(mp_json_get(j, "kind"), &kind);
     r->kind = (int)kind;
-    // Sin el campo (registros anteriores), un .p5z siempre lleva packs.
+    // Without the field (older records), a .p5z always carries packs.
     r->packed = mp_json_get(j, "packed") ? get_int(j, "packed") : r->kind == MP_SRC_P5Z;
     r->runtime_replaced = get_int(j, "runtime_replaced");
     r->smp_pending = get_int(j, "smp_pending");

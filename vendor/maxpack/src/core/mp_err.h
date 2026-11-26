@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Mensajes de error: cada función que puede fallar recibe un mp_err* (puede ser NULL).
+// Error messages: every function that can fail takes an mp_err* (may be NULL).
 #ifndef MP_ERR_H
 #define MP_ERR_H
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Lo instalado con MaxPack: lista, Verificar y Desinstalar.
+// What was installed with MaxPack: list, Verify and Uninstall.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,14 +47,14 @@ int mp_inst_list(const mp_inst_env *env, mp_inst_record **out, size_t *n, mp_err
     id_list l = {0};
     if (mp_dir_list(dir, id_cb, &l, e) != 0 && l.oom) {
         free(l.ids);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     if (l.n > 1) qsort(l.ids, l.n, sizeof *l.ids, cmp_id);
     mp_inst_record *v = calloc(l.n + 1, sizeof *v);
     if (!v) {
         free(l.ids);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     size_t k = 0;
@@ -64,7 +64,7 @@ int mp_inst_list(const mp_inst_env *env, mp_inst_record **out, size_t *n, mp_err
             k++;
         } else if (env->notify) {
             char msg[700];
-            snprintf(msg, sizeof msg, "Se salta un registro dañado (%s.json): %s", l.ids[i], le.msg);
+            snprintf(msg, sizeof msg, "Skipping a damaged record (%s.json): %s", l.ids[i], le.msg);
             env->notify(env->ctx, msg);
         }
     }
@@ -74,7 +74,7 @@ int mp_inst_list(const mp_inst_env *env, mp_inst_record **out, size_t *n, mp_err
     return 0;
 }
 
-// Lo instalado tal cual: cada archivo contra el SHA-256 guardado al copiarlo.
+// What was installed as is: each file against the SHA-256 saved when it was copied.
 static int verify_copy(const mp_inst_env *env, const mp_inst_record *rec, mp_inst_verify_result *r, mp_err *e) {
     char path[1200], *buf = NULL;
     size_t n = 0;
@@ -85,7 +85,7 @@ static int verify_copy(const mp_inst_env *env, const mp_inst_record *rec, mp_ins
     const mp_json *files = mp_json_get(j, "files");
     if (!j || !files) {
         mp_json_free(j);
-        mp_err_set(e, "lista de archivos dañada: %s", path);
+        mp_err_set(e, "damaged file list: %s", path);
         return -1;
     }
     for (size_t i = 0; i < mp_json_len(files); i++) {
@@ -111,7 +111,7 @@ int mp_inst_verify(const mp_inst_env *env, const char *title_id, mp_inst_verify_
     if (mp_inst_record_load(env, title_id, &rec, e) != 0) return -1;
     if (rec.kind != MP_SRC_P5Z) return verify_copy(env, &rec, r, e);
     if (mp_path_kind(rec.dir) != 2) {
-        mp_err_set(e, "no está la carpeta del juego: %s", rec.dir);
+        mp_err_set(e, "the game's folder is missing: %s", rec.dir);
         return -1;
     }
     mp_verify_result vr;
@@ -131,7 +131,7 @@ int mp_inst_verify(const mp_inst_env *env, const char *title_id, mp_inst_verify_
             r->p5z_checked = 1;
         }
     }
-    if (rec.runtime_replaced) {   // el runtime que puso el instalador
+    if (rec.runtime_replaced) {   // the runtime the installer put in
         char *rt = mpi_join(rec.dir, "fakelib/libSceAmpr.sprx");
         uint8_t sha[32];
         int ok = rt && mpi_file_sha(rt, 0, sha, NULL, NULL) == 0 && !memcmp(sha, rec.runtime_sha, 32);
@@ -145,11 +145,11 @@ int mp_inst_verify(const mp_inst_env *env, const char *title_id, mp_inst_verify_
 int mp_inst_uninstall(const mp_inst_env *env, const char *title_id, mp_err *e) {
     mp_inst_record rec;
     if (!mp_inst_title_ok(title_id)) {
-        mp_err_set(e, "TITLE_ID no válido: %s", title_id);
+        mp_err_set(e, "invalid TITLE_ID: %s", title_id);
         return -1;
     }
     if (mp_inst_record_load(env, title_id, &rec, e) != 0) {
-        mp_err_set(e, "%s no está instalado con MaxPack: no se toca", title_id);
+        mp_err_set(e, "%s is not installed with MaxPack: not touched", title_id);
         return -1;
     }
     if (mp_remove_tree(rec.dir, e) != 0) return -1;
@@ -158,7 +158,7 @@ int mp_inst_uninstall(const mp_inst_env *env, const char *title_id, mp_err *e) {
     mp_remove_file(path);
     mpi_record_path(env, title_id, path, sizeof path);
     if (mp_remove_file(path) != 0) {
-        mp_err_set(e, "no se pudo borrar el registro %s", path);
+        mp_err_set(e, "could not delete the record %s", path);
         return -1;
     }
     return 0;

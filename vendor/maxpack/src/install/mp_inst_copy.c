@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Instalar tal cual una carpeta de juego o una imagen (spec 5.4 bis): copia byte a byte con el
-// SHA-256 de cada archivo calculado al leerlo, fsync y la fecha original; reanudable; una carpeta
-// con packs zstd sin ampr-emu-ng recibe el runtime del instalador. Una imagen no se toca.
+// Install a game folder or an image as is (spec 5.4 bis): byte-by-byte copy with each file's
+// SHA-256 computed while reading it, fsync and the original date; resumable; a folder
+// with zstd packs and no ampr-emu-ng receives the installer's runtime. An image is not touched.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,13 +19,13 @@
 #define PIECE (4u << 20)
 
 typedef struct {
-    char *rel;        // ruta relativa en el destino
-    char *src;        // ruta completa de origen
+    char *rel;        // relative path at the destination
+    char *src;        // full path at the source
     uint64_t size;
     int64_t mtime;
     uint8_t sha[32];
-    int done;         // ya está (reanudado o copiado)
-    int skip;         // no se copia: lo pone el instalador (runtime)
+    int done;         // already there (resumed or copied)
+    int skip;         // not copied: set by the installer (runtime)
 } cfile;
 
 typedef struct {
@@ -90,7 +90,7 @@ static long find_rel(const clist *l, const char *rel) {
     return -1;
 }
 
-// ---- copia en paralelo ----------------------------------------------------------------------
+// ---- parallel copy ----------------------------------------------------------------------
 
 typedef struct {
     const mp_inst_env *env;
@@ -126,7 +126,7 @@ static void copy_one(cjob *j, cfile *f, uint8_t *buf) {
     mp_file *in = NULL;
     mp_wfile *w = NULL;
     int io = 0, rc = dst ? 0 : -1;
-    if (!dst) mp_err_set(&e, "sin memoria");
+    if (!dst) mp_err_set(&e, "out of memory");
     if (rc == 0) {
         mp_remove_file(dst);
         rc = mp_file_open_read(f->src, &in, &e);
@@ -141,7 +141,7 @@ static void copy_one(cjob *j, cfile *f, uint8_t *buf) {
         size_t k = f->size - off < PIECE ? (size_t)(f->size - off) : PIECE, got = 0;
         rc = mp_file_pread(in, buf, k, off, &got, &e);
         if (rc == 0 && got != k) {
-            mp_err_set(&e, "%s se acabó antes de tiempo (¿se quitó la unidad?)", f->src);
+            mp_err_set(&e, "%s ended early (was the drive removed?)", f->src);
             rc = -1;
         }
         if (rc == 0) {
@@ -198,7 +198,7 @@ static void cworker(void *arg) {
         mp_mutex_lock(j->mu);
         if (!j->fail) {
             j->fail = 1;
-            mp_err_set(&j->err, "sin memoria");
+            mp_err_set(&j->err, "out of memory");
         }
         mp_mutex_unlock(j->mu);
         return;
@@ -215,7 +215,7 @@ static void cworker(void *arg) {
     free(buf);
 }
 
-// ---- reanudar -------------------------------------------------------------------------------
+// ---- resume ---------------------------------------------------------------------------------
 
 typedef struct {
     clist *l;
@@ -269,7 +269,7 @@ out:
     free(ok);
 }
 
-// ---- runtime de una carpeta con packs ---------------------------------------------------------
+// ---- runtime of a folder with packs -----------------------------------------------------------
 
 static int has_marker(const uint8_t *p, size_t n) {
     for (size_t i = 0; i + 8 <= n; i++)
@@ -281,7 +281,7 @@ static int write_new(const char *dir, const char *rel, const void *p, size_t n, 
                      mp_err *e) {
     char *path = mpi_join(dir, rel);
     if (!path) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     char *s = strrchr(path, '/');
@@ -305,7 +305,7 @@ static int write_new(const char *dir, const char *rel, const void *p, size_t n, 
     return rc;
 }
 
-// ---- lista de SHA-256 de lo instalado -------------------------------------------------------
+// ---- list of SHA-256 hashes of what was installed -------------------------------------------
 
 static int save_files(const mp_inst_env *env, const char *title, const clist *l, mp_err *e) {
     mp_jbuf b = {0};
@@ -326,13 +326,13 @@ static int save_files(const mp_inst_env *env, const char *title, const clist *l,
     snprintf(dir, sizeof dir, "%s/maxpack/installed", env->internal);
     snprintf(path, sizeof path, "%s/%s.files.json", dir, title);
     int rc = b.oom ? -1 : mp_make_dirs(dir, e);
-    if (b.oom) mp_err_set(e, "sin memoria");
+    if (b.oom) mp_err_set(e, "out of memory");
     if (rc == 0) rc = mpi_write_replace(path, b.p, b.n, e);
     mp_jbuf_free(&b);
     return rc;
 }
 
-// ---- instalar tal cual ----------------------------------------------------------------------
+// ---- install as is --------------------------------------------------------------------------
 
 int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_inst_found *f, const char *tmp_dir,
                      const char *final_path, const mp_inst_existing *ex, size_t nex, mp_inst_result *r, mp_err *e) {
@@ -348,15 +348,15 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
         if (rc == 0 && mp_stat(f->path, NULL, &mt) == 0) l.v[0].mtime = mt;
     }
     if (rc != 0) {
-        if (l.bad_name) mp_err_set(e, "%s tiene un nombre de archivo con tabulador o salto de línea", f->path);
-        else if (!e || !e->msg[0]) mp_err_set(e, "no se pudo leer %s", f->path);
+        if (l.bad_name) mp_err_set(e, "%s has a file name with a tab or a line break", f->path);
+        else if (!e || !e->msg[0]) mp_err_set(e, "could not read %s", f->path);
         clist_free(&l);
         r->status = MP_INST_FAILED;
         r->code = l.bad_name ? "bad_source" : "io_error";
         return -1;
     }
 
-    // Runtime: una carpeta con packs tiene que llevar ampr-emu-ng para poder jugarse.
+    // Runtime: a folder with packs must carry ampr-emu-ng to be playable.
     int replace = 0;
     long rt = -1, idx3 = -1;
     if (!image && f->packed) {
@@ -371,14 +371,14 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
         }
         if (!zstd) {
             if (!env->runtime.data || !env->runtime.len) {
-                mp_err_set(e, "la carpeta trae packs zstd pero no ampr-emu-ng, y este instalador no lleva ninguno");
+                mp_err_set(e, "the folder has zstd packs but no ampr-emu-ng, and this installer carries none");
                 clist_free(&l);
                 r->status = MP_INST_FAILED;
                 r->code = "no_runtime";
                 return -1;
             }
             if (idx3 < 0) {
-                mp_err_set(e, "la carpeta trae packs zstd pero no ampr_emu.index");
+                mp_err_set(e, "the folder has zstd packs but no ampr_emu.index");
                 clist_free(&l);
                 r->status = MP_INST_FAILED;
                 r->code = "bad_source";
@@ -388,11 +388,11 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
             if (rt >= 0) l.v[rt].skip = 1;
             l.v[idx3].skip = 1;
             if (env->notify)
-                env->notify(env->ctx, "La carpeta no trae un runtime que lea packs zstd: se pone el ampr-emu-ng del instalador");
+                env->notify(env->ctx, "The folder has no runtime that reads zstd packs: the installer's ampr-emu-ng is being put in");
         }
     }
 
-    // Estado: la identidad de una copia es su origen y su tamaño.
+    // State: a copy's identity is its source and its size.
     uint8_t aid[32];
     char ident[1300];
     snprintf(ident, sizeof ident, "MAXPACK-COPY\n%s\n%llu\n%zu", f->path, (unsigned long long)f->install_size, l.n);
@@ -412,7 +412,7 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
 
     size_t *todo = malloc((l.n + 1) * sizeof *todo), ntodo = 0;
     if (!todo) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         rc = -1;
     }
     char last[1200] = "";
@@ -443,7 +443,7 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
         j.st = st;
         j.mu = mp_mutex_new();
         if (!j.mu) {
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             rc = -1;
         } else {
             unsigned threads = env->threads ? env->threads : 1;
@@ -464,7 +464,7 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
     }
     free(todo);
     mpi_state_close(st);
-    if (rc == 0 && !stopped && replace) {   // runtime del instalador y su fila en ampr_emu.index
+    if (rc == 0 && !stopped && replace) {   // the installer's runtime and its row in ampr_emu.index
         char *idx = NULL, *fixed = NULL;
         size_t n = 0, fn = 0;
         rc = mpi_read_small(l.v[idx3].src, (size_t)1 << 30, &idx, &n, e);
@@ -502,7 +502,7 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
         return -1;
     }
 
-    // Al destino: la imagen es el único archivo de la temporal.
+    // To the destination: the image is the only file in the temporary folder.
     if (env->progress) env->progress(env->ctx, "terminando", f->install_size, f->install_size);
     char item[1300];
     if (image) snprintf(item, sizeof item, "%s/%s", tmp_dir, base);
@@ -535,7 +535,7 @@ int mpi_copy_install(const mp_inst_env *env, const mp_inst_req *req, const mp_in
     r->runtime_replaced = replace;
     if (env->notify) {
         char msg[300];
-        snprintf(msg, sizeof msg, "%s instalado", f->name[0] ? f->name : f->title_id);
+        snprintf(msg, sizeof msg, "%s installed", f->name[0] ? f->name : f->title_id);
         env->notify(env->ctx, msg);
     }
     r->status = MP_INST_DONE;

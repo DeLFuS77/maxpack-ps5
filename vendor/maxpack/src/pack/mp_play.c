@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Jugar un .p5z sin instalarlo (ver mp_play.h). No usa mp_cancel_check: el indicador de cancelar
-// es de la línea de comandos. Cada mp_play es de un solo hilo.
+// Playing a .p5z without installing it (see mp_play.h). Does not use mp_cancel_check: the cancel flag
+// belongs to the command line. Each mp_play is single-threaded.
 #include "mp_play.h"
 
 #include <stdio.h>
@@ -34,7 +34,7 @@ static int to_mem(void *ctx, const void *p, size_t n, mp_err *e) {
         size_t cap = (m->n + n) * 2;
         uint8_t *b = realloc(m->b, cap);
         if (!b) {
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             return -1;
         }
         m->b = b;
@@ -51,30 +51,30 @@ mp_play *mp_play_open(const char *p5z, char *err, size_t errlen) {
     mp_err e = {{0}};
     mp_play *p = calloc(1, sizeof *p);
     if (!p) {
-        put_err(err, errlen, NULL, "sin memoria");
+        put_err(err, errlen, NULL, "out of memory");
         return NULL;
     }
     if (!p5z || !*p5z) {
-        put_err(err, errlen, NULL, "falta la ruta del .p5z");
+        put_err(err, errlen, NULL, "missing the .p5z path");
         goto fail;
     }
     if (mp_p5z_open(p5z, &p->p5z, &e) != 0 || mp_p5z_zpk(p->p5z, &p->zpk, &e) != 0) {
-        put_err(err, errlen, &e, ".p5z no válido");
+        put_err(err, errlen, &e, "invalid .p5z");
         goto fail;
     }
-    // El archive_id de la cabecera del .p5z debe ser el de ampr_zstd.index (bytes 24..40).
+    // The header's archive_id in the .p5z must be ampr_zstd.index's (bytes 24..40).
     size_t i = 0;
     while (i < p->p5z->nfiles && p->p5z->files[i].role != MP_ROLE_ZPK_INDEX) i++;
     membuf m = {0};
     if (i == p->p5z->nfiles || p5z_read_file(p->p5z, i, to_mem, &m, &e) != 0 || m.n < 40) {
         free(m.b);
-        put_err(err, errlen, &e, ".p5z no válido: ampr_zstd.index");
+        put_err(err, errlen, &e, "invalid .p5z: ampr_zstd.index");
         goto fail;
     }
     int same = memcmp(m.b + 24, p->p5z->man.archive_id, 16) == 0;
     free(m.b);
     if (!same) {
-        put_err(err, errlen, NULL, ".p5z no válido: el archive_id de la cabecera no es el de ampr_zstd.index");
+        put_err(err, errlen, NULL, "invalid .p5z: the header's archive_id is not ampr_zstd.index's");
         goto fail;
     }
     return p;
@@ -216,7 +216,13 @@ char *mp_play_json(mp_play *p) {
         sb_u64(&s, v[i].len);
         sb_str(&s, "}");
     }
-    sb_str(&s, "]}");
+    sb_str(&s, "]");
+    // a .p5z that grew needs ampr-emu-ng's p5z rules (and says so); one as packed says what it always said
+    if (z->version == 2) {
+        sb_str(&s, ",\"index_version\":2,\"grown\":");
+        sb_u64(&s, z->grown);
+    }
+    sb_str(&s, "}");
     free(v);
     if (s.oom) {
         free(s.b);
@@ -225,13 +231,13 @@ char *mp_play_json(mp_play *p) {
     return s.b;
 }
 
-// ---- extracción -----------------------------------------------------------------------------
+// ---- extraction -----------------------------------------------------------------------------
 
 int mp_play_extract(mp_play *p, const char *rel, const char *dest, char *err, size_t errlen) {
     mp_err e = {{0}};
     mp_p5z *z = p->p5z;
     if (!rel || !dest || !*dest) {
-        put_err(err, errlen, NULL, "faltan la ruta o el destino");
+        put_err(err, errlen, NULL, "missing the path or the destination");
         return -1;
     }
     size_t fi = z->nfiles;
@@ -241,13 +247,13 @@ int mp_play_extract(mp_play *p, const char *rel, const char *dest, char *err, si
             break;
         }
     if (fi == z->nfiles) {
-        mp_err_set(&e, "%s no es un archivo suelto del .p5z", rel);
-        put_err(err, errlen, &e, "no es un archivo suelto del .p5z");
+        mp_err_set(&e, "%s is not a loose file of the .p5z", rel);
+        put_err(err, errlen, &e, "not a loose file of the .p5z");
         return -1;
     }
     char *dir = mp_strdup(dest);
     if (!dir) {
-        put_err(err, errlen, NULL, "sin memoria");
+        put_err(err, errlen, NULL, "out of memory");
         return -1;
     }
     char *sl = strrchr(dir, '/');
@@ -266,7 +272,7 @@ int mp_play_extract(mp_play *p, const char *rel, const char *dest, char *err, si
     if (w && mp_wfile_close(w, rc == 0 ? &e : NULL) != 0) rc = -1;
     if (rc == 0 && z->files[fi].mtime) rc = mp_set_mtime(dest, z->files[fi].mtime, &e);
     if (rc != 0) {
-        put_err(err, errlen, &e, "no se pudo extraer el archivo");
+        put_err(err, errlen, &e, "could not extract the file");
         return -1;
     }
     return 0;

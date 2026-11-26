@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Salida a carpeta: lo que se copia a la consola (los originales reemplazados no se escriben).
+// Folder output: what gets copied to the console (replaced originals are not written).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +13,7 @@ typedef struct {
     char *cur_path;
     int64_t cur_mtime;
     int skip, made;
-    mp_zpk_sink zs;   // sink de volúmenes de la carpeta (se libera en destroy)
+    mp_zpk_sink zs;   // the folder's volume sink (freed in destroy)
 } dirout;
 
 static char *join(const char *dir, const char *rel) {
@@ -26,7 +26,7 @@ static char *join(const char *dir, const char *rel) {
     return p;
 }
 
-// La carpeta se crea con la primera escritura: si el origen se rechaza, no queda nada.
+// The folder is created on the first write: if the source is rejected, nothing is left.
 static int ensure_dir(dirout *d, mp_err *e) {
     if (d->made) return 0;
     if (mp_make_dirs(d->dir, e) != 0) return -1;
@@ -62,7 +62,7 @@ static int d_begin(void *ctx, const char *rel, int role, uint64_t size, int64_t 
     if (ensure_dir(d, e) != 0) return -1;
     d->cur_path = join(d->dir, rel);
     if (!d->cur_path) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     char *slash = strrchr(d->cur_path, '/');
@@ -117,17 +117,17 @@ int mp_pack_out_dir(const char *out_dir, mp_pack_out *out, mp_err *e) {
     memset(out, 0, sizeof *out);
     int kind = mp_path_kind(out_dir);
     if (kind == 1) {
-        mp_err_set(e, "la salida es un archivo, no una carpeta: %s", out_dir);
+        mp_err_set(e, "the output is a file, not a folder: %s", out_dir);
         return -1;
     }
     if (kind == 2 && mp_dir_is_empty(out_dir) != 1) {
-        mp_err_set(e, "la carpeta de salida no está vacía: %s", out_dir);
+        mp_err_set(e, "the output folder is not empty: %s", out_dir);
         return -1;
     }
     dirout *d = calloc(1, sizeof *d);
     if (!d || !(d->dir = mp_strdup(out_dir))) {
         free(d);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     d->made = kind == 2;

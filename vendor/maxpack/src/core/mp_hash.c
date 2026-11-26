@@ -57,6 +57,113 @@ static void sha_block(uint32_t h[8], const uint8_t *p) {
     h[7] += k;
 }
 
+// SHA-256 with the CPU's SHA instructions (x86 SHA extensions: Intel since Goldmont and Ice Lake, AMD
+// since Zen), several times faster than the portable code. Only on 64-bit x86 PCs (Windows, Linux,
+// macOS); elsewhere, and on CPUs without them, the portable code runs. Same digests either way.
+#if (defined(_M_X64) || defined(__x86_64__)) && (defined(_WIN32) || defined(__linux__) || defined(__APPLE__))
+#define MP_SHA_NI 1
+#include <immintrin.h>
+#ifdef _MSC_VER
+#include <intrin.h>
+#define MP_SHA_TARGET
+#else
+#include <cpuid.h>
+#define MP_SHA_TARGET __attribute__((target("sha,sse4.1,ssse3")))
+#endif
+
+static int cpu_has_sha(void) {
+    unsigned b, c;
+#ifdef _MSC_VER
+    int r[4];
+    __cpuid(r, 0);
+    if (r[0] < 7) return 0;
+    __cpuid(r, 1);
+    c = (unsigned)r[2];
+    __cpuidex(r, 7, 0);
+    b = (unsigned)r[1];
+#else
+    unsigned a, d, c1;
+    if (__get_cpuid_max(0, NULL) < 7) return 0;
+    __cpuid(1, a, b, c1, d);
+    __cpuid_count(7, 0, a, b, c, d);
+    c = c1;
+#endif
+    // SHA (leaf 7, EBX bit 29), SSE4.1 (leaf 1, ECX bit 19) and SSSE3 (leaf 1, ECX bit 9).
+    return (b >> 29 & 1) && (c >> 19 & 1) && (c >> 9 & 1);
+}
+
+MP_SHA_TARGET static void sha_blocks_ni(uint32_t h[8], const uint8_t *p, size_t nblocks) {
+    const __m128i bswap = _mm_set_epi64x(0x0c0d0e0f08090a0bULL, 0x0405060700010203ULL);
+    // The instructions keep the state as two halves, ABEF and CDGH.
+    __m128i t = _mm_shuffle_epi32(_mm_loadu_si128((const __m128i *)&h[0]), 0xB1);
+    __m128i s1 = _mm_shuffle_epi32(_mm_loadu_si128((const __m128i *)&h[4]), 0x1B);
+    __m128i s0 = _mm_alignr_epi8(t, s1, 8);
+    s1 = _mm_blend_epi16(s1, t, 0xF0);
+    for (; nblocks; nblocks--, p += 64) {
+        __m128i abef = s0, cdgh = s1, w[4];
+        for (int i = 0; i < 4; i++)
+            w[i] = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(p + 16 * i)), bswap);
+        // Rounds 4g..4g+3 with the message words W(g); W(g+1) comes from W(g-3), W(g-2), W(g-1), W(g).
+        for (int g = 0; g < 16; g++) {
+            __m128i m = _mm_add_epi32(w[g & 3], _mm_loadu_si128((const __m128i *)&K[4 * g]));
+            s1 = _mm_sha256rnds2_epu32(s1, s0, m);
+            m = _mm_shuffle_epi32(m, 0x0E);
+            s0 = _mm_sha256rnds2_epu32(s0, s1, m);
+            if (g >= 3 && g < 15) {
+                __m128i x = _mm_sha256msg1_epu32(w[(g + 1) & 3], w[(g + 2) & 3]);
+                x = _mm_add_epi32(x, _mm_alignr_epi8(w[g & 3], w[(g + 3) & 3], 4));
+                w[(g + 1) & 3] = _mm_sha256msg2_epu32(x, w[g & 3]);
+            }
+        }
+        s0 = _mm_add_epi32(s0, abef);
+        s1 = _mm_add_epi32(s1, cdgh);
+    }
+    t = _mm_shuffle_epi32(s0, 0x1B);   // and back to A..H
+    s1 = _mm_shuffle_epi32(s1, 0xB1);
+    s0 = _mm_blend_epi16(t, s1, 0xF0);
+    s1 = _mm_alignr_epi8(s1, t, 8);
+    _mm_storeu_si128((__m128i *)&h[0], s0);
+    _mm_storeu_si128((__m128i *)&h[4], s1);
+}
+#endif
+
+// Which code runs: -1 not decided yet, 0 portable, 1 the CPU's SHA instructions. Every thread
+// that decides finds the same value.
+#ifdef _MSC_VER
+static volatile long g_accel = -1;
+#define ACCEL_LOAD() g_accel
+#define ACCEL_STORE(v) (g_accel = (v))
+#else
+static int g_accel = -1;
+#define ACCEL_LOAD() __atomic_load_n(&g_accel, __ATOMIC_RELAXED)
+#define ACCEL_STORE(v) __atomic_store_n(&g_accel, (v), __ATOMIC_RELAXED)
+#endif
+
+int mp_sha256_accel(void) {
+    int a = (int)ACCEL_LOAD();
+    if (a < 0) {
+#ifdef MP_SHA_NI
+        a = cpu_has_sha();
+#else
+        a = 0;
+#endif
+        ACCEL_STORE(a);
+    }
+    return a;
+}
+
+void mp_sha256_use_accel(int on) { ACCEL_STORE(on ? -1 : 0); }   // -1: decided again
+
+static void sha_blocks(uint32_t h[8], const uint8_t *p, size_t nblocks) {
+#ifdef MP_SHA_NI
+    if (mp_sha256_accel()) {
+        sha_blocks_ni(h, p, nblocks);
+        return;
+    }
+#endif
+    for (; nblocks; nblocks--, p += 64) sha_block(h, p);
+}
+
 void mp_sha256_init(mp_sha256 *s) {
     static const uint32_t iv[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                                    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
@@ -75,10 +182,14 @@ void mp_sha256_update(mp_sha256 *s, const void *data, size_t n) {
         p += take;
         n -= take;
         if (s->n < 64) return;
-        sha_block(s->h, s->buf);
+        sha_blocks(s->h, s->buf, 1);
         s->n = 0;
     }
-    for (; n >= 64; p += 64, n -= 64) sha_block(s->h, p);
+    if (n >= 64) {
+        sha_blocks(s->h, p, n / 64);
+        p += n / 64 * 64;
+        n %= 64;
+    }
     memcpy(s->buf, p, n);
     s->n = n;
 }
@@ -86,7 +197,7 @@ void mp_sha256_update(mp_sha256 *s, const void *data, size_t n) {
 void mp_sha256_final(mp_sha256 *s, uint8_t out[32]) {
     uint64_t bits = s->len * 8;
     uint8_t pad = 0x80;
-    uint64_t keep = s->len;   // el relleno pasa por update pero no cuenta como mensaje
+    uint64_t keep = s->len;   // the padding goes through update but does not count as message
     mp_sha256_update(s, &pad, 1);
     uint8_t zero = 0;
     while (s->n != 56) mp_sha256_update(s, &zero, 1);

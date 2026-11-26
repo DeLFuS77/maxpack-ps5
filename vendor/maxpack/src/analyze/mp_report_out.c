@@ -11,9 +11,9 @@
 #include "mp_version.h"
 
 static const char *const cfg_label[MP_CFG_COUNT] = {
-    "v1 nivel 5 (Forge)",        "v1 nivel 9",
-    "v1 nivel 19",               "v1 nivel 22",
-    "v2 bloque de 1 MiB, n. 19", "v2 diccionario, n. 19",
+    "v1 level 5 (Forge)",        "v1 level 9",
+    "v1 level 19",               "v1 level 22",
+    "v2 1 MiB block, l. 19", "v2 dictionary, l. 19",
     "zlib 64 KiB (≈ .ffpfsc)",
 };
 
@@ -27,9 +27,9 @@ static double mb_per_s(const mp_cfg_stat *s) {
     return s->ns ? finite_or_zero((double)s->raw / ((double)s->ns / 1e9) / 1e6) : 0.0;
 }
 
-// ---- Texto ---------------------------------------------------------------------------------
+// ---- Text ----------------------------------------------------------------------------------
 
-// Tamaño legible en unidades decimales, con coma decimal.
+// Human-readable size in decimal units.
 static const char *human(uint64_t b, char buf[32]) {
     static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
     double v = (double)b;
@@ -42,8 +42,6 @@ static const char *human(uint64_t b, char buf[32]) {
         snprintf(buf, 32, "%" PRIu64 " B", b);
     else
         snprintf(buf, 32, "%.2f %s", v, units[u]);
-    for (char *p = buf; *p; p++)
-        if (*p == '.') *p = ',';
     return buf;
 }
 
@@ -58,13 +56,11 @@ static const char *duration(uint64_t s, char buf[32]) {
 }
 
 static const char *pct(double v, char buf[16]) {
-    snprintf(buf, 16, "%.1f %%", finite_or_zero(v));
-    for (char *p = buf; *p; p++)
-        if (*p == '.') *p = ',';
+    snprintf(buf, 16, "%.1f%%", finite_or_zero(v));
     return buf;
 }
 
-// Columnas visibles de una cadena UTF-8 (printf rellena por bytes, no por caracteres).
+// Visible columns of a UTF-8 string (printf pads by bytes, not by characters).
 static int utf8_cols(const char *s) {
     int n = 0;
     for (; *s; s++) n += ((unsigned char)*s & 0xC0) != 0x80;
@@ -89,11 +85,11 @@ static const char *bin_label(const mp_size_bin *b, char buf[48]) {
         if (names[i].v == b->hi) hi = names[i].s;
     }
     if (b->hi == 0)
-        snprintf(buf, 48, "vacíos");
+        snprintf(buf, 48, "empty");
     else if (b->hi == UINT64_MAX)
-        snprintf(buf, 48, "más de %s", lo);
+        snprintf(buf, 48, "over %s", lo);
     else if (b->lo <= 1)
-        snprintf(buf, 48, "hasta %s", hi);
+        snprintf(buf, 48, "up to %s", hi);
     else
         snprintf(buf, 48, "%s – %s", lo, hi);
     return buf;
@@ -101,57 +97,74 @@ static const char *bin_label(const mp_size_bin *b, char buf[48]) {
 
 int mp_report_write_text(const mp_report *r, FILE *out) {
     char a[32], b[32], c[32], d[16];
-    const char *kind = r->kind == MP_SRC_EXFAT ? "imagen exFAT" : "carpeta";
-    fprintf(out, "MaxPack %s — análisis de %s (%s)\n", MP_VERSION,
+    const char *kind = r->kind_text[0] ? r->kind_text : r->kind == MP_SRC_EXFAT ? "exFAT image" : "folder";
+    fprintf(out, "MaxPack %s — analysis of %s (%s)\n", MP_VERSION,
             r->source_name ? r->source_name : "?", kind);
-    fprintf(out, "%" PRIu64 " archivos en %" PRIu64 " carpetas · %s\n\n", r->files, r->dirs,
-            human(r->total_bytes, a));
-    fprintf(out, "Suelto (va tal cual a la consola): %8" PRIu64 " archivos  %s\n", r->loose_files,
+    char line[256];
+    fprintf(out, "%" PRIu64 " files in %" PRIu64 " folders · %s\n", r->files, r->dirs, human(r->total_bytes, a));
+    mp_complete_summary(&r->complete, line, sizeof line);
+    fprintf(out, "Completeness: %s\n", line);
+    mp_complete_extra_line(&r->complete, line, sizeof line);
+    if (line[0]) fprintf(out, "  %s\n", line);
+    fprintf(out, "\n");
+    fprintf(out, "Loose (goes to the console as is):  %8" PRIu64 " files  %s\n", r->loose_files,
             human(r->loose_bytes, a));
-    fprintf(out, "Empaquetable:                      %8" PRIu64 " archivos  %s\n", r->packable_files,
+    fprintf(out, "Packable:                           %8" PRIu64 " files  %s\n", r->packable_files,
             human(r->packable_bytes, a));
     if (r->full || r->sample_rate >= 1.0)
-        fprintf(out, "Muestra: todo (%s en %" PRIu64 " ventanas de 1 MiB), %u hilos\n\n",
+        fprintf(out, "Sample: everything (%s in %" PRIu64 " 1 MiB windows), %u threads\n\n",
                 human(r->sample_bytes, a), r->sample_windows, r->threads);
     else
-        fprintf(out, "Muestra: %s (%s en %" PRIu64 " ventanas de 1 MiB), %u hilos\n\n",
+        fprintf(out, "Sample: %s (%s in %" PRIu64 " 1 MiB windows), %u threads\n\n",
                 pct(100.0 * r->sample_rate, d), human(r->sample_bytes, a), r->sample_windows,
                 r->threads);
 
-    put_padded(out, "Configuración", 28);
-    fprintf(out, " %12s %15s %9s %10s %14s\n", "Empaquetado", "Total consola", "Ahorro",
-            "MB/s/hilo", "Tiempo est.");
+    put_padded(out, "Configuration", 28);
+    fprintf(out, " %12s %15s %9s %10s %14s\n", "Packed", "Console total", "Saved",
+            "MB/s/thread", "Est. time");
     for (int k = 0; k < MP_CFG_COUNT; k++) {
         uint64_t tot = console_total(r, k);
         double save = r->total_bytes ? 100.0 * (1.0 - (double)tot / (double)r->total_bytes) : 0.0;
         char speed[16];
         snprintf(speed, sizeof speed, "%.1f", mb_per_s(&r->sampled[k]));
-        for (char *p = speed; *p; p++)
-            if (*p == '.') *p = ',';
         put_padded(out, cfg_label[k], 28);
         fprintf(out, " %12s %15s %9s %10s %14s\n", human(r->est_packed[k], a), human(tot, b),
                 pct(save, d), speed, duration(r->est_seconds[k], c));
     }
-    fprintf(out, "Ahorro = 1 - total en consola / tamaño original. Total en consola = sueltos + "
-                 "empaquetado (+ índices en v1).\n\n");
+    fprintf(out, "Saved = 1 - console total / original size. Console total = loose files + "
+                 "packed (+ indices in v1).\n");
+    // a compressed image takes less than the game in it (a package, more or less): say what Saved is against
+    if (r->image_size && r->kind == MP_SRC_FPKG)
+        fprintf(out, "Saved is against the game in it (%s), not the package file (%s).\n", human(r->total_bytes, a),
+                human(r->image_size, b));
+    else if (r->image_size)
+        fprintf(out, "Saved is against the game in it (%s), not the image file, which is compressed (%s).\n",
+                human(r->total_bytes, a), human(r->image_size, b));
+    fprintf(out, "\n");
 
     if (r->dedup_done)
-        fprintf(out, "Deduplicación exacta (todo el juego): %" PRIu64 " de %" PRIu64
-                     " bloques de 256 KiB repetidos (%s) · %" PRIu64 " archivos idénticos (%s)\n",
+        fprintf(out, "Exact deduplication (whole game): %" PRIu64 " of %" PRIu64
+                     " 256 KiB blocks repeated (%s) · %" PRIu64 " identical files (%s)\n",
                 r->dedup.dup_blocks, r->dedup.blocks, human(r->dedup.dup_block_bytes, a),
                 r->dedup.dup_files, human(r->dedup.dup_file_bytes, b));
     else
-        fprintf(out, "Deduplicación: no medida (--no-dedup)\n");
+        fprintf(out, "Deduplication: not measured (--no-dedup)\n");
     char x[32];
-    fprintf(out, "Archivos < 64 KiB: %" PRIu64 " (%s) · uno a uno %s · agrupados %s · con "
-                 "diccionario %s\n",
+    fprintf(out, "Files < 64 KiB: %" PRIu64 " (%s) · one by one %s · grouped %s · with "
+                 "dictionary %s\n",
             r->small.files, human(r->small.raw, a), human(r->small.individual, b),
             human(r->small.grouped, c), human(r->small.individual_dict, x));
-    fprintf(out, "Diccionarios entrenados: bloques %d/2, archivos pequeños %d/2\n", r->block_dicts,
+    fprintf(out, "Trained dictionaries: blocks %d/2, small files %d/2\n", r->block_dicts,
             r->small.dicts);
-    fprintf(out, "Sueltos para el .p5z (zstd 19, ventana larga): %s -> %s\n",
+    fprintf(out, "Loose files for the .p5z (zstd 19, long window): %s -> %s\n",
             human(r->loose_bytes, a), human(r->loose_compressed, b));
-    fprintf(out, ".p5z estimado (v1 nivel 19): %s\n", human(r->p5z_estimate, a));
+    fprintf(out, ".p5z estimate (v1 level 19): %s", human(r->p5z_estimate, a));
+    if (r->image_size) {
+        double change = 100.0 * ((double)r->p5z_estimate / (double)r->image_size - 1.0);
+        fprintf(out, " (%s %s than the %s file)", pct(fabs(change), d), change > 0 ? "larger" : "smaller",
+                r->kind == MP_SRC_FPKG ? "package" : "image");
+    }
+    fprintf(out, "\n");
     if (r->xport_done) {
         const mp_xport_stat *xs = &r->xport;
         double vs = r->p5z_estimate ? 100.0 * (1.0 - (double)r->p5z_transport / (double)r->p5z_estimate)
@@ -159,26 +172,24 @@ int mp_report_write_text(const mp_report *r, FILE *out) {
         char sp[16];
         snprintf(sp, sizeof sp, "%.1f",
                  xs->ns ? (double)xs->sample_raw / ((double)xs->ns / 1e9) / 1e6 : 0.0);
-        for (char *p = sp; *p; p++)
-            if (*p == '.') *p = ',';
-        fprintf(out, "Transporte (.p5z solo para el PC; la PS5 recomprimiría a v1 al instalar):\n");
-        fprintf(out, "  empaquetable con zstd 19, ventana larga, frames de 32 MiB: %s -> %s (v1 nivel 19: %s)\n",
+        fprintf(out, "Transport (.p5z for the PC only; the PS5 would recompress to v1 on install):\n");
+        fprintf(out, "  packable with zstd 19, long window, 32 MiB frames: %s -> %s (v1 level 19: %s)\n",
                 human(r->packable_bytes, a), human(xs->est_packed, b), human(r->est_packed[MP_CFG_V1_L19], c));
-        fprintf(out, "  muestra %s en %" PRIu64 " tramos · %s MB/s/hilo · tiempo est. %s con %u hilos\n",
+        fprintf(out, "  sample %s in %" PRIu64 " runs · %s MB/s/thread · est. time %s with %u threads\n",
                 human(xs->sample_bytes, a), xs->frames, sp, duration(xs->est_seconds, b), xs->threads);
-        fprintf(out, "  .p5z de transporte estimado: %s (%s menos que el .p5z normal)\n",
+        fprintf(out, "  estimated transport .p5z: %s (%s smaller than the normal .p5z)\n",
                 human(r->p5z_transport, a), pct(vs, d));
     }
     fputc('\n', out);
 
-    fprintf(out, "Distribución de tamaños\n");
+    fprintf(out, "Size distribution\n");
     for (int k = 0; k < MP_SIZE_BINS; k++) {
         char lab[48];
         fputs("  ", out);
         put_padded(out, bin_label(&r->bins[k], lab), 22);
-        fprintf(out, " %10" PRIu64 " archivos  %s\n", r->bins[k].files, human(r->bins[k].bytes, a));
+        fprintf(out, " %10" PRIu64 " files  %s\n", r->bins[k].files, human(r->bins[k].bytes, a));
     }
-    fprintf(out, "\nTiempo del análisis: %s\n", duration(r->elapsed_ns / 1000000000ull, a));
+    fprintf(out, "\nAnalysis time: %s\n", duration(r->elapsed_ns / 1000000000ull, a));
     return ferror(out) ? -1 : 0;
 }
 
@@ -237,7 +248,11 @@ char *mp_report_json(const mp_report *r) {
     s.p[0] = 0;
     sb_add(&s, "{\n  \"maxpack\": \"%s\",\n  \"source\": {\"name\": ", MP_VERSION);
     sb_str(&s, r->source_name);
-    sb_add(&s, ", \"kind\": \"%s\"},\n", r->kind == MP_SRC_EXFAT ? "exfat" : "dir");
+    // A folder is "dir" (as before 1.0.5); an image, mp_source_kind_name's word, and for a container
+    // the image inside.
+    const char *kind = r->kind == MP_SRC_DIR || !r->kind_name[0] ? (r->kind == MP_SRC_EXFAT ? "exfat" : "dir")
+                                                                   : r->kind_name;
+    sb_add(&s, ", \"kind\": \"%s\", \"inner\": \"%s\"},\n", kind, r->inner_name);
     sb_add(&s,
            "  \"files\": {\"total\": %" PRIu64 ", \"dirs\": %" PRIu64 ", \"bytes\": %" PRIu64
            ", \"loose_files\": %" PRIu64 ", \"loose_bytes\": %" PRIu64
@@ -291,6 +306,13 @@ char *mp_report_json(const mp_report *r) {
            ", \"grouped\": %" PRIu64 ", \"individual_dict\": %" PRIu64 ", \"dicts\": %d},\n",
            r->small.files, r->small.raw, r->small.individual, r->small.grouped,
            r->small.individual_dict, r->small.dicts);
+    mp_jbuf cj = {0};
+    mp_complete_json(&r->complete, 1, &cj);
+    if (cj.oom || !cj.p)
+        s.oom = 1;
+    else
+        sb_add(&s, "  \"completeness\": %s,\n", cj.p);
+    mp_jbuf_free(&cj);
     sb_add(&s,
            "  \"block_dicts\": %d,\n  \"loose_compressed\": %" PRIu64 ",\n  \"v1_index_bytes\": %" PRIu64
            ",\n  \"p5z_estimate\": %" PRIu64 ",\n  \"elapsed_seconds\": ",
@@ -307,7 +329,7 @@ char *mp_report_json(const mp_report *r) {
 int mp_report_write_json(const mp_report *r, const char *utf8_path, mp_err *e) {
     char *j = mp_report_json(r);
     if (!j) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     int rc = mp_write_file(utf8_path, j, strlen(j), e);

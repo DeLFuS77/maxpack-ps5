@@ -7,11 +7,11 @@
 #include "mp_hash.h"
 #include "mp_measure.h"
 
-#define DEDUP_ITEM (64ull << 20)   // un ítem = hasta 64 MiB de un archivo
-#define DEDUP_READ (1u << 20)      // se lee en trozos de 1 MiB (múltiplo de 256 KiB)
+#define DEDUP_ITEM (64ull << 20)   // one item = up to 64 MiB of a file
+#define DEDUP_READ (1u << 20)      // read in 1 MiB chunks (a multiple of 256 KiB)
 
 typedef struct {
-    uint32_t file;   // índice en `files`
+    uint32_t file;   // index in `files`
     uint64_t off, len, first_block;
 } item;
 
@@ -19,9 +19,9 @@ typedef struct {
     mp_source *src;
     const uint32_t *files;
     item *items;
-    uint64_t *hash;    // XXH64 por bloque global
-    uint32_t *len;     // longitud por bloque global
-    uint8_t **buf;     // un búfer por hilo
+    uint64_t *hash;    // XXH64 per global block
+    uint32_t *len;     // length per global block
+    uint8_t **buf;     // one buffer per thread
     mp_progress *prog;
     mp_mutex *mu;
     int failed;
@@ -120,7 +120,7 @@ int mp_dedup_run(mp_source *src, const uint32_t *files, size_t nfiles, unsigned 
         goto done;
     }
 
-    // Bloques repetidos: mismos (hash, longitud).
+    // Repeated blocks: same (hash, length).
     hl *v = malloc((nblocks ? nblocks : 1) * sizeof *v);
     fk *keys = malloc((nfiles ? nfiles : 1) * sizeof *keys);
     if (!v || !keys) {
@@ -138,7 +138,7 @@ int mp_dedup_run(mp_source *src, const uint32_t *files, size_t nfiles, unsigned 
             out->dup_blocks++;
             out->dup_block_bytes += v[b].len;
         }
-    // Archivos idénticos: mismo tamaño y mismo XXH64 de la lista de hashes de sus bloques.
+    // Identical files: same size and same XXH64 of their block hash list.
     for (size_t f = 0; f < nfiles; f++) {
         keys[f].size = mp_source_entry(src, files[f])->size;
         keys[f].key = mp_xxh64(c.hash + first[f], (size_t)(first[f + 1] - first[f]) * sizeof *c.hash, 0);
@@ -158,7 +158,7 @@ int mp_dedup_run(mp_source *src, const uint32_t *files, size_t nfiles, unsigned 
     rc = 0;
     goto done;
 oom:
-    mp_err_set(e, "sin memoria");
+    mp_err_set(e, "out of memory");
 done:
     if (c.buf)
         for (unsigned t = 0; t < threads; t++) free(c.buf[t]);
@@ -170,6 +170,6 @@ done:
     free(first);
     return rc;
 oom0:
-    mp_err_set(e, "sin memoria");
+    mp_err_set(e, "out of memory");
     return -1;
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Instalador de PC: el mismo motor y la misma página que en la PS5, sobre carpetas del PC.
-// Solo sirve para probar sin consola; no se distribuye.
+// PC installer: the same engine and API as on the PS5, over folders on the PC (no page: use a client of the API).
+// Only useful for testing without a console; it is not distributed.
 //   maxpack-installer-pc --internal DIR [--drive DIR]... [--port 8095] [--runtime FILE] [--smp-port 10101]
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,16 +8,15 @@
 
 #include "mp_api.h"
 #include "mp_inst_internal.h"
-#include "mp_page.h"
 #include "mp_platform.h"
 
 static void say(void *ctx, const char *msg) {
     (void)ctx;
-    fprintf(stderr, "[aviso] %s\n", msg);
+    fprintf(stderr, "[warning] %s\n", msg);
 }
 
 static void usage(void) {
-    fprintf(stderr, "uso: maxpack-installer-pc --internal DIR [--drive DIR]... [--port N] [--runtime FILE] "
+    fprintf(stderr, "usage: maxpack-installer-pc --internal DIR [--drive DIR]... [--port N] [--runtime FILE] "
                     "[--smp-port N]\n");
 }
 
@@ -64,7 +63,7 @@ int main(int argc, char **argv) {
         env.runtime.data = (const uint8_t *)rt;
         env.runtime.len = rtlen;
         env.runtime.mtime = mt;
-        env.runtime.version = "archivo";
+        env.runtime.version = "file";
     }
     mp_smp_cfg smp;
     mp_smp_cfg_default(&smp);
@@ -75,13 +74,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: %s\n", e.msg);
         return 1;
     }
-    mp_api_set_page(api, mp_page_html, mp_page_html_len);
     mp_http_server *srv = mp_http_start("127.0.0.1", (uint16_t)port, mp_api_handle, api, &e);
     if (!srv) {
         fprintf(stderr, "error: %s\n", e.msg);
         mp_api_free(api);
         return 1;
     }
-    fprintf(stderr, "MaxPack (instalador de PC) en http://127.0.0.1:%u\n", port);
+    fprintf(stderr, "MaxPack (PC installer) at http://127.0.0.1:%u\n", port);
     for (;;) mp_sleep_ms(1000);
 }

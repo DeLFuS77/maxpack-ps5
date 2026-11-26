@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Buscar .p5z, abrirlos y encontrar las copias de un juego que ya hay en la consola.
+// Find .p5z files, open them and find the copies of a game that are already on the console.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,8 +43,8 @@ int mp_inst_probe(const char *path, mp_inst_found *out, mp_err *e) {
     if (mp_p5z_open(path, &p, e) != 0) return -1;
     const mp_pack_manifest *m = mp_p5z_manifest(p);
     if (!mp_inst_title_ok(m->title_id)) {
-        mp_err_set(e, "%s no tiene un TITLE_ID válido (\"%s\"): hace falta un sce_sys/param.json con titleId "
-                      "al empaquetarlo", path, m->title_id);
+        mp_err_set(e, "%s has no valid TITLE_ID (\"%s\"): a sce_sys/param.json with titleId is needed "
+                      "when packing it", path, m->title_id);
         mp_p5z_close(p);
         return -1;
     }
@@ -59,7 +59,7 @@ int mp_inst_probe(const char *path, mp_inst_found *out, mp_err *e) {
     mp_p5z_close(p);
     out->path = mp_strdup(path);
     if (!out->path) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     return 0;
@@ -70,7 +70,7 @@ static int is_image(const char *name) {
            mpi_has_ext(name, ".ffpfsc");
 }
 
-// Primer AAAA00000 del nombre (sin distinguir mayúsculas).
+// First AAAA00000 in the name (case-insensitive).
 static int title_from_name(const char *name, char id[16]) {
     size_t n = strlen(name);
     for (size_t i = 0; i + 9 <= n; i++) {
@@ -93,7 +93,7 @@ static const char *base_name(const char *p) {
     return s ? s + 1 : p;
 }
 
-// param.json de una imagen exFAT (con el lector de la fase 0).
+// param.json of an exFAT image (with phase 0's reader).
 static int exfat_param(const char *path, char id[16], char ver[16], char name[128], int *packed) {
     mp_source *s = NULL;
     if (mp_source_open(path, &s, NULL) != 0) return -1;
@@ -129,7 +129,7 @@ int mp_inst_probe_any(const char *path, mp_inst_found *out, mp_err *e) {
         free(buf);
         free(zi);
         if (!ok || !mp_inst_title_ok(out->title_id)) {
-            mp_err_set(e, "%s no es una carpeta de juego (falta sce_sys/param.json con un titleId válido)", path);
+            mp_err_set(e, "%s is not a game folder (a sce_sys/param.json with a valid titleId is missing)", path);
             return -1;
         }
         out->kind = MP_SRC_FOLDER;
@@ -138,23 +138,23 @@ int mp_inst_probe_any(const char *path, mp_inst_found *out, mp_err *e) {
         if (mpi_has_ext(path, ".exfat")) {
             if (exfat_param(path, out->title_id, out->version, out->name, &out->packed) != 0 ||
                 !mp_inst_title_ok(out->title_id)) {
-                mp_err_set(e, "%s: no se pudo leer su sce_sys/param.json", path);
+                mp_err_set(e, "%s: could not read its sce_sys/param.json", path);
                 return -1;
             }
         } else if (title_from_name(base_name(path), out->title_id) != 0) {
-            mp_err_set(e, "no se sabe qué juego es %s: añade su ID (por ejemplo PPSA12544) al nombre del archivo",
+            mp_err_set(e, "cannot tell which game %s is: add its ID (for example PPSA10001) to the file name",
                        base_name(path));
             return -1;
         }
         if (!out->name[0]) snprintf(out->name, sizeof out->name, "%s", base_name(path));
     } else {
-        mp_err_set(e, "%s no es un .p5z, una carpeta de juego ni una imagen", path);
+        mp_err_set(e, "%s is not a .p5z, a game folder or an image", path);
         return -1;
     }
     out->install_size = out->p5z_size = out->original_size = mpi_tree_size(path);
     out->path = mp_strdup(path);
     if (!out->path) {
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     return 0;
@@ -212,7 +212,7 @@ static void add_found(found_list *fl, const char *path) {
     if (mp_inst_probe_any(path, &f, &e) != 0) {
         if (fl->env->notify) {
             char msg[700];
-            snprintf(msg, sizeof msg, "Se salta %s: %s", path, e.msg);
+            snprintf(msg, sizeof msg, "Skipping %s: %s", path, e.msg);
             fl->env->notify(fl->env->ctx, msg);
         }
         return;
@@ -238,9 +238,9 @@ static int has_param(const char *dir) {
     return ok;
 }
 
-// Lo instalable de dir y, si depth > 0, de sus subcarpetas (salvo la temporal del instalador).
-// Una carpeta con sce_sys/param.json es un juego: se ofrece entera y no se entra en ella.
-// files_only: solo .p5z (en <internal>/maxpack).
+// What can be installed from dir and, if depth > 0, from its subfolders (except the installer's temporary one).
+// A folder with sce_sys/param.json is a game: it is offered whole and not entered.
+// files_only: only .p5z (in <internal>/maxpack).
 static void scan_dir(found_list *fl, const char *dir, int depth, int files_only) {
     names l = {0};
     if (mp_dir_list(dir, names_cb, &l, NULL) != 0) {
@@ -276,11 +276,11 @@ int mp_inst_scan(const mp_inst_env *env, mp_inst_found **out, size_t *n, mp_err 
     size_t nd = mp_inst_drives(env, drives, 16);
     for (size_t i = 0; i < nd; i++) scan_dir(&fl, drives[i], 1, 0);
     char *mine = mpi_join(env->internal, "maxpack");
-    if (mine) scan_dir(&fl, mine, 0, 1);   // solo .p5z: dentro están tmp/, state/ e installed/
+    if (mine) scan_dir(&fl, mine, 0, 1);   // only .p5z: tmp/, state/ and installed/ are inside
     free(mine);
     if (fl.oom || !mine) {
         mp_inst_found_free(fl.v, fl.n);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     if (fl.n > 1) qsort(fl.v, fl.n, sizeof *fl.v, cmp_found);
@@ -289,7 +289,7 @@ int mp_inst_scan(const mp_inst_env *env, mp_inst_found **out, size_t *n, mp_err 
     return 0;
 }
 
-// ---- copias existentes --------------------------------------------------------------------
+// ---- existing copies --------------------------------------------------------------------
 
 typedef struct {
     mp_inst_existing *v;
@@ -300,7 +300,7 @@ typedef struct {
 
 static void add_existing(ex_list *x, const char *path) {
     int kind = mp_path_kind(path);
-    if (kind == 0 || mpi_reserved_path(x->env, path)) return;   // nunca una raíz (homebrew/ entera, etc.)
+    if (kind == 0 || mpi_reserved_path(x->env, path)) return;   // never a root (the whole homebrew/, etc.)
     for (size_t i = 0; i < x->n; i++)
         if (!strcmp(x->v[i].path, path) || mp_same_file(x->v[i].path, path)) return;
     if (x->n == x->cap) {
@@ -325,14 +325,14 @@ static void add_existing(ex_list *x, const char *path) {
     x->n++;
 }
 
-// Carpetas de root (un nivel) cuyo param.json es de title_id.
+// Folders of root (one level) whose param.json is title_id's.
 static void scan_root(ex_list *x, const char *root, const char *title_id) {
     names l = {0};
     if (mp_dir_list(root, names_cb, &l, NULL) != 0) {
         names_free(&l);
         return;
     }
-    if (l.n > 1) {   // orden estable de resultados
+    if (l.n > 1) {   // stable order of results
         for (size_t i = 1; i < l.n; i++)
             for (size_t j = i; j > 0 && cmp_name(&l.names[j - 1], &l.names[j]) > 0; j--) {
                 char *t = l.names[j];
@@ -344,7 +344,7 @@ static void scan_root(ex_list *x, const char *root, const char *title_id) {
             }
     }
     for (size_t i = 0; i < l.n && !x->oom; i++) {
-        if (!l.is_dir[i]) {   // una imagen con el ID en el nombre es una copia del juego
+        if (!l.is_dir[i]) {   // an image with the ID in its name is a copy of the game
             char id[16];
             if (is_image(l.names[i]) && title_from_name(l.names[i], id) == 0 && !strcmp(id, title_id)) {
                 char *p = mpi_join(root, l.names[i]);
@@ -374,7 +374,7 @@ static void scan_base(ex_list *x, const char *base, int include_base, const char
     if (!x->oom && include_base) scan_root(x, base, title_id);
     if (!x->oom) scan_root(x, hb, title_id);
     if (!x->oom) scan_root(x, eg, title_id);
-    if (!x->oom) add_existing(x, direct);   // ocupa el destino aunque sea de otro juego
+    if (!x->oom) add_existing(x, direct);   // it occupies the destination even if it is another game's
     free(hb);
     free(eg);
     free(direct);
@@ -391,7 +391,7 @@ int mp_inst_find_existing(const mp_inst_env *env, const char *title_id, const ch
     *out = NULL;
     *n = 0;
     if (!mp_inst_title_ok(title_id)) {
-        mp_err_set(e, "TITLE_ID no válido: %s", title_id);
+        mp_err_set(e, "invalid TITLE_ID: %s", title_id);
         return -1;
     }
     ex_list x = {0};
@@ -403,7 +403,7 @@ int mp_inst_find_existing(const mp_inst_env *env, const char *title_id, const ch
     for (size_t i = 0; i < nknown && !x.oom; i++) add_existing(&x, known[i]);
     if (x.oom) {
         mp_inst_existing_free(x.v, x.n);
-        mp_err_set(e, "sin memoria");
+        mp_err_set(e, "out of memory");
         return -1;
     }
     mp_inst_record r;

@@ -28,8 +28,8 @@ static int ts_push(train_set *t, size_t len) {
     return 0;
 }
 
-// Entrena con lo reunido. El tamaño del diccionario se limita a una décima parte de los datos
-// (con pocos datos, un diccionario grande solo memoriza). NULL si ZDICT no puede.
+// Trains with what has been gathered. The dictionary size is limited to a tenth of the data
+// (with little data, a large dictionary only memorizes). NULL if ZDICT cannot.
 static void *train(const train_set *t, size_t *out_size) {
     *out_size = 0;
     if (t->n < 8 || t->used == 0) return NULL;
@@ -65,7 +65,7 @@ int mp_dict_train_blocks(mp_source *src, const uint32_t *packable, const mp_samp
         train_set t = {0};
         t.cap = BLOCK_TRAIN_BUDGET;
         if (!(t.buf = malloc(t.cap))) {
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             return -1;
         }
         uint64_t rank = 0;
@@ -83,7 +83,7 @@ int mp_dict_train_blocks(mp_source *src, const uint32_t *packable, const mp_samp
                 if (ts_push(&t, n) != 0) {
                     ts_free(&t);
                     mp_dict_pair_free(out);
-                    mp_err_set(e, "sin memoria");
+                    mp_err_set(e, "out of memory");
                     return -1;
                 }
             }
@@ -105,7 +105,7 @@ int mp_dict_train_small(mp_source *src, const uint32_t *small, size_t n, mp_dict
         train_set t = {0};
         t.cap = SMALL_TRAIN_BUDGET;
         if (!(t.buf = malloc(t.cap))) {
-            mp_err_set(e, "sin memoria");
+            mp_err_set(e, "out of memory");
             return -1;
         }
         uint64_t rank = 0;
@@ -115,7 +115,7 @@ int mp_dict_train_small(mp_source *src, const uint32_t *small, size_t n, mp_dict
             if (t.used + len > t.cap) break;
             if (mp_source_read(src, small[i], 0, t.buf + t.used, len, e) != 0 ||
                 ts_push(&t, len) != 0) {
-                if (!e || !e->msg[0]) mp_err_set(e, "sin memoria");
+                if (!e || !e->msg[0]) mp_err_set(e, "out of memory");
                 ts_free(&t);
                 mp_dict_pair_free(out);
                 return -1;
@@ -145,7 +145,7 @@ typedef struct {
     mp_source *src;
     const uint32_t *small;
     size_t n;
-    uint64_t *prefix;   // n + 1 posiciones del flujo concatenado
+    uint64_t *prefix;   // n + 1 positions of the concatenated stream
     tstate *ts;
     mp_progress *prog;
     mp_mutex *mu;
@@ -187,7 +187,7 @@ static int work_group(void *vc, size_t b, unsigned tid) {
     tstate *t = &c->ts[tid];
     uint64_t start = (uint64_t)b * MP_BLOCK_V1, end = start + MP_BLOCK_V1;
     if (end > c->prefix[c->n]) end = c->prefix[c->n];
-    size_t lo = 0, hi = c->n;   // primer archivo con prefix[j + 1] > start
+    size_t lo = 0, hi = c->n;   // first file with prefix[j + 1] > start
     while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         if (c->prefix[mid + 1] <= start)
@@ -264,7 +264,7 @@ int mp_small_run(mp_source *src, const uint32_t *small, size_t n, const mp_dict_
     rc = 0;
     goto done;
 oom:
-    mp_err_set(e, "sin memoria");
+    mp_err_set(e, "out of memory");
 done:
     if (c.ts)
         for (unsigned k = 0; k < threads; k++) {

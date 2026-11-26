@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# zstd y zlib se compilan con este CMake, no con los suyos: el de zlib renombra zconf.h
-# dentro del submódulo y el de zstd arrastra opciones que aquí no hacen falta.
+# zstd and zlib are built with this CMake, not their own: zlib's renames zconf.h
+# inside the submodule and zstd's drags in options that are not needed here.
 
 set(MP_ZSTD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib)
 set(MP_ZLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib)
 
 if(NOT EXISTS ${MP_ZSTD_DIR}/zstd.h OR NOT EXISTS ${MP_ZLIB_DIR}/zlib.h)
-  message(FATAL_ERROR "Faltan los submódulos: ejecuta 'git submodule update --init'")
+  message(FATAL_ERROR "The submodules are missing: run 'git submodule update --init'")
 endif()
 
 function(mp_quiet tgt)
@@ -24,7 +24,7 @@ file(GLOB MP_ZSTD_SRC
   ${MP_ZSTD_DIR}/dictBuilder/*.c)
 add_library(mp_zstd STATIC ${MP_ZSTD_SRC})
 target_include_directories(mp_zstd PUBLIC ${MP_ZSTD_DIR})
-# Sin ensamblador (el .S no compila con MSVC) y sin hilos internos (repartimos nosotros).
+# Without assembly (the .S does not compile with MSVC) and without internal threads (we distribute the work ourselves).
 target_compile_definitions(mp_zstd PRIVATE ZSTD_DISABLE_ASM XXH_NAMESPACE=ZSTD_)
 mp_quiet(mp_zstd)
 
