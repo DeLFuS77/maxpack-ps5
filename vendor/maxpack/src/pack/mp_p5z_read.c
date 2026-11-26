@@ -502,3 +502,82 @@ uint64_t mp_p5z_volume_offset(const mp_p5z *p, uint32_t vol) {
     const p5z_file *f = volume_file(p, vol);
     return f ? f->data_off : 0;
 }
+
+// ---- the sums of the packs ----------------------------------------------------------------------
+
+// A volume record's name goes out as it is: only what a volume is ever named.
+static int plain_name(const char *s) {
+    if (!s || !*s || strlen(s) > 64) return 0;
+    for (; *s; s++)
+        if (!((*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9') || *s == '_' || *s == '-' || *s == '.')) return 0;
+    return 1;
+}
+
+int mp_p5z_sums_get(const mp_p5z *p, mp_p5z_sums *out, mp_err *e) {
+    memset(out, 0, sizeof *out);
+    memcpy(out->archive_id, p->man.archive_id, 16);
+    out->level = p->man.level;
+    size_t n = 0;
+    for (size_t i = 0; i < p->nfiles; i++) n += p->files[i].role == MP_ROLE_VOLUME;
+    if (!n) return 0;
+    if (!(out->volumes = calloc(n, sizeof *out->volumes))) {
+        mp_err_set(e, "out of memory");
+        return -1;
+    }
+    for (size_t i = 0; i < p->nfiles; i++) {
+        const p5z_file *f = &p->files[i];
+        if (f->role != MP_ROLE_VOLUME) continue;
+        if (!plain_name(f->path)) {
+            mp_err_set(e, "invalid .p5z: a volume record with an unexpected name");
+            mp_p5z_sums_free(out);
+            return -1;
+        }
+        mp_p5z_volume_sum *v = &out->volumes[out->nvolumes++];
+        strcpy(v->name, f->path);
+        v->size = f->size;
+        memcpy(v->sha256, f->sha, 32);
+    }
+    return 0;
+}
+
+void mp_p5z_sums_free(mp_p5z_sums *s) {
+    if (!s) return;
+    free(s->volumes);
+    s->volumes = NULL;
+    s->nvolumes = 0;
+}
+
+static void hex_lower(char *dst, const uint8_t *src, size_t n) {
+    static const char d[] = "0123456789abcdef";
+    for (size_t i = 0; i < n; i++) {
+        dst[2 * i] = d[src[i] >> 4];
+        dst[2 * i + 1] = d[src[i] & 15];
+    }
+    dst[2 * n] = 0;
+}
+
+// json: 0 the lines, 1 ps5/pack.c's JSON.
+static char *sums_text(const mp_p5z_sums *s, int json) {
+    size_t cap = 128 + s->nvolumes * 192, len = 0;
+    char *out = malloc(cap), aid[33], sha[65];
+    if (!out) return NULL;
+    hex_lower(aid, s->archive_id, 16);
+    if (json)
+        len += (size_t)snprintf(out, cap, "{\"archive_id\":\"%s\",\"level\":%d,\"volumes\":[", aid, s->level);
+    else
+        len += (size_t)snprintf(out, cap, "level %d\narchive_id %s\n", s->level, aid);
+    for (size_t i = 0; i < s->nvolumes; i++) {
+        const mp_p5z_volume_sum *v = &s->volumes[i];
+        hex_lower(sha, v->sha256, 32);
+        if (json)
+            len += (size_t)snprintf(out + len, cap - len, "%s{\"name\":\"%s\",\"size\":%llu,\"sha256\":\"%s\"}", i ? "," : "",
+                                    v->name, (unsigned long long)v->size, sha);
+        else
+            len += (size_t)snprintf(out + len, cap - len, "%s %llu %s\n", v->name, (unsigned long long)v->size, sha);
+    }
+    if (json) snprintf(out + len, cap - len, "]}");
+    return out;
+}
+
+char *mp_p5z_sums_lines(const mp_p5z_sums *s) { return sums_text(s, 0); }
+char *mp_p5z_sums_json(const mp_p5z_sums *s) { return sums_text(s, 1); }
