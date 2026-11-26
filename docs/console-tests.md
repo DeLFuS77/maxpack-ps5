@@ -1001,13 +1001,15 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
   - During a send, on the console with the D-pad: from the top bar, Down. Expected: the focus lands on "Stop (keep
     what arrived)", never on "Delete what arrived".
   - Press Stop. Expected: "The receive of <name> is paused: ... stays as <path>. Send it again from the PC ...";
-    the PC stops; the Install tab installs again. Run the same send again. Expected: it goes on exactly where it was
-    (`resuming`, no 64 MB back-off) and ends as in 13.4.
+    the PC stops, keeps what arrived and says it was stopped on the console (it does not go on by itself); the
+    Install tab installs again. `/api/receive/status?id=...` with the code answers `"state":"paused","reason":"stopped"`.
+    Run the same send again. Expected: the log says `going on with its token at N`, exactly where it was (no 64 MB
+    back-off), and it ends as in 13.4.
   - During another send, Delete what arrived and confirm. Expected: the PC stops with a "cancelled" answer, the
     `.maxpack-recv` is gone, the log says `cancelled at N of M bytes`.
   - Start a send and end the PC's command (Ctrl+C) without running it again. Expected: within 10 minutes the
-    banner says the receive is paused (`nothing from the PC for 10 min` in the log) and installs, verifies and the
-    switch work again. Settings lists the `.maxpack-recv` under "Unfinished games from the PC" with its size;
+    banner says the receive is paused (`nothing from the PC for 10 min` in the log, reason `idle`) and installs,
+    verifies and the switch work again; the same send run again goes on with its token. Settings lists the `.maxpack-recv` under "Unfinished games from the PC" with its size;
     Delete asks first and removes it.
   - Fill a USB drive's free space to less than the game (optional). Expected: the PC is refused with how much is
     missing; if the drive fills during the send, the receive pauses with "the drive is full: N more bytes needed".

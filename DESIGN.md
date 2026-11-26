@@ -850,7 +850,8 @@ minute):
   `POST /api/pairing/stop` -> the receive under way paused, its file kept; `POST /api/pairing/cancel` -> the receive of
   this run (paused or failed too) cancelled as the PC's cancel does; `POST /api/pairing/left`, body a path of
   `receive_left` -> 204 once deleted, 404 otherwise. `/api/state` `receive`: `{seq, state:"receiving"|"verifying"|
-  "done"|"failed"|"cancelled"|"paused", name, drive, path, dest, size, have, from, mbps, cancelling, verify:{bytes, total,
+  "done"|"failed"|"cancelled"|"paused", reason (when paused: "idle"|"write_error"|"stopped"), name, drive, path, dest,
+  size, have, from, mbps, cancelling, verify:{bytes, total,
   nbad, bad:[{what, name, why}]}|null, error, elapsed_ms}` of this run (never its token), or null; `receive_left`:
   `[{path, name, size}]`; `pairing`: `{on, code, here}`, `code` only for a request from loopback (the console's own
   browser), else null.
@@ -1055,16 +1056,18 @@ on the page's server (port 8095), as the shared contract of both sides says:
   `<homebrew>/<name>`, or something that is not a file at `<name>.maxpack-recv`); the receive under way of the same name,
   drive and size goes on (its token, its `have`), any other under way is 409 `busy`, as is a job of the engine; 507
   `no_space` with `missing` (what is still to come plus 256 MiB, less the free space). A new receive makes `homebrew` if
-  missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`). `have` is: for the same file paused in this
-  run, exactly what it had; for a file left on the disk (a restart, an earlier run), its length less 64 MiB
-  (`receive::resume_have`: a power cut during a PUT may have left a length whose tail never reached the disk), when it is
-  no longer than the size and did not fail its verify in this run; else 0, and the file is truncated. The token is 16
-  random bytes in hex.
+  missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`). The same file paused in this run (same
+  name, drive and size) goes on with its own token (`Start::Unpause`), after the same checks of the drive, the other
+  jobs and the space: exactly where it was when it paused idle or stopped (every PUT was flushed), from the file as below
+  when it paused on a failed write or its file changed. For a file left on the disk (a restart, an earlier run), `have`
+  is its length less 64 MiB (`receive::resume_have`: a power cut during a PUT may have left a length whose tail never
+  reached the disk), when it is no longer than the size and did not fail its verify in this run; else 0, and the file
+  is truncated. The token is 16 random bytes in hex.
 - `PUT /api/receive/data?id=<token>&offset=<n>`: web.rs hands its head to `receive::put` without reading the body (the
   16 KiB request limit does not apply), which streams it (up to 64 MiB, else 413 `too_large`; no Content-Length 411
   `length_required`) in 1 MiB pieces written with `pwrite` at the offset, and `fdatasync`s before answering 200
-  `{"have"}`. `offset` must be `have` (409 `offset` with `have`); past the size 400 `past_size`; a receive no longer
-  receiving 409 `state`; an unknown token 404 `unknown_id`. One PUT writes at a time: another waits up to 10 s (a PUT
+  `{"have"}`. `offset` must be `have` (409 `offset` with `have`); past the size 400 `past_size`; a paused receive 409
+  `{"error":"paused","reason","have"}`; one that ended 409 `state`; a token this run does not know 404 `unknown_id`. One PUT writes at a time: another waits up to 10 s (a PUT
   whose connection is going ends within the 5 s read timeout). A body cut short keeps what arrived (`have` grows piece by
   piece): the PC asks again from its last answer, gets 409 `offset` with the real `have`, and goes on. `Expect:
   100-continue` is answered once the request passes. A refused body is read and dropped first, so the PC reads the answer
@@ -1073,8 +1076,8 @@ on the page's server (port 8095), as the shared contract of both sides says:
   write that fails pauses the receive (below): a full drive answers 507 `no_space` with what is really missing, EFBIG 400
   `fat32` (and the drive counts as FAT32 for the rest of the run), anything else 500 `write` (the drive went, an I/O
   error: the PC does not retry it).
-- `GET /api/receive/status?id=` -> `{"have","size","state":"receiving|verifying|done|failed|cancelled","verify":{bytes,
-  total, nbad, bad:[...]}|null,"error"}`; each item of `bad` is as the PC's `maxpack verify --quick --json` gives it:
+- `GET /api/receive/status?id=` -> `{"have","size","state":"receiving|verifying|done|failed|cancelled|paused","verify":{bytes,
+  total, nbad, bad:[...]}|null,"error"}`, and `"reason":"idle|write_error|stopped"` when paused; each item of `bad` is as the PC's `maxpack verify --quick --json` gives it:
   `{"volume":N}` for a volume or `{"path":"..."}` for a file, with `why` (`sha256`, `header`, `data`, `read`), `expected`
   and, when something whole could be hashed, `found`. It answers for a receive that ended too, until another starts or
   the payload restarts.
@@ -1086,10 +1089,13 @@ on the page's server (port 8095), as the shared contract of both sides says:
 - `POST /api/receive/cancel?id=`: the file deleted, `cancelled`; a verify under way stops first (up to 3 s); a receive that
   is `done` is 409 `state` (its `.p5z` is the library's). A cancel deletes only the file of the receive it was asked for
   (told by its `seq`): a start that comes while it waits for a PUT to end keeps its file.
-- **Paused.** A receive with no request carrying its token for 10 minutes (`receive::idle`), one stopped from the page,
-  and one whose write failed end as `paused`: the file stays, the receive no longer holds the other jobs, and its token
-  is over as after a restart (404 `unknown_id`: the PC starts again, and a start of the same file goes on exactly where it
-  was). The page's `/api/state` `receive.state` says `paused`; the PC's status never does.
+- **Paused** (`State::Paused(PauseReason)`). A receive with no request carrying its token for 10 minutes (reason `idle`,
+  `receive::idle`), one whose write or flush failed (`write_error`), and one stopped from the page or by a quit during its
+  verify (`stopped`) pause: the file stays and the receive no longer holds the other jobs, but it keeps its token while
+  the payload runs. Its status answers 200 `paused` with the reason; PUT data and finish answer 409 `paused` with the
+  reason and `have`; a start of the same file goes on with that token. The PC goes on by itself after `idle` and
+  `write_error`, and never after `stopped` (the user stopped it on the console). A token this run does not know (after a
+  restart, or once another receive took its place) is 404 `unknown_id`, and the PC starts again.
 - **The page.** A receive shows in a banner over every screen: progress and MB/s, the verify, how it ended. While it is
   under way, "Stop (keep what arrived)" (`POST /api/pairing/stop`) pauses it (a verify under way stops first, the file
   kept); "Delete what arrived" (`POST /api/pairing/cancel`, the receive of this run, paused or failed too) asks first; the
