@@ -471,17 +471,6 @@ fn mark_format(version: &str, len: usize, crc: u32) -> String {
     format!("{} {len} {crc:08x}", version.trim())
 }
 
-/// The mark's version when it records exactly (len, crc): Some(None) for the old format.
-fn mark_version(mark: &str, len: usize, crc: u32) -> Option<Option<&str>> {
-    let f: Vec<&str> = mark.split_whitespace().collect();
-    let (v, l, c) = match f[..] {
-        [l, c] => (None, l, c),
-        [v, l, c] => (Some(v), l, c),
-        _ => return None,
-    };
-    (l.parse::<usize>().ok()? == len && u32::from_str_radix(c, 16).ok()? == crc).then_some(v)
-}
-
 pub(crate) use maxpack_logic::version::{newer, parse_version};
 use maxpack_logic::ampr::{self as ampr_logic, Fail as AmprFail};
 
@@ -499,7 +488,7 @@ fn installed<'a>(cur: Option<(usize, u32, bool)>, bundled_version: &'a str, mark
     match cur {
         None => Installed::Missing,
         Some((_, _, true)) => Installed::Ours(Some(bundled_version)),
-        Some((len, crc, false)) => match mark.and_then(|m| mark_version(m, len, crc)) {
+        Some((len, crc, false)) => match mark.and_then(|m| ampr_logic::mark_version(m, len, crc)) {
             Some(v) => Installed::Ours(v),
             None => Installed::Hand,
         },
@@ -681,18 +670,16 @@ fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String
     Ok(format!("installed ampr-emu-ng {} ({} bytes, matches {})", rel.tag, b.len(), maxpack_logic::update::SUMS_ASSET))
 }
 
-/// The version of AMPR_DIR/libSceAmpr.sprx as MaxPack knows it (cache.rs, for a .p5z that grew:
-/// maxpack_logic::p5z::ng_plays): the bundled VERSION for the bundled copy, the version ampr.bundled
-/// records for another copy we wrote (downloaded, or bundled by another MaxPack). None for a file put
-/// there by hand, one a v0.4.0 build wrote (no version in its mark), none, or a read error.
-pub(crate) fn ampr_version_in_use() -> Option<String> {
-    let path = format!("{}/{AMPR_ASSET}", cache::AMPR_DIR);
+/// The version MaxPack knows of the libSceAmpr.sprx at `path`, the ampr dir's or the copy a game's
+/// fakelib/ got (cache.rs, for a .p5z that grew: maxpack_logic::p5z::ng_plays), by
+/// maxpack_logic::ampr::known_version: the bundled VERSION for the bundled bytes, the version
+/// ampr.bundled records for exactly these bytes (a downloaded release, a copy another MaxPack bundled).
+/// None for a file put there by hand, bytes the mark does not describe, a v0.4.0 mark, none, a read error.
+pub(crate) fn ampr_version_of(path: &std::path::Path) -> Option<String> {
+    let b = std::fs::read(path).ok()?;
     let mark = std::fs::read_to_string(BUNDLED_MARK).ok();
-    match read_installed(&path, mark.as_deref()) {
-        Ok((_, true)) => Some(BUNDLED_AMPR_VERSION.trim().to_string()),
-        Ok((Installed::Ours(Some(v)), _)) => Some(v.to_string()),
-        Ok((Installed::Ours(None) | Installed::Hand | Installed::Missing, _)) | Err(_) => None,
-    }
+    let file = (b.len(), ampr_index::crc32(&[&b]), b == BUNDLED_AMPR);
+    ampr_logic::known_version(Some(file), BUNDLED_AMPR_VERSION.trim(), mark.as_deref()).map(str::to_owned)
 }
 
 /// GET /api/ampr: what AMPR_DIR/libSceAmpr.sprx is now, and whether an update runs.

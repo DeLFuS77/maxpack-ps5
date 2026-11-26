@@ -1098,6 +1098,13 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         let keep = src.kind != Kind::P5z && keep_game_ng(&src.title_id, &fakelib);
         copy_flat(Path::new(AMPR_DIR), &fakelib, |n| ampr_copied(n) && !(keep && n.eq_ignore_ascii_case(AMPR_LIB)))?;
     }
+    if let Some(Inside::P5z(play)) = inside {
+        // The ampr-emu-ng the game loads is this copy, whatever the ampr dir holds by now: an update
+        // or a copy over FTP during a long build lands here after the state above was read. So the copy
+        // is what is checked (an OldNg, nothing recorded), and a swap after the copy differs from the
+        // recorded state, so the next pass refreshes and checks again.
+        ng_gate(play, &find_ci(&fakelib, AMPR_LIB).unwrap_or_else(|| fakelib.join(AMPR_LIB)))?;
+    }
     fs::write(dir.join(AMPR_STATE), state.to_string())
 }
 
@@ -1108,17 +1115,19 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
     let pkg = if src.kind == Kind::Pkg { Some(open(&src.path)?) } else { None };
     // A TryAgain here goes back to main.rs as it is, tried again next pass, quietly.
     let play = if src.kind == Kind::P5z { Some(open_p5z(src)?) } else { None };
-    if let Some(Err(e)) = play.as_ref().map(ng_gate) {
-        // The ampr dir now holds an ampr-emu-ng that does not play this .p5z, which grew: the cache
-        // goes as a failed build leaves it (no game files, no `.done`), so its tile cannot start the
-        // game half-way with the old fakelib/ either; the build stops at the same check (an OldNg).
-        log!("{} ({}): fakelib refresh: {e}; rebuilding", src.title_id, src.path.display());
-        drop(play);
-        return build(src, s);
-    }
     log!("{}: refreshing {}", src.title_id, dir(&src.title_id).join(FAKELIB).display());
     let inside = pkg.as_ref().map(|(io, p)| Inside::Pkg(io, p)).or(play.as_ref().map(Inside::P5z));
-    compose_fakelib(src, s, inside)
+    let composed = match compose_fakelib(src, s, inside) {
+        // The ampr-emu-ng fakelib/ got does not play this .p5z, which grew (the ampr dir holds an older
+        // one now): the cache goes as a failed build leaves it (no game files, no `.done`), so its tile
+        // cannot start the game half-way with that fakelib/; the build stops at the same check (an OldNg).
+        Err(e) if old_ng(&e) => {
+            log!("{} ({}): fakelib refresh: {e}; rebuilding", src.title_id, src.path.display());
+            return build(src, s);
+        }
+        r => r,
+    };
+    composed
         .and_then(|()| {
             // check() matched the stamp and inputs: the current stamp with `.done`'s own mtime and
             // inputs record (drops a legacy game_fakelib key, keeps the input checks).
@@ -1198,15 +1207,16 @@ pub fn old_ng(e: &Error) -> bool {
     e.get_ref().is_some_and(|i| i.is::<OldNg>())
 }
 
-/// maxpack_logic::p5z::ng_plays for the ampr-emu-ng a .p5z game gets on top of its fakelib/
-/// (AMPR_DIR's, compose_fakelib), as main.rs knows its version (`ampr_version_in_use`): an OldNg when
-/// it would not play this .p5z. The ampr dir is read only for a .p5z that grew.
-fn ng_gate(play: &crate::p5z::Play) -> Result<()> {
+/// maxpack_logic::p5z::ng_plays for the libSceAmpr.sprx at `ng`, as main.rs knows its version
+/// (`ampr_version_of`): an OldNg when it would not play this .p5z. build_p5z asks it of AMPR_DIR's before
+/// it extracts anything, compose_fakelib of the copy fakelib/ got, which is what the game loads. The file
+/// is read only for a .p5z that grew.
+fn ng_gate(play: &crate::p5z::Play, ng: &Path) -> Result<()> {
     if !play.info.grew() {
         return Ok(());
     }
-    maxpack_logic::p5z::ng_plays(&play.info, crate::ampr_version_in_use().as_deref())
-        .map_err(|why| Error::new(ErrorKind::Unsupported, OldNg(format!("{why} ({AMPR_DIR}/{AMPR_LIB}): not started with it"))))
+    maxpack_logic::p5z::ng_plays(&play.info, crate::ampr_version_of(ng).as_deref())
+        .map_err(|why| Error::new(ErrorKind::Unsupported, OldNg(format!("{why} ({}): not started with it", ng.display()))))
 }
 
 /// `e` with `what` before its message, still a NoSpace, a TryAgain or an OldNg when it was one.
@@ -1421,8 +1431,9 @@ fn build_p5z(src: &Source, s: &Settings, dir: &Path, start: SystemTime, inputs: 
     // First: a file name the contract cannot carry (not UTF-8, or a control byte) is a build failure.
     let image = image_text(utf8_name(&src.path)?, &play.info.volumes).map_err(|e| bad(format!("{P5Z_IMAGE}: {e}")))?;
     // A .p5z that grew, with an ampr-emu-ng that would refuse its index at the game's start: nothing
-    // is extracted, so the tile has nothing to start half-way (an OldNg).
-    ng_gate(&play)?;
+    // is extracted, so the tile has nothing to start half-way (an OldNg). compose_fakelib checks again the
+    // copy it makes, which is what the game loads.
+    ng_gate(&play, &Path::new(AMPR_DIR).join(AMPR_LIB))?;
     let loose: Vec<_> = play.info.loose.iter().map(|l| (l, loose_dest(&l.path))).collect();
     let need = loose.iter().filter(|(_, d)| *d != LooseDest::Skip).fold(0u64, |a, (l, _)| a.saturating_add(l.size));
     let space = fits(dir, need);

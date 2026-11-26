@@ -56,6 +56,32 @@ pub fn verify(sprx: &[u8], size: usize, sums: &[u8]) -> Result<(), String> {
     update::verify_asset(sprx, SPRX_ASSET, size, sums)
 }
 
+/// The version that `/data/maxpack/ampr.bundled`'s text (`mark`: `<version> <len> <crc32>`, or `<len>
+/// <crc32>` from a v0.4.0 build) records when it records exactly a file of `len` bytes and that crc32:
+/// Some(None) for the old format, None when it records another file or does not parse.
+pub fn mark_version(mark: &str, len: usize, crc: u32) -> Option<Option<&str>> {
+    let f: Vec<&str> = mark.split_whitespace().collect();
+    let (v, l, c) = match f[..] {
+        [l, c] => (None, l, c),
+        [v, l, c] => (Some(v), l, c),
+        _ => return None,
+    };
+    (l.parse::<usize>().ok()? == len && u32::from_str_radix(c, 16).ok()? == crc).then_some(v)
+}
+
+/// The version MaxPack knows of a libSceAmpr.sprx (the ampr dir's, or the copy a game's fakelib/ got):
+/// `file` is its (len, crc32, equals the bundled copy), None when it is missing. The bundled bytes are the
+/// `bundled` version; other bytes are the version the mark records for exactly them (a release the update
+/// downloaded, or a copy another MaxPack bundled). None (unknown) for anything else: a file put there by
+/// hand, one the mark does not describe (written after it, or the mark could not be written), a v0.4.0
+/// mark, no file. A .p5z that grew never plays with an unknown one (crate::p5z::ng_plays).
+pub fn known_version<'a>(file: Option<(usize, u32, bool)>, bundled: &'a str, mark: Option<&'a str>) -> Option<&'a str> {
+    match file? {
+        (_, _, true) => Some(bundled),
+        (len, crc, false) => mark.and_then(|m| mark_version(m, len, crc)).flatten(),
+    }
+}
+
 /// Why the ampr-emu-ng update installed nothing: the HTTP status and code `POST /api/ampr/update`
 /// answers (`{code, detail}`), and the detail for the log.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -268,6 +294,40 @@ mod tests {
         assert_eq!((f.status(), f.code(), f.detail()), (own.status(), own.code(), own.detail()));
         assert_eq!(update::tls_gate(false), Err(update::Fail::TlsUnchecked));
         assert_eq!(update::tls_gate(true), Ok(()));
+    }
+
+    /// What MaxPack knows of a libSceAmpr.sprx (the ampr dir's, or the copy in a game's fakelib/): the
+    /// bundled version for the bundled bytes, the version ampr.bundled records for exactly those bytes
+    /// (len and crc32), and nothing for anything else.
+    #[test]
+    fn the_version_maxpack_knows_of_a_file() {
+        const B: &str = "v0.5.2-maxpack.1";
+        let mark = "v0.5.1-maxpack.1 716176 0a1b2c3d";
+        // The bundled bytes: the bundled version, whatever the mark says.
+        for m in [None, Some(mark), Some("garbage")] {
+            assert_eq!(known_version(Some((720_048, 7, true)), B, m), Some(B), "{m:?}");
+        }
+        // A copy we wrote: the version its mark records, for exactly that len and crc32.
+        assert_eq!(known_version(Some((716_176, 0x0a1b_2c3d, false)), B, Some(mark)), Some("v0.5.1-maxpack.1"));
+        assert_eq!(known_version(Some((716_176, 0x0a1b_2c3d, false)), B, Some("v0.5.1-maxpack.1 716176 0A1B2C3D\n")), Some("v0.5.1-maxpack.1"));
+        // Unknown: another len or crc32 (a file put there by hand, one written after the mark), a v0.4.0
+        // mark (no version), no mark, a mark that does not parse, no file.
+        for (file, m) in [
+            (Some((716_177, 0x0a1b_2c3d, false)), Some(mark)),
+            (Some((716_176, 0x0a1b_2c3e, false)), Some(mark)),
+            (Some((716_176, 0x0a1b_2c3d, false)), Some("716176 0a1b2c3d")),
+            (Some((716_176, 0x0a1b_2c3d, false)), None),
+            (Some((716_176, 0x0a1b_2c3d, false)), Some("")),
+            (Some((716_176, 0x0a1b_2c3d, false)), Some("v1 v2 716176 0a1b2c3d")),
+            (Some((716_176, 0x0a1b_2c3d, false)), Some("v0.5.1-maxpack.1 big 0a1b2c3d")),
+            (None, Some(mark)),
+        ] {
+            assert_eq!(known_version(file, B, m), None, "{file:?} {m:?}");
+        }
+        // The mark itself: (len, crc32) recorded, its version if any.
+        assert_eq!(mark_version(mark, 716_176, 0x0a1b_2c3d), Some(Some("v0.5.1-maxpack.1")));
+        assert_eq!(mark_version("716176 0a1b2c3d", 716_176, 0x0a1b_2c3d), Some(None));
+        assert_eq!(mark_version(mark, 716_176, 0), None);
     }
 
     #[test]
