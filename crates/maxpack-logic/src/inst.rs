@@ -145,14 +145,24 @@ pub fn newer_refusal(body: &[u8], newer: impl FnOnce() -> Option<u32>) -> Option
     Some(serde_json::json!({"ok": false, "code": "newer_p5z", "detail": detail}).to_string().into_bytes())
 }
 
-/// The .p5z a `probe` (`path`) or an `install` (`p5z`) request of the installer names.
+/// The .p5z a `probe` (`path`) or an `install` (`p5z`) request of the installer names: a string given once. None for
+/// a key given twice (the engine reads the first copy, a plain JSON value the last), so the console never reads a
+/// file the engine did not check.
 pub fn request_p5z(route: &str, body: &[u8]) -> Option<String> {
-    let key = match route {
-        "/api/probe" => "path",
-        "/api/install" => "p5z",
-        _ => return None,
-    };
-    serde_json::from_slice::<Value>(body).ok()?.get(key)?.as_str().map(str::to_string)
+    // Derived: a field given twice is an error; other keys are ignored.
+    #[derive(serde::Deserialize)]
+    struct Probe {
+        path: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct Install {
+        p5z: String,
+    }
+    match route {
+        "/api/probe" => serde_json::from_slice::<Probe>(body).ok().map(|r| r.path),
+        "/api/install" => serde_json::from_slice::<Install>(body).ok().map(|r| r.p5z),
+        _ => None,
+    }
 }
 
 /// Where an accepted uninstall of a title stands, seen in the installer's `/api/state`.
@@ -453,6 +463,14 @@ mod tests {
         assert_eq!(request_p5z("/api/install", br#"{"path":"/mnt/usb0/a.p5z"}"#), None);
         assert_eq!(request_p5z("/api/verify", br#"{"path":"/mnt/usb0/a.p5z"}"#), None);
         assert_eq!(request_p5z("/api/probe", b"x"), None);
+        // A key given twice (the engine reads the first, a plain JSON value the last) or not a string: no file is read,
+        // so never one the engine did not check.
+        assert_eq!(request_p5z("/api/probe", br#"{"path":"/mnt/usb0/a.p5z","path":"/data/x"}"#), None);
+        assert_eq!(request_p5z("/api/install", br#"{"p5z":"/mnt/usb0/a.p5z","dest":"/data","p5z":"/data/x"}"#), None);
+        assert_eq!(request_p5z("/api/probe", br#"{"path":5}"#), None);
+        // Other keys, given twice or not, do not matter.
+        assert_eq!(request_p5z("/api/install", br#"{"p5z":"/mnt/usb0/a.p5z","dest":"/data","dest":"/mnt/usb0"}"#).as_deref(),
+            Some("/mnt/usb0/a.p5z"));
     }
 
     #[test]
