@@ -3,6 +3,28 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
+## Unreleased
+
+### Fixed
+
+- **"Back to the recommended setting"** says what it sets, under the button ("Sets Fakelib to "Off"."), so a
+  game you set by hand before 1.0.2 shows what the list would change.
+- When an older ampr-emu-ng stops several `.p5z` games that grew at once, the console shows one notice with
+  their count instead of one per game.
+- A new list of recommended settings that arrives while a game's `fakelib/` is being made no longer leaves
+  that game with the old Fakelib mode recorded as the new one; the next pass now makes it again with the
+  new list.
+- A download over its size limit (the recommended settings, the self-update's look, ampr-emu-ng) is not
+  tried twice more, 20 s apart; the recommended settings log it as refused, not failed.
+- A downloaded list of recommended settings that is not newer than the one in `maxpack.elf` (after a MaxPack
+  update) is deleted, instead of a log line saying so at every start.
+- A list of recommended settings that is refused quotes at most 40 characters of the key or value at fault
+  in the log, so a malformed file cannot fill it.
+- Settings > About and the README's credits name ProsperoPkgTool (pearlxcore), whose port the installer's
+  engine carries since 1.0.2.
+- The README said that a value of the recommended settings this version does not know is refused; it is
+  ignored for that game, and only a file that does not check out is refused.
+
 ## 1.0.2 - 2026-11-26
 
 ### Added
