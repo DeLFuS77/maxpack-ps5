@@ -63,6 +63,32 @@ int mp_p5z_unused(mp_p5z *p, uint64_t *unused, mp_err *e);
 // The files of the dump the .p5z was made of (its manifest) that take(ctx, path) takes (all with NULL), as a
 // source: each one read from the .p5z. p must stay open while the source is.
 int mp_p5z_source(mp_p5z *p, int (*take)(void *ctx, const char *path), void *ctx, mp_source **out, mp_err *e);
+// What the index of a .p5z records of its packs, to compare two packs of the same game (the console's
+// pack prints the same): the header's archive_id and zstd level, and each volume record in its order, with
+// its size (the whole volume, its 64-byte header too) and its SHA-256, which is of the volume's bytes from
+// 64 to its end (the header has a CRC of its own). Read from the index: nothing is hashed again. Of a .p5z
+// that grew too: its old volumes keep their records and the new ones follow them.
+typedef struct {
+    char name[65];   // ampr_zstd-000.pak...
+    uint64_t size;
+    uint8_t sha256[32];
+} mp_p5z_volume_sum;
+typedef struct {
+    uint8_t archive_id[16];
+    int level;
+    size_t nvolumes;
+    mp_p5z_volume_sum *volumes;
+} mp_p5z_sums;
+// Fails on a volume record whose name is not of letters, digits, '_', '-' and '.' (a crafted file).
+int mp_p5z_sums_get(const mp_p5z *p, mp_p5z_sums *out, mp_err *e);
+void mp_p5z_sums_free(mp_p5z_sums *s);
+// The lines the console's pack prints after its "# " notes, so that a diff of the two compares them:
+// "level N", "archive_id <32 hex>" and "<volume> <size> <sha256>" per volume, lowercase hex, each ending in
+// "\n". malloc'd, NULL when out of memory.
+char *mp_p5z_sums_lines(const mp_p5z_sums *s);
+// The same as JSON, as ps5/pack.c gives it: {"archive_id":"<hex>","level":N,"volumes":[{"name":"...",
+// "size":N,"sha256":"<hex>"},...]}. malloc'd, NULL when out of memory.
+char *mp_p5z_sums_json(const mp_p5z_sums *s);
 int mp_unpack_folder(mp_p5z *p, const char *out_dir, unsigned threads, int progress, mp_err *e);
 // The same with volumes of at most volume_limit bytes (MP_ZPK_VOLUME_LIMIT, smaller in tests) for a .p5z that
 // grew: its volumes are laid out again as pack --folder lays them out; one that did not is copied as it is.

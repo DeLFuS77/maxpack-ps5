@@ -1,10 +1,10 @@
 # Where vendor/ampr-emu-ng/libSceAmpr.sprx comes from (Corresponding Source for THIRD_PARTY_NOTICES).
 # Not listed in SHA256SUMS: ps5/build.sh checks with --ignore-missing.
 repository: https://github.com/DeLFuS77/ampr-emu-ng
-build: a CI build, not a release: the libSceAmpr.sprx of the sprx artifact of the CI run below, byte-identical to it (the SHA-256 its SHA256SUMS lists)
-commit: 4c82503500d38e449925005a1e6a68dd70ff697c (branch consola-orden; not merged, not tagged)
-ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45752231139 (workflow build, run by hand on branch consola-orden at that commit, success)
-release: none yet; it is to be released as v0.5.1-maxpack.2, and when that tag is published its libSceAmpr.sprx and SHA256SUMS replace these and this file names the release
+release: https://github.com/DeLFuS77/ampr-emu-ng/releases/tag/v0.5.1-maxpack.2 (libSceAmpr.sprx, byte-identical to this one: same SHA-256)
+commit: 007c97fb5f6e7d06649e892cb94ee86c5527639d (tag v0.5.1-maxpack.2)
 upstream: https://github.com/quer3q/ampr-emu-ng v0.5.1 (e1789c1; c19915c in the repository above); the commits above add the p5z mode (a game served from a .p5z file), a CI change, and the p5z rules of a .p5z that grew by appending (chunks in any order, room no chunk uses, volumes with no chunk, volume headers counting fewer volumes)
-previous: v0.5.1-maxpack.1 (tag on 73b2973, CI run 45435074348), the last release
-version: v0.5.1-maxpack.2 (VERSION), the name of its coming release (v<upstream version>-maxpack.<n>); the sprx's own identity and its launch notice say 0.5.1, upstream's version, which its crates keep
+ci-run: https://github.com/DeLFuS77/ampr-emu-ng/actions/runs/45771752511 (workflow build, tag v0.5.1-maxpack.2, success)
+tested: the same libSceAmpr.sprx (same SHA-256) was bundled before the release from CI run 45752231139 of commit 4c82503 on branch consola-orden, the build played on a console
+previous: v0.5.1-maxpack.1 (tag on 73b2973, CI run 45435074348)
+version: v0.5.1-maxpack.2 (VERSION); the sprx's own identity and its launch notice say 0.5.1, upstream's version, which its crates keep

@@ -56,7 +56,7 @@ one game of each kind of source: an unpacked folder, one packed with zstd, one w
   - Launch the zstd game.
   - Expected: the notice says "ampr-emu-ng: v0.5.1 (zstd) running", **without** `-beta`; with the LZ4
     one, "(lz4)". In Settings, ampr-emu-ng shows as bundled, version `v0.5.1-maxpack.2` (`v0.5.1-maxpack.1`
-    in a 1.0.2 build or older). The notice says v0.5.1 with both: it is upstream's version, which every MaxPack
+    in a 1.0.1 build or older). The notice says v0.5.1 with both: it is upstream's version, which every MaxPack
     build keeps; Settings shows which build it is.
   - This build has no `-beta` (the one on `main`, the stage-1 one, did: `v0.5.0-beta.a52648f`;
     `a52648f` is `ecae2ff` in ampr-emu-ng's public history). If
@@ -302,8 +302,8 @@ both in a folder of their own on the drive, for example `/mnt/usb0/install/`: no
 root is a scan root by default) is already a game: MaxPack builds its cache and registers it before you
 install it, and this section does not test that (section 6 does). MaxPack does not scan below a
 drive's root, and the Install tab looks one level further down, so it finds them all the same. At
-start the log says `installer: ready in N ms (MaxPack engine b3b526f037befa3f540704ff0b55831198ea7e3a,
-runtime ampr-emu-ng v0.5.1-maxpack.2 720048 bytes)`; a 1.0.2 build or older says engine `e8de15a...` and
+start the log says `installer: ready in N ms (MaxPack engine 5463d7506c3e37fb4956604a28b705460d1e2b0e,
+runtime ampr-emu-ng v0.5.1-maxpack.2 720048 bytes)`; a 1.0.1 build or older says engine `e8de15a...` and
 runtime `v0.5.1-maxpack.1 716176 bytes`, and a build from before the repositories were public `e9e0ec4`.
 
 - [ ] **5.1. Install a `.p5z` and a `.exfat` as they are.**
@@ -818,8 +818,8 @@ name no game.
 With a build of this branch, MaxPack alone, a game you already played from its `.p5z` in section 6
 (packed with `maxpack pack --p5z`, a few GB, more than one volume if you can) and a MaxPack for the PC
 that has `maxpack add` and `maxpack update` (its branch `pc-ampliar`, or the release that brings them). On the PC, `maxpack info <game.p5z>` says how many
-times a `.p5z` grew and how much room it does not use. This build carries a CI build of ampr-emu-ng
-(`v0.5.1-maxpack.2`, not released yet), whose launch notice says "v0.5.1" as `v0.5.1-maxpack.1`'s does
+times a `.p5z` grew and how much room it does not use. This build carries ampr-emu-ng
+`v0.5.1-maxpack.2`, whose launch notice says "v0.5.1" as `v0.5.1-maxpack.1`'s does
 (upstream's version): only Settings tells the two apart. Before anything, Settings shows ampr-emu-ng as bundled, `v0.5.1-maxpack.2`; if it says
 downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and restart MaxPack.
 
@@ -891,7 +891,7 @@ the same as the PC's. It does not pause when a game starts and does not keep the
 
 You need: a small game you have as a folder (a few GB, a plain dump: no `ampr_zstd.index` or
 `ampr_assets.index` in it) and, for 12.6, a large one; MaxPack for the PC 1.0.7 or later (it has
-`maxpack info --sums`) with the same engine as this build (b3b526f: an engine that packs differently gives other
+`maxpack info --sums`) with the same engine as this build (MaxPack 1.0.7, 5463d75: an engine that packs differently gives other
 volumes), and the same folder on the PC, byte for byte (copied over FTP in binary mode, or the other way round).
 Close every game before starting a run: MaxPack refuses to start one while any game runs.
 
