@@ -149,15 +149,26 @@ pub fn parse_play_json(s: &str) -> Result<PlayInfo, Unplayable> {
 /// before; one that grew only with GROWN_NG or later (`crate::version`, which compares X.Y.Z), so an
 /// older one never starts it half-way. Err: why not, in English.
 pub fn ng_plays(info: &PlayInfo, ng: Option<&str>) -> Result<(), String> {
-    let need = crate::version::parse_version(GROWN_NG);
-    if !info.grew() || ng.and_then(crate::version::parse_version) >= need {
+    ng_plays_against(info, ng, GROWN_NG)
+}
+
+/// ng_plays with `need` in place of GROWN_NG. A `need` that does not parse refuses every .p5z that
+/// grew (fails closed: no ampr-emu-ng is known to play it).
+fn ng_plays_against(info: &PlayInfo, ng: Option<&str>, need: &str) -> Result<(), String> {
+    if !info.grew() {
+        return Ok(());
+    }
+    let Some(least) = crate::version::parse_version(need) else {
+        return Err(format!("this .p5z grew (index version {}) and the ampr-emu-ng it needs ({need:?}) is not a version", info.index_version));
+    };
+    if ng.and_then(crate::version::parse_version).is_some_and(|v| v >= least) {
         return Ok(());
     }
     let have = match ng.map(str::trim) {
         Some(v) if !v.is_empty() => format!("the ampr-emu-ng in use is {v}"),
         _ => "the version of the ampr-emu-ng in use is not known".to_string(),
     };
-    Err(format!("this .p5z grew (index version {}) and needs ampr-emu-ng {GROWN_NG} or later; {have}", info.index_version))
+    Err(format!("this .p5z grew (index version {}) and needs ampr-emu-ng {need} or later; {have}", info.index_version))
 }
 
 /// Where a loose file of the .p5z goes.
@@ -440,6 +451,21 @@ mod tests {
                 assert!(why.contains(v), "{ng:?}: {why}");
             }
         }
+    }
+
+    /// Fails closed: a needed version that does not parse refuses every .p5z that grew, whatever the
+    /// ampr-emu-ng in use, and still none that never grew.
+    #[test]
+    fn a_needed_version_that_does_not_parse_refuses_every_grown_p5z() {
+        let v1 = parse_play_json(ENGINE_V1).unwrap();
+        let v2 = parse_play_json(ENGINE_V2).unwrap();
+        for need in ["", "not a version", "v0.5", "v0.5.2-beta", "V0.5.2"] {
+            for ng in [None, Some("v0.5.2-maxpack.1"), Some("v9.9.9-maxpack.1"), Some("garbage")] {
+                assert!(ng_plays_against(&v2, ng, need).is_err(), "{need:?} {ng:?}");
+                assert_eq!(ng_plays_against(&v1, ng, need), Ok(()), "{need:?} {ng:?}");
+            }
+        }
+        assert_eq!(ng_plays_against(&v2, Some("v0.5.2-maxpack.1"), GROWN_NG), Ok(()));
     }
 
     /// The ampr-emu-ng that maxpack.elf carries (vendor/ampr-emu-ng/VERSION, src/main.rs BUNDLED_AMPR)
