@@ -169,7 +169,7 @@ mod tests {
     /// A stand-in for libSceAmpr.sprx (a SELF), and for the debug build the release also carries.
     const SPRX: &[u8] = b"\x4f\x15\x3d\x1d a tiny stand-in for libSceAmpr.sprx";
     const DEBUG: &[u8] = b"\x4f\x15\x3d\x1d a tiny stand-in for libSceAmpr-debug.sprx";
-    const TAG: &str = "v0.5.2-maxpack.1";
+    const TAG: &str = "v0.5.1-maxpack.2";
 
     fn asset(tag: &str, name: &str, size: usize) -> serde_json::Value {
         json!({"name": name, "size": size,
@@ -322,7 +322,7 @@ mod tests {
     /// (len and crc32), and nothing for anything else.
     #[test]
     fn the_version_maxpack_knows_of_a_file() {
-        const B: &str = "v0.5.2-maxpack.1";
+        const B: &str = "v0.5.1-maxpack.2";
         let mark = "v0.5.1-maxpack.1 716176 0a1b2c3d";
         // The bundled bytes: the bundled version, whatever the mark says.
         for m in [None, Some(mark), Some("garbage")] {
@@ -355,15 +355,19 @@ mod tests {
     /// is not installed (a .p5z that grew would stop with it), nor one whose tag is not a version.
     #[test]
     fn an_older_release_is_never_installed() {
-        let b = "v0.5.2-maxpack.1";
-        for (tag, in_use) in [("v0.5.1-maxpack.1", None), ("v0.5.1-maxpack.1", Some(b)), ("v0.5.1-maxpack.9", Some("v0.5.1-maxpack.1")),
-                              ("v0.5.2-maxpack.1", Some("v0.6.0-maxpack.1")), ("latest", None), ("v0.5.2-beta", Some(b))] {
+        let b = "v0.5.1-maxpack.2";
+        // Older than the bundled one (an earlier build of the same upstream version, upstream's own), or
+        // than the one in use, or not a version.
+        for (tag, in_use) in [("v0.5.1-maxpack.1", None), ("v0.5.1-maxpack.1", Some(b)), ("v0.5.1", None),
+                              ("v0.5.1-maxpack.2", Some("v0.6.0-maxpack.1")), ("v0.5.1-maxpack.3", Some("v0.5.1-maxpack.4")),
+                              ("latest", None), ("v0.5.2-beta", Some(b))] {
             let f = not_older(tag, b, in_use).expect_err("refused");
             assert_eq!((f.status(), f.code()), (409, "older"), "{tag} {in_use:?}");
             assert!(f.detail().contains(tag) && f.detail().contains(b), "{}", f.detail());
         }
-        for (tag, in_use) in [("v0.5.2-maxpack.1", None), ("v0.5.2-maxpack.1", Some(b)), ("v0.6.0-maxpack.1", Some(b)),
-                              ("v0.5.2-maxpack.3", Some("v0.5.2-maxpack.1")), ("v0.6.0-maxpack.1", Some("not a version"))] {
+        for (tag, in_use) in [("v0.5.1-maxpack.2", None), ("v0.5.1-maxpack.2", Some(b)), ("v0.6.0-maxpack.1", Some(b)),
+                              ("v0.5.1-maxpack.3", Some(b)), ("v0.5.1-maxpack.9", Some("v0.5.1-maxpack.1")),
+                              ("v0.6.0-maxpack.1", Some("not a version"))] {
             assert_eq!(not_older(tag, b, in_use), Ok(()), "{tag} {in_use:?}");
         }
     }
@@ -377,7 +381,7 @@ mod tests {
             (Fail::Release("no libSceAmpr.sprx".into()), 502, "release"),
             (Fail::Checksum("SHA256SUMS lists no libSceAmpr.sprx".into()), 502, "checksum"),
             (Fail::Install("No space left on device".into()), 500, "install"),
-            (Fail::Older("v0.5.1-maxpack.1 is older than v0.5.2-maxpack.1".into()), 409, "older"),
+            (Fail::Older("v0.5.1-maxpack.1 is older than v0.5.1-maxpack.2".into()), 409, "older"),
         ];
         for (f, status, code) in all {
             assert_eq!((f.status(), f.code()), (status, code), "{f:?}");

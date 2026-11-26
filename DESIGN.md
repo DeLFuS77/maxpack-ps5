@@ -4,7 +4,7 @@ A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/e
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
 The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng: quer3q's v0.5.1, with its pkg mode, plus our p5z mode,
-which also plays a `.p5z` that grew; now `v0.5.2-maxpack.1`, for the time being a CI build of its branch `consola-orden` that is
+which also plays a `.p5z` that grew; now `v0.5.1-maxpack.2`, for the time being a CI build of its branch `consola-orden` that is
 not released yet; its CI run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
 `-maxpack.N`; `SHA256SUMS` copied from that CI run, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from
@@ -37,7 +37,7 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   grew; `maxpack_logic::p5z::PlayInfo::grew`; a version other than 1 or 2, or a count that does not go with it, is
   damaged) and still lists every volume, 0..n-1, the old ones too, with no chunk left in them or with room no chunk
   uses. It plays only with an ampr-emu-ng that knows such a file (`maxpack_logic::p5z::GROWN_NG`,
-  `v0.5.2-maxpack.1`; Cache: `ng_gate`). While a journal (`<name>.p5z.maxpack-append`) says an append on the PC was
+  `v0.5.1-maxpack.2`; Cache: `ng_gate`). While a journal (`<name>.p5z.maxpack-append`) says an append on the PC was
   cut short, the engine reads the file as it was before it (or as it grew, when that append had ended before its
   journal went); the console never cuts it nor deletes the journal (recovery is the PC's).
 - Any drive. The cache is always on the internal SSD.
@@ -152,14 +152,14 @@ is ignored as a whole). The web UI edits the same file.
   compares; a golden value is tested, so a change of it, which would make no cache relink when its `.p5z` moves, fails).
   A `.p5z` that grew (`PlayInfo::grew`) is built only while the ampr-emu-ng it gets on top of its `fakelib/`, the
   `libSceAmpr.sprx` of `/data/maxpack/ampr/` (always, whatever the game or backport ships), plays it
-  (`cache::ng_gate`, `maxpack_logic::p5z::ng_plays`: `v0.5.2-maxpack.1` or later). Its version is the one MaxPack
+  (`cache::ng_gate`, `maxpack_logic::p5z::ng_plays`: `v0.5.1-maxpack.2` or later). Its version is the one MaxPack
   knows (`main::ampr_version_of`, `maxpack_logic::ampr::known_version`): the bundled `VERSION` for the bundled
   bytes, the version `ampr.bundled` records for exactly those bytes (len and crc32: a downloaded release); a file
   put there by hand, bytes the mark does not describe, a v0.4.0 mark, none or a read error is unknown, and unknown
   never plays a grown `.p5z`. That file is not always the bundled one: a hand-placed file is kept, and an update
   could put another there (it never installs an older release: Flow, Auto-update). Otherwise the build stops right
   after the engine's open, before anything is extracted, with a `cache::OldNg` (`this .p5z grew (index version 2) and
-  needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is <v> (...): not started with it`): a failed
+  needs ampr-emu-ng v0.5.1-maxpack.2 or later; the ampr-emu-ng in use is <v> (...): not started with it`): a failed
   build, so the cache has no game files and neither Play nor the tile can start the game half-way (an older
   ampr-emu-ng refuses the grown index at the game's start and serves none of its packed files). `main.rs` shows status
   `error` with `error_code` `old_ng`, toasts `i18n::old_ng` once and memoizes it; `inputs_key` holds the ampr dir's
@@ -1010,11 +1010,13 @@ an extra one, changes a `{placeholder}` or keeps the English text.
   `SOURCE` (repository, commit, CI run) and the Corresponding Source link in `THIRD_PARTY_NOTICES`. A file put into
   `/data/maxpack/ampr/` by hand overrides it on the console. Changes to ampr-emu-ng itself go to its repository.
   A CI build of a branch there may be bundled before its release (now: commit 4c82503 of `consola-orden`, CI run
-  45752231139, `VERSION` the name of its coming release, `v0.5.2-maxpack.1`); `SOURCE` and `THIRD_PARTY_NOTICES`
+  45752231139, `VERSION` the name of its coming release, `v0.5.1-maxpack.2`); `SOURCE` and `THIRD_PARTY_NOTICES`
   say so, and the release's `libSceAmpr.sprx` and `SHA256SUMS` replace it once it is published. `VERSION` is what
-  the console compares (the update of ampr-emu-ng, `ampr.bundled`, `maxpack_logic::p5z::GROWN_NG`), and
-  `maxpack_logic::version::parse_version` ignores `-maxpack.N`: a release that changes what the console must check
-  takes a new X.Y.Z. A test (`p5z::tests::the_bundled_ampr_emu_ng_plays_a_grown_p5z`) fails when the bundled one
+  the console compares (the update of ampr-emu-ng, `ampr.bundled`, `maxpack_logic::p5z::GROWN_NG`):
+  `maxpack_logic::version::parse_version` orders by X.Y.Z, then by the `-maxpack.N` revision (none = 0, upstream's
+  own build), so a new MaxPack build of the same upstream version takes the next N (the repository's rule,
+  `v<upstream version>-maxpack.<n>`), and its crates keep upstream's version, which is what the sprx's identity and
+  launch notice say. A test (`p5z::tests::the_bundled_ampr_emu_ng_plays_a_grown_p5z`) fails when the bundled one
   is older than `GROWN_NG`.
 - `vendor/dlc_emu/` and `vendor/pgo_stub/` are drakmor's released binaries (DLC and PlayGo emulators, added to a
   fakelib only when missing); to update, replace the sprx files, `SHA256SUMS` and `VERSION` from the new GitHub

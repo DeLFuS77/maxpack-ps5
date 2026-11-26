@@ -11,9 +11,9 @@ What changed in each version of MaxPack for the console. The format follows
   (`maxpack add`), or turn it into a newer version of the game by compressing only what changed
   (`maxpack update`), by appending to the file. Such a `.p5z` shows up and plays like any other, from the
   drive it is on, with every volume it has, the old ones too.
-- MaxPack carries a new build of ampr-emu-ng, `v0.5.2-maxpack.1`, whose p5z mode reads those files. For
+- MaxPack carries a new build of ampr-emu-ng, `v0.5.1-maxpack.2`, whose p5z mode reads those files. For
   now it is a build of its CI, not a release yet (`vendor/ampr-emu-ng/SOURCE` says which); its launch
-  notice still says v0.5.1.
+  notice says v0.5.1, upstream's version, as every MaxPack build of it does: Settings shows which build.
 
 ### Changed
 

@@ -46,7 +46,7 @@ mod tests {
         assert!(newer(Some("v0.5.1-maxpack.1"), Some("v0.5.1")));
         assert!(newer(Some("v0.5.1-maxpack.10"), Some("v0.5.1-maxpack.9")));
         assert!(newer(Some("v0.5.2"), Some("v0.5.1-maxpack.99")));
-        assert!(newer(Some("v0.5.2-maxpack.1"), Some("v0.5.2")));
+        assert!(newer(Some("v0.5.3-maxpack.1"), Some("v0.5.3")));
         for (a, b) in [("v0.5.1-maxpack.1", "v0.5.1-maxpack.1"), ("v0.5.1-maxpack.1", "v0.5.1-maxpack.2"), ("v0.5.1", "v0.5.1-maxpack.1"),
                        ("v0.5.1-maxpack.99", "v0.5.2"), ("0.5.1-maxpack.2", "v0.5.1-maxpack.2")] {
             assert!(!newer(Some(a), Some(b)), "{a} > {b}");

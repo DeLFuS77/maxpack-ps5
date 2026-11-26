@@ -10,12 +10,12 @@ one's README and Corresponding Source links point at the others.
   `libSceAmpr.sprx` of the public release `v0.5.1-maxpack.1` of DeLFuS77/ampr-emu-ng (CI run 45435074348,
   tag on `73b2973`): same SHA-256. Change the vendored binary only together with `SHA256SUMS`, `VERSION`
   and `SOURCE` (DESIGN.md, Vendored components).
-- **Before the next release: ampr-emu-ng `v0.5.2-maxpack.1` is released.** Now `vendor/ampr-emu-ng` holds
+- **Before the next release: ampr-emu-ng `v0.5.1-maxpack.2` is released.** Now `vendor/ampr-emu-ng` holds
   a CI build (run 45752231139) of commit `4c82503` on its branch `consola-orden`, which plays a `.p5z`
-  that grew; `VERSION` already says `v0.5.2-maxpack.1`, the name of its coming release, and the console
+  that grew; `VERSION` already says `v0.5.1-maxpack.2`, the name of its coming release, and the console
   stops a grown `.p5z` with any older ampr-emu-ng (`maxpack_logic::p5z::GROWN_NG`). Merge that branch
-  there, publish the release (raising its crates' version to 0.5.2 first, so that its identity and its
-  launch notice say 0.5.2: they still say 0.5.1), and replace `libSceAmpr.sprx`, `SHA256SUMS` and `SOURCE`
+  there, publish the release (its crates keep upstream's version, 0.5.1, as v0.5.1-maxpack.1's did; the
+  console tells the builds apart by the `-maxpack.N` of the tag), and replace `libSceAmpr.sprx`, `SHA256SUMS` and `SOURCE`
   here with the release's, with `THIRD_PARTY_NOTICES` pointing at its tag. Until it is published, the
   latest release is the older `v0.5.1-maxpack.1`, which the update refuses as older than the bundled one.
 - **The secure-connection check passes on a console before `v1.0.0` is tagged.** With a build of the

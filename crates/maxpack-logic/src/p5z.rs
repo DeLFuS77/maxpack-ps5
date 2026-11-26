@@ -15,7 +15,7 @@ pub const SPACE_MARGIN: u64 = 256 << 20;
 /// The first ampr-emu-ng whose p5z mode plays a .p5z that grew by appending: chunks in any order, room
 /// no chunk uses, volumes with no chunk, and volume headers that count fewer volumes than the index.
 /// An older one refuses the grown index at the game's start and serves none of its packed files.
-pub const GROWN_NG: &str = "v0.5.2-maxpack.1";
+pub const GROWN_NG: &str = "v0.5.1-maxpack.2";
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Loose {
@@ -432,20 +432,20 @@ mod tests {
 
     #[test]
     fn a_grown_p5z_needs_an_ampr_emu_ng_that_knows_it() {
-        assert_eq!(GROWN_NG, "v0.5.2-maxpack.1");
-        assert_eq!(crate::version::parse_version(GROWN_NG), Some((0, 5, 2, 1)));
+        assert_eq!(GROWN_NG, "v0.5.1-maxpack.2");
+        assert_eq!(crate::version::parse_version(GROWN_NG), Some((0, 5, 1, 2)));
         let v1 = parse_play_json(ENGINE_V1).unwrap();
         let v2 = parse_play_json(ENGINE_V2).unwrap();
         // A .p5z that never grew plays as before, with any ampr-emu-ng that has the p5z mode.
         for ng in [None, Some("v0.5.1-maxpack.1"), Some("not a version")] {
             assert_eq!(ng_plays(&v1, ng), Ok(()), "{ng:?}");
         }
-        for ng in ["v0.5.2-maxpack.1", "v0.5.2-maxpack.7", "0.5.3", "v0.6.0-maxpack.1", "v1.0.0-maxpack.1"] {
+        for ng in ["v0.5.1-maxpack.2", "v0.5.1-maxpack.7", "0.5.2", "v0.6.0-maxpack.1", "v1.0.0-maxpack.1"] {
             assert_eq!(ng_plays(&v2, Some(ng)), Ok(()), "{ng}");
         }
-        // Older (upstream's own build of that version too: no p5z mode), or a version MaxPack cannot tell
-        // (a file put there by hand, none): never half-way.
-        for ng in [Some("v0.5.1-maxpack.1"), Some("v0.5.1-maxpack.9"), Some("v0.5.2"), Some("v0.5.0"), Some("v0.4.0"), Some("v0.5.2-beta"), Some(""), None] {
+        // Older (upstream's own v0.5.1 too: no p5z mode), or a version MaxPack cannot tell (a file put
+        // there by hand, none): never half-way.
+        for ng in [Some("v0.5.1-maxpack.1"), Some("v0.5.1"), Some("v0.5.0-maxpack.9"), Some("v0.4.0"), Some("v0.5.2-beta"), Some(""), None] {
             let why = ng_plays(&v2, ng).expect_err("refused");
             assert!(why.contains(GROWN_NG), "{ng:?}: {why}");
             if let Some(v) = ng.filter(|v| !v.is_empty()) {
@@ -461,12 +461,12 @@ mod tests {
         let v1 = parse_play_json(ENGINE_V1).unwrap();
         let v2 = parse_play_json(ENGINE_V2).unwrap();
         for need in ["", "not a version", "v0.5", "v0.5.2-beta", "V0.5.2"] {
-            for ng in [None, Some("v0.5.2-maxpack.1"), Some("v9.9.9-maxpack.1"), Some("garbage")] {
+            for ng in [None, Some("v0.5.1-maxpack.2"), Some("v9.9.9-maxpack.1"), Some("garbage")] {
                 assert!(ng_plays_against(&v2, ng, need).is_err(), "{need:?} {ng:?}");
                 assert_eq!(ng_plays_against(&v1, ng, need), Ok(()), "{need:?} {ng:?}");
             }
         }
-        assert_eq!(ng_plays_against(&v2, Some("v0.5.2-maxpack.1"), GROWN_NG), Ok(()));
+        assert_eq!(ng_plays_against(&v2, Some("v0.5.1-maxpack.2"), GROWN_NG), Ok(()));
     }
 
     /// The ampr-emu-ng that maxpack.elf carries (vendor/ampr-emu-ng/VERSION, src/main.rs BUNDLED_AMPR)
