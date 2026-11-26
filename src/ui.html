@@ -492,6 +492,13 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
 .m-err { margin-top: 0.9rem; color: var(--danger-ink); overflow-wrap: break-word; }
 .m-err:empty { display: none; }
 .m-row { margin: 1.2rem 0 0; }
+/* The test compression on a plain folder game's sheet: level, threads and the button in one wrapping line. */
+.pack-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem; margin-top: 0.8rem; }
+.pack-ctl label { display: flex; align-items: center; gap: 0.5rem; }
+.pack-meter { width: 100%; height: 0.5rem; margin-top: 0.9rem; }
+.pack-status { margin-top: 0.7rem; font-size: 0.92rem; color: var(--fg-2); overflow-wrap: anywhere; }
+.pack-status:empty { display: none; }
+#m-pack-copy { margin-top: 0.6rem; }
 #confirm { z-index: 20; }
 .dialog {
   width: 100%; max-width: 34rem; max-height: 100%; overflow: auto; padding: 1.6rem;
@@ -850,6 +857,20 @@ button.inst-item[aria-checked="true"] {
       <label class="row m-row" id="m-overlay-row" hidden><span><span class="lbl" data-i18n="overlayLbl">MaxPack libraries at launch</span>
         <span class="hint" data-i18n="overlayHint">Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.</span></span>
         <input type="checkbox" id="m-overlay"></label>
+      <div class="row col m-row" id="m-pack-row" hidden><span class="lbl" data-i18n="packLbl">Compress on the console (test)</span>
+        <span class="hint" id="m-pack-hint"></span>
+        <div class="pack-ctl">
+          <label><span data-i18n="packLevel">Level</span> <select id="m-pack-level">
+            <option value="3">3</option><option value="9" selected>9</option><option value="19">19</option></select></label>
+          <label><span data-i18n="packThreads">Threads</span> <select id="m-pack-threads">
+            <option value="4">4</option><option value="5" selected>5</option></select></label>
+          <button type="button" id="m-pack" data-i18n="packStart">Compress (test)</button>
+          <button type="button" id="m-pack-cancel" data-i18n="packCancel" hidden>Cancel the compression</button>
+        </div>
+        <div class="meter pack-meter" id="m-pack-meter" hidden><i id="m-pack-bar"></i></div>
+        <div class="pack-status" id="m-pack-status" role="status"></div>
+        <textarea class="m-report" id="m-pack-lines" readonly spellcheck="false" hidden aria-label="Lines to compare" data-i18n-aria="packLinesLabel"></textarea>
+        <button type="button" id="m-pack-copy" data-i18n="packCopy" hidden>Copy the lines</button></div>
       <div class="m-err" id="m-err"></div>
       <div class="m-note" id="m-note" role="status"></div>
       <textarea class="m-report" id="m-report-text" readonly spellcheck="false" hidden aria-label="Report" data-i18n-aria="reportLabel"></textarea>
@@ -1092,7 +1113,34 @@ var MSG = {
     iNotFound: "That game isn't installed with MaxPack.", iVerifyBad: 'Verification found damaged files.',
     iGameRunning: 'Close the game first.', iNeedsConfirm: 'Your confirmation is needed.', iBadJson: 'Invalid request.',
     iForbidden: 'The installer refused the request: open this page at the console IP.',
-    iStarting: 'The installer is starting...', iNoInstaller: 'The installer could not start.'
+    iStarting: 'The installer is starting...', iNoInstaller: 'The installer could not start.',
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Compress on the console (test)",
+    packHint: "A test build: it writes {path} next to the folder, on the same drive, to measure the speed and the memory (the numbers go to the log and under the lines). The folder stays as it is.",
+    packLevel: "Level",
+    packThreads: "Threads",
+    packStart: "Compress (test)",
+    packCancel: "Cancel the compression",
+    packCopy: "Copy the lines",
+    packCopied: "Lines copied. Compare them with the same game packed on the PC at the same level.",
+    packLinesLabel: "Lines to compare",
+    packRunning: "Compressing: {phase}, {pct} %, {speed} MB/s, {time} so far.",
+    packCancelling: "Cancelling: the partial .p5z is being deleted...",
+    packDone: "Done in {time}: {path} ({size}).",
+    packCancelled: "Cancelled: the partial .p5z was deleted.",
+    packFailed: "The compression failed: {error}",
+    packOther: "Another test compression is running: {path}.",
+    packPhase_probe: "measuring the memory",
+    packPhase_prepare: "reading the folder",
+    packPhase_loose: "loose files",
+    packPhase_packs: "packs",
+    packPhase_other: "writing the .p5z",
+    packPhase_sums: "reading the sums",
+    packFail_exists: "{path} is there already: MaxPack never overwrites it. Move or delete it over FTP first.",
+    packFail_no_space: "It does not fit: {size} more is needed on that drive (a .p5z can be as large as the folder).",
+    packFail_install_running: "The installer is busy: try again when its job ends.",
+    packFail_pack_running: "Another test compression is running.",
+    iPackRunning: "A test compression is running: try again when it ends."
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1347,7 +1395,34 @@ var MSG = {
     iBadJson: "Некорректный запрос.",
     iForbidden: "Установщик отклонил запрос: откройте эту страницу по IP-адресу консоли.",
     iStarting: "Установщик запускается...",
-    iNoInstaller: "Не удалось запустить установщик."
+    iNoInstaller: "Не удалось запустить установщик.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Сжатие на консоли (тест)",
+    packHint: "Тестовая сборка: записывает {path} рядом с папкой, на том же диске, чтобы измерить скорость и память (цифры идут в журнал и под строки). Папка остаётся как есть.",
+    packLevel: "Уровень",
+    packThreads: "Потоки",
+    packStart: "Сжать (тест)",
+    packCancel: "Отменить сжатие",
+    packCopy: "Копировать строки",
+    packCopied: "Строки скопированы. Сравните их с той же игрой, упакованной на ПК с тем же уровнем.",
+    packLinesLabel: "Строки для сравнения",
+    packRunning: "Сжатие: {phase}, {pct} %, {speed} MB/s, прошло {time}.",
+    packCancelling: "Отмена: незавершённый .p5z удаляется...",
+    packDone: "Готово за {time}: {path} ({size}).",
+    packCancelled: "Отменено: незавершённый .p5z удалён.",
+    packFailed: "Сжатие не удалось: {error}",
+    packOther: "Уже идёт другое тестовое сжатие: {path}.",
+    packPhase_probe: "измерение памяти",
+    packPhase_prepare: "чтение папки",
+    packPhase_loose: "отдельные файлы",
+    packPhase_packs: "пакеты",
+    packPhase_other: "запись .p5z",
+    packPhase_sums: "чтение контрольных сумм",
+    packFail_exists: "{path} уже есть: MaxPack никогда его не перезаписывает. Сначала переместите или удалите его по FTP.",
+    packFail_no_space: "Не помещается: на этом диске нужно ещё {size} (.p5z может быть размером с папку).",
+    packFail_install_running: "Установщик занят: повторите, когда его задача закончится.",
+    packFail_pack_running: "Уже идёт другое тестовое сжатие.",
+    iPackRunning: "Идёт тестовое сжатие: повторите, когда оно закончится."
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1602,7 +1677,34 @@ var MSG = {
     iBadJson: "请求无效。",
     iForbidden: "安装器拒绝了该请求：请通过主机 IP 打开此页面。",
     iStarting: "安装器正在启动...",
-    iNoInstaller: "安装器无法启动。"
+    iNoInstaller: "安装器无法启动。",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "在主机上压缩（测试）",
+    packHint: "测试版本：在文件夹旁边、同一个磁盘上写入 {path}，用来测量速度和内存（数字写入日志并显示在各行下方）。文件夹保持不变。",
+    packLevel: "级别",
+    packThreads: "线程",
+    packStart: "压缩（测试）",
+    packCancel: "取消压缩",
+    packCopy: "复制这些行",
+    packCopied: "已复制。请与在电脑上以相同级别打包的同一游戏进行比较。",
+    packLinesLabel: "用于比较的行",
+    packRunning: "正在压缩：{phase}，{pct} %，{speed} MB/s，已用 {time}。",
+    packCancelling: "正在取消：正在删除未完成的 .p5z...",
+    packDone: "用时 {time} 完成：{path}（{size}）。",
+    packCancelled: "已取消：未完成的 .p5z 已删除。",
+    packFailed: "压缩失败：{error}",
+    packOther: "另一个测试压缩正在进行：{path}。",
+    packPhase_probe: "测量内存",
+    packPhase_prepare: "读取文件夹",
+    packPhase_loose: "散装文件",
+    packPhase_packs: "数据包",
+    packPhase_other: "写入 .p5z",
+    packPhase_sums: "读取校验和",
+    packFail_exists: "{path} 已存在：MaxPack 绝不覆盖它。请先通过 FTP 移走或删除它。",
+    packFail_no_space: "空间不足：该磁盘还需要 {size}（.p5z 可能和文件夹一样大）。",
+    packFail_install_running: "安装器正忙：请在其任务结束后再试。",
+    packFail_pack_running: "另一个测试压缩正在进行。",
+    iPackRunning: "测试压缩正在进行：请在结束后再试。"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -1857,7 +1959,34 @@ var MSG = {
     iBadJson: "Ungültige Anfrage.",
     iForbidden: "Der Installer hat die Anfrage abgelehnt: Öffne diese Seite über die IP der Konsole.",
     iStarting: "Der Installer startet...",
-    iNoInstaller: "Der Installer konnte nicht gestartet werden."
+    iNoInstaller: "Der Installer konnte nicht gestartet werden.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Auf der Konsole komprimieren (Test)",
+    packHint: "Ein Testbuild: Es schreibt {path} neben den Ordner, auf dasselbe Laufwerk, um Geschwindigkeit und Speicher zu messen (die Zahlen stehen im Log und unter den Zeilen). Der Ordner bleibt, wie er ist.",
+    packLevel: "Stufe",
+    packThreads: "Threads",
+    packStart: "Komprimieren (Test)",
+    packCancel: "Komprimierung abbrechen",
+    packCopy: "Zeilen kopieren",
+    packCopied: "Zeilen kopiert. Vergleiche sie mit demselben Spiel, auf dem PC mit derselben Stufe gepackt.",
+    packLinesLabel: "Zeilen zum Vergleichen",
+    packRunning: "Komprimiere: {phase}, {pct} %, {speed} MB/s, bisher {time}.",
+    packCancelling: "Wird abgebrochen: die halbfertige .p5z wird gelöscht...",
+    packDone: "Fertig in {time}: {path} ({size}).",
+    packCancelled: "Abgebrochen: die halbfertige .p5z wurde gelöscht.",
+    packFailed: "Die Komprimierung ist fehlgeschlagen: {error}",
+    packOther: "Eine andere Testkomprimierung läuft: {path}.",
+    packPhase_probe: "Speicher messen",
+    packPhase_prepare: "Ordner lesen",
+    packPhase_loose: "lose Dateien",
+    packPhase_packs: "Packs",
+    packPhase_other: ".p5z schreiben",
+    packPhase_sums: "Prüfsummen lesen",
+    packFail_exists: "{path} gibt es schon: MaxPack überschreibt es nie. Verschiebe oder lösche es zuerst per FTP.",
+    packFail_no_space: "Passt nicht: Auf dem Laufwerk fehlen {size} (eine .p5z kann so groß wie der Ordner sein).",
+    packFail_install_running: "Der Installer ist beschäftigt: versuche es erneut, wenn sein Auftrag endet.",
+    packFail_pack_running: "Eine andere Testkomprimierung läuft.",
+    iPackRunning: "Eine Testkomprimierung läuft: versuche es erneut, wenn sie endet."
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2057,7 +2186,34 @@ var MSG = {
     iNotFound: 'Ese juego no está instalado con MaxPack.', iVerifyBad: 'La verificación encontró archivos dañados.',
     iGameRunning: 'Cierra el juego antes.', iNeedsConfirm: 'Hace falta tu confirmación.', iBadJson: 'Petición no válida.',
     iForbidden: 'El instalador rechazó la petición: abre esta página con la IP de la consola.',
-    iStarting: 'El instalador se está iniciando...', iNoInstaller: 'El instalador no pudo arrancar.'
+    iStarting: 'El instalador se está iniciando...', iNoInstaller: 'El instalador no pudo arrancar.',
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Comprimir en la consola (prueba)",
+    packHint: "Una versión de prueba: escribe {path} al lado de la carpeta, en el mismo disco, para medir la velocidad y la memoria (los números van al registro y debajo de las líneas). La carpeta se queda como está.",
+    packLevel: "Nivel",
+    packThreads: "Hilos",
+    packStart: "Comprimir (prueba)",
+    packCancel: "Cancelar la compresión",
+    packCopy: "Copiar las líneas",
+    packCopied: "Líneas copiadas. Compáralas con el mismo juego empaquetado en el PC al mismo nivel.",
+    packLinesLabel: "Líneas para comparar",
+    packRunning: "Comprimiendo: {phase}, {pct} %, {speed} MB/s, {time} hasta ahora.",
+    packCancelling: "Cancelando: se borra el .p5z a medias...",
+    packDone: "Hecho en {time}: {path} ({size}).",
+    packCancelled: "Cancelado: se borró el .p5z a medias.",
+    packFailed: "La compresión falló: {error}",
+    packOther: "Hay otra compresión de prueba en marcha: {path}.",
+    packPhase_probe: "midiendo la memoria",
+    packPhase_prepare: "leyendo la carpeta",
+    packPhase_loose: "archivos sueltos",
+    packPhase_packs: "paquetes",
+    packPhase_other: "escribiendo el .p5z",
+    packPhase_sums: "leyendo las sumas",
+    packFail_exists: "{path} ya existe: MaxPack nunca lo sobrescribe. Muévelo o bórralo antes por FTP.",
+    packFail_no_space: "No cabe: hacen falta {size} más en ese disco (un .p5z puede ser tan grande como la carpeta).",
+    packFail_install_running: "El instalador está ocupado: vuelve a intentarlo cuando termine su trabajo.",
+    packFail_pack_running: "Hay otra compresión de prueba en marcha.",
+    iPackRunning: "Hay una compresión de prueba en marcha: vuelve a intentarlo cuando termine."
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2312,7 +2468,34 @@ var MSG = {
     iBadJson: "Requête invalide.",
     iForbidden: "L'installateur a refusé la requête : ouvrez cette page à l'adresse IP de la console.",
     iStarting: "L'installateur démarre...",
-    iNoInstaller: "L'installateur n'a pas pu démarrer."
+    iNoInstaller: "L'installateur n'a pas pu démarrer.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Compresser sur la console (test)",
+    packHint: "Une version de test : elle écrit {path} à côté du dossier, sur le même disque, pour mesurer la vitesse et la mémoire (les chiffres vont dans le journal et sous les lignes). Le dossier reste tel quel.",
+    packLevel: "Niveau",
+    packThreads: "Threads",
+    packStart: "Compresser (test)",
+    packCancel: "Annuler la compression",
+    packCopy: "Copier les lignes",
+    packCopied: "Lignes copiées. Comparez-les avec le même jeu empaqueté sur le PC au même niveau.",
+    packLinesLabel: "Lignes à comparer",
+    packRunning: "Compression : {phase}, {pct} %, {speed} MB/s, {time} jusqu'ici.",
+    packCancelling: "Annulation : le .p5z incomplet est supprimé...",
+    packDone: "Terminé en {time} : {path} ({size}).",
+    packCancelled: "Annulé : le .p5z incomplet a été supprimé.",
+    packFailed: "La compression a échoué : {error}",
+    packOther: "Une autre compression de test est en cours : {path}.",
+    packPhase_probe: "mesure de la mémoire",
+    packPhase_prepare: "lecture du dossier",
+    packPhase_loose: "fichiers isolés",
+    packPhase_packs: "paquets",
+    packPhase_other: "écriture du .p5z",
+    packPhase_sums: "lecture des sommes",
+    packFail_exists: "{path} existe déjà : MaxPack ne l'écrase jamais. Déplacez-le ou supprimez-le d'abord par FTP.",
+    packFail_no_space: "Ça ne rentre pas : il faut encore {size} sur ce disque (un .p5z peut être aussi gros que le dossier).",
+    packFail_install_running: "L'installateur est occupé : réessayez quand sa tâche est finie.",
+    packFail_pack_running: "Une autre compression de test est en cours.",
+    iPackRunning: "Une compression de test est en cours : réessayez quand elle sera finie."
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2567,7 +2750,34 @@ var MSG = {
     iBadJson: "無効なリクエストです。",
     iForbidden: "インストーラーがリクエストを拒否しました。本体の IP アドレスでこのページを開いてください。",
     iStarting: "インストーラーを起動しています...",
-    iNoInstaller: "インストーラーを起動できませんでした。"
+    iNoInstaller: "インストーラーを起動できませんでした。",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "本体で圧縮（テスト）",
+    packHint: "テスト版です。速度とメモリを測るため、フォルダの隣（同じドライブ）に {path} を書き込みます（数値はログと各行の下に出ます）。フォルダはそのままです。",
+    packLevel: "レベル",
+    packThreads: "スレッド",
+    packStart: "圧縮（テスト）",
+    packCancel: "圧縮を中止",
+    packCopy: "行をコピー",
+    packCopied: "行をコピーしました。PC で同じレベルでパックした同じゲームと比べてください。",
+    packLinesLabel: "比較する行",
+    packRunning: "圧縮中：{phase}、{pct} %、{speed} MB/s、経過 {time}。",
+    packCancelling: "中止中：途中の .p5z を削除しています...",
+    packDone: "{time} で完了：{path}（{size}）。",
+    packCancelled: "中止しました：途中の .p5z は削除されました。",
+    packFailed: "圧縮に失敗しました：{error}",
+    packOther: "別のテスト圧縮が実行中です：{path}。",
+    packPhase_probe: "メモリを測定中",
+    packPhase_prepare: "フォルダを読み込み中",
+    packPhase_loose: "ルーズファイル",
+    packPhase_packs: "パック",
+    packPhase_other: ".p5z を書き込み中",
+    packPhase_sums: "チェックサムを読み込み中",
+    packFail_exists: "{path} はすでにあります。MaxPack は上書きしません。先に FTP で移動するか削除してください。",
+    packFail_no_space: "容量が足りません。そのドライブにあと {size} 必要です（.p5z はフォルダと同じ大きさになることがあります）。",
+    packFail_install_running: "インストーラーが作業中です。終わってから再度お試しください。",
+    packFail_pack_running: "別のテスト圧縮が実行中です。",
+    iPackRunning: "テスト圧縮が実行中です。終わってから再度お試しください。"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -2822,7 +3032,34 @@ var MSG = {
     iBadJson: "Solicitação inválida.",
     iForbidden: "O instalador recusou a solicitação: abra esta página pelo IP do console.",
     iStarting: "O instalador está iniciando...",
-    iNoInstaller: "Não foi possível iniciar o instalador."
+    iNoInstaller: "Não foi possível iniciar o instalador.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Comprimir no console (teste)",
+    packHint: "Uma versão de teste: grava {path} ao lado da pasta, no mesmo disco, para medir a velocidade e a memória (os números vão para o log e abaixo das linhas). A pasta fica como está.",
+    packLevel: "Nível",
+    packThreads: "Threads",
+    packStart: "Comprimir (teste)",
+    packCancel: "Cancelar a compressão",
+    packCopy: "Copiar as linhas",
+    packCopied: "Linhas copiadas. Compare-as com o mesmo jogo empacotado no PC no mesmo nível.",
+    packLinesLabel: "Linhas para comparar",
+    packRunning: "Comprimindo: {phase}, {pct} %, {speed} MB/s, {time} até agora.",
+    packCancelling: "Cancelando: o .p5z incompleto está sendo apagado...",
+    packDone: "Pronto em {time}: {path} ({size}).",
+    packCancelled: "Cancelado: o .p5z incompleto foi apagado.",
+    packFailed: "A compressão falhou: {error}",
+    packOther: "Outra compressão de teste está em andamento: {path}.",
+    packPhase_probe: "medindo a memória",
+    packPhase_prepare: "lendo a pasta",
+    packPhase_loose: "arquivos soltos",
+    packPhase_packs: "pacotes",
+    packPhase_other: "gravando o .p5z",
+    packPhase_sums: "lendo as somas",
+    packFail_exists: "{path} já existe: o MaxPack nunca o sobrescreve. Mova ou apague-o antes por FTP.",
+    packFail_no_space: "Não cabe: faltam {size} nesse disco (um .p5z pode ser tão grande quanto a pasta).",
+    packFail_install_running: "O instalador está ocupado: tente de novo quando a tarefa dele terminar.",
+    packFail_pack_running: "Outra compressão de teste está em andamento.",
+    iPackRunning: "Uma compressão de teste está em andamento: tente de novo quando terminar."
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3077,7 +3314,34 @@ var MSG = {
     iBadJson: "Richiesta non valida.",
     iForbidden: "L'installatore ha rifiutato la richiesta: apri questa pagina all'IP della console.",
     iStarting: "L'installatore si sta avviando...",
-    iNoInstaller: "Impossibile avviare l'installatore."
+    iNoInstaller: "Impossibile avviare l'installatore.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "Comprimi sulla console (prova)",
+    packHint: "Una versione di prova: scrive {path} accanto alla cartella, sullo stesso disco, per misurare velocità e memoria (i numeri vanno nel log e sotto le righe). La cartella resta com'è.",
+    packLevel: "Livello",
+    packThreads: "Thread",
+    packStart: "Comprimi (prova)",
+    packCancel: "Annulla la compressione",
+    packCopy: "Copia le righe",
+    packCopied: "Righe copiate. Confrontale con lo stesso gioco impacchettato sul PC allo stesso livello.",
+    packLinesLabel: "Righe da confrontare",
+    packRunning: "Compressione: {phase}, {pct} %, {speed} MB/s, finora {time}.",
+    packCancelling: "Annullamento: il .p5z incompleto viene eliminato...",
+    packDone: "Fatto in {time}: {path} ({size}).",
+    packCancelled: "Annullato: il .p5z incompleto è stato eliminato.",
+    packFailed: "La compressione non è riuscita: {error}",
+    packOther: "È in corso un'altra compressione di prova: {path}.",
+    packPhase_probe: "misura della memoria",
+    packPhase_prepare: "lettura della cartella",
+    packPhase_loose: "file sciolti",
+    packPhase_packs: "pacchetti",
+    packPhase_other: "scrittura del .p5z",
+    packPhase_sums: "lettura delle somme",
+    packFail_exists: "{path} esiste già: MaxPack non lo sovrascrive mai. Spostalo o eliminalo prima via FTP.",
+    packFail_no_space: "Non ci sta: servono altri {size} su quel disco (un .p5z può essere grande quanto la cartella).",
+    packFail_install_running: "L'installatore è occupato: riprova quando il suo lavoro finisce.",
+    packFail_pack_running: "È in corso un'altra compressione di prova.",
+    iPackRunning: "È in corso una compressione di prova: riprova quando finisce."
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3332,7 +3596,34 @@ var MSG = {
     iBadJson: "잘못된 요청입니다.",
     iForbidden: "설치 프로그램이 요청을 거부했습니다. 콘솔 IP 주소로 이 페이지를 여세요.",
     iStarting: "설치 프로그램을 시작하는 중...",
-    iNoInstaller: "설치 프로그램을 시작할 수 없습니다."
+    iNoInstaller: "설치 프로그램을 시작할 수 없습니다.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "콘솔에서 압축 (테스트)",
+    packHint: "테스트 빌드입니다. 속도와 메모리를 재기 위해 폴더 옆(같은 드라이브)에 {path}를 씁니다(수치는 로그와 줄 아래에 나옵니다). 폴더는 그대로 둡니다.",
+    packLevel: "레벨",
+    packThreads: "스레드",
+    packStart: "압축 (테스트)",
+    packCancel: "압축 취소",
+    packCopy: "줄 복사",
+    packCopied: "줄을 복사했습니다. PC에서 같은 레벨로 패킹한 같은 게임과 비교하세요.",
+    packLinesLabel: "비교할 줄",
+    packRunning: "압축 중: {phase}, {pct} %, {speed} MB/s, 경과 {time}.",
+    packCancelling: "취소 중: 만들다 만 .p5z를 지우는 중...",
+    packDone: "{time} 만에 완료: {path} ({size}).",
+    packCancelled: "취소했습니다: 만들다 만 .p5z는 지웠습니다.",
+    packFailed: "압축 실패: {error}",
+    packOther: "다른 테스트 압축이 진행 중입니다: {path}.",
+    packPhase_probe: "메모리 측정",
+    packPhase_prepare: "폴더 읽기",
+    packPhase_loose: "개별 파일",
+    packPhase_packs: "팩",
+    packPhase_other: ".p5z 쓰기",
+    packPhase_sums: "체크섬 읽기",
+    packFail_exists: "{path}가 이미 있습니다. MaxPack은 덮어쓰지 않습니다. 먼저 FTP로 옮기거나 지우세요.",
+    packFail_no_space: "공간이 부족합니다. 그 드라이브에 {size}가 더 필요합니다(.p5z는 폴더만큼 클 수 있습니다).",
+    packFail_install_running: "설치 프로그램이 작업 중입니다. 작업이 끝나면 다시 시도하세요.",
+    packFail_pack_running: "다른 테스트 압축이 진행 중입니다.",
+    iPackRunning: "테스트 압축이 진행 중입니다. 끝나면 다시 시도하세요."
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -3587,7 +3878,34 @@ var MSG = {
     iBadJson: "طلب غير صالح.",
     iForbidden: "رفض المُثبِّت الطلب: افتح هذه الصفحة عبر عنوان IP للجهاز.",
     iStarting: "المُثبِّت قيد البدء...",
-    iNoInstaller: "تعذّر بدء المُثبِّت."
+    iNoInstaller: "تعذّر بدء المُثبِّت.",
+    // The test compression of a folder game's sheet (POST /api/pack, src/pack.rs)
+    packLbl: "الضغط على الجهاز (تجربة)",
+    packHint: "نسخة تجريبية: تكتب {path} بجانب المجلد، على القرص نفسه، لقياس السرعة والذاكرة (تذهب الأرقام إلى السجل وتحت الأسطر). يبقى المجلد كما هو.",
+    packLevel: "المستوى",
+    packThreads: "الخيوط",
+    packStart: "ضغط (تجربة)",
+    packCancel: "إلغاء الضغط",
+    packCopy: "نسخ الأسطر",
+    packCopied: "نُسخت الأسطر. قارنها باللعبة نفسها مضغوطة على الحاسوب بالمستوى نفسه.",
+    packLinesLabel: "أسطر للمقارنة",
+    packRunning: "جارٍ الضغط: {phase}، {pct} %، {speed} MB/s، مضى {time}.",
+    packCancelling: "جارٍ الإلغاء: يُحذف ملف .p5z غير المكتمل...",
+    packDone: "اكتمل في {time}: {path} ({size}).",
+    packCancelled: "أُلغي: حُذف ملف .p5z غير المكتمل.",
+    packFailed: "فشل الضغط: {error}",
+    packOther: "يجري ضغط تجريبي آخر: {path}.",
+    packPhase_probe: "قياس الذاكرة",
+    packPhase_prepare: "قراءة المجلد",
+    packPhase_loose: "الملفات المنفصلة",
+    packPhase_packs: "الحزم",
+    packPhase_other: "كتابة ملف .p5z",
+    packPhase_sums: "قراءة المجاميع",
+    packFail_exists: "{path} موجود بالفعل: لا يكتب MaxPack فوقه أبدًا. انقله أو احذفه أولًا عبر FTP.",
+    packFail_no_space: "لا تكفي المساحة: يلزم {size} إضافية على ذلك القرص (قد يكون ملف .p5z بحجم المجلد).",
+    packFail_install_running: "المُثبِّت مشغول: أعد المحاولة عند انتهاء مهمته.",
+    packFail_pack_running: "يجري ضغط تجريبي آخر.",
+    iPackRunning: "يجري ضغط تجريبي: أعد المحاولة عند انتهائه."
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -4320,8 +4638,101 @@ function renderModal() {
   $('m-overlay-row').hidden = dup || !(overlayOptional(g) || g.overlay_off_listed);
   if (!ov._busy) ov.checked = !g.overlay_off_listed;
   ov.disabled = !!ov._busy || g.status === 'building';
+  renderPack(g);
 }
 function overlayOptional(g) { return g.kind === 'folder' && g.packing === 'plain'; }
+// The test compression (POST /api/pack, src/pack.rs): a prototype that measures, on a plain folder game's sheet
+// (a duplicate copy too: it goes by path). The job of this run (state.pack) shows on the sheet of the folder it packs.
+var PACK_FAILS = { exists: 'packFail_exists', game_running: 'iGameRunning', install_running: 'packFail_install_running',
+  pack_running: 'packFail_pack_running' };
+function packRunning() { var p = state && state.pack; return !!p && ['probe', 'running', 'sums'].indexOf(p.state) >= 0; }
+function packStatus(p) {
+  var time = instDuration((Number(p.elapsed_ms) || 0) / 1000) || '0 s';
+  if (p.state === 'done') return t('packDone', { time: time, path: p.dest, size: fmtSize(p.size) });
+  if (p.state === 'cancelled') return t('packCancelled');
+  if (p.state === 'failed') return t('packFailed', { error: p.error || '?' });
+  if (p.cancelling) return t('packCancelling');
+  var phase = p.state === 'probe' || p.state === 'sums' ? p.state : p.phase || 'prepare';
+  return t('packRunning', { phase: t('packPhase_' + phase), pct: p.total ? Math.floor(p.done / p.total * 100) : 0,
+    speed: p.mbps != null ? Number(p.mbps).toFixed(1) : '?', time: time });
+}
+function renderPack(g) {
+  var row = $('m-pack-row');
+  row.hidden = !overlayOptional(g);
+  if (row.hidden) return;
+  var all = state && state.pack, p = all && all.source === g.path ? all : null, busy = packRunning(), mine = !!p && busy;
+  setText($('m-pack-hint'), t('packHint', { path: g.path + '.p5z' }));
+  var start = $('m-pack');
+  start.hidden = mine;
+  start.disabled = busy || !!start._busy;
+  $('m-pack-level').disabled = $('m-pack-threads').disabled = busy || !!start._busy;
+  $('m-pack-cancel').hidden = !mine;
+  $('m-pack-cancel').disabled = !!(p && p.cancelling);
+  setText($('m-pack-status'), busy && !mine ? t('packOther', { path: all.source }) : p ? packStatus(p) : '');
+  var frac = mine && p.total ? Math.min(1, p.done / p.total) : 0, share = 'scaleX(' + frac.toFixed(4) + ')';
+  $('m-pack-meter').hidden = !mine;
+  $('m-pack-bar').style.webkitTransform = share;
+  $('m-pack-bar').style.transform = share;
+  var lines = p && p.state === 'done' && p.lines ? String(p.lines) : '', ta = $('m-pack-lines');
+  if (ta.value !== lines) ta.value = lines;
+  ta.hidden = !lines;
+  $('m-pack-copy').hidden = !lines;
+}
+$('m-pack').onclick = async function () {
+  var btn = this, g = openTid && findGame(openTid);
+  if (!g) return;
+  var id = gameId(g), body = { path: g.path, level: Number($('m-pack-level').value), threads: Number($('m-pack-threads').value) };
+  btn._busy = true;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) {
+      var e = null;
+      try { e = await r.json(); } catch (x) { /* plain text */ }
+      var code = e && e.code;
+      throw new Error(code === 'no_space' ? t('packFail_no_space', { size: fmtSize(e.missing_bytes) }) :
+        PACK_FAILS[code] ? t(PACK_FAILS[code], { path: g.path + '.p5z' }) : (e && e.detail) || 'HTTP ' + r.status);
+    }
+    modalActionError = '';
+    modalNote = null;
+    // Until the next state: drawn as started, so the button cannot be pressed twice.
+    state.pack = { state: 'probe', source: g.path, dest: g.path + '.p5z', done: 0, total: 0, elapsed_ms: 0 };
+  } catch (e) {
+    if (modalOpen() && openTid === id) modalActionError = e.message;
+  }
+  btn._busy = false;
+  if (modalOpen() && openTid === id) {
+    renderModal();
+    if (!$('m-pack-cancel').hidden) $('m-pack-cancel').focus();
+  }
+  schedule(300);
+};
+$('m-pack-cancel').onclick = async function () {
+  var btn = this;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/pack/cancel', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+    if (state && state.pack) state.pack.cancelling = true;
+  } catch (e) { modalActionError = e.message; }
+  if (modalOpen()) renderModal();
+  schedule(300);
+};
+// As Copy report: execCommand on the lines' own box (http has no clipboard API), else the clipboard API; when
+// neither can, the box stays selected to copy by hand.
+$('m-pack-copy').onclick = function () {
+  var ta = $('m-pack-lines'), text = ta.value, btn = this, copied = false;
+  if (!text) return;
+  ta.focus();
+  ta.select();
+  try { ta.setSelectionRange(0, text.length); } catch (e) { /* old WebKit: select() did it */ }
+  try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+  var done = function () { modalActionError = ''; modalNote = function () { return t('packCopied'); }; if (modalOpen()) renderModal(); btn.focus(); };
+  var manual = function () { modalNote = function () { return t('reportManual'); }; if (modalOpen()) renderModal(); ta.focus(); ta.select(); };
+  if (copied) done();
+  else if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, manual);
+  else manual();
+};
 function renderSizes(sizes) {
   var stack = $('m-stack'), legend = $('m-legend');
   legend._redo = function () { renderSizes(sizes); };
@@ -5105,7 +5516,8 @@ var INST_CODES = {
   stopped: 'iStopped', no_space: 'iNoSpace', bad_p5z: 'iBadP5z', bad_dest: 'iBadDest', no_runtime: 'iNoRuntime',
   io_error: 'iIoError', bad_path: 'iBadPath', bad_source: 'iBadSource', busy: 'iBusy', not_found: 'iNotFound',
   verify_bad: 'iVerifyBad', game_running: 'iGameRunning', needs_confirm: 'iNeedsConfirm', bad_json: 'iBadJson',
-  forbidden: 'iForbidden', starting: 'iStarting', no_installer: 'iNoInstaller', grown_p5z: 'iGrownP5z'
+  forbidden: 'iForbidden', starting: 'iStarting', no_installer: 'iNoInstaller', grown_p5z: 'iGrownP5z',
+  pack_running: 'iPackRunning'
 };
 function instCode(code) { return INST_CODES[code] ? t(INST_CODES[code]) : String(code || '?'); }
 // GET state/icon or a POST with a JSON body; the answer's JSON, or an Error when it is not JSON.
@@ -5597,10 +6009,13 @@ function moveInSettings(t, key) {
   return true;
 }
 // The game sheet's controls in page order: its enabled buttons, the PlayGo switch, the fakelib selector, "Back to
-// the recommended setting" and the overlay switch when shown.
+// the recommended setting", the overlay switch and the test compression's controls when shown.
 function modalControls() {
   return Array.prototype.slice.call(document.querySelectorAll('#modal button:not([disabled]), #modal input:not([disabled]), #modal select:not([disabled]), #modal textarea'))
-    .filter(function (c) { return /^m-(playgo|fakelib|reset|overlay)$/.test(c.id) ? !$(c.id + '-row').hidden : !c.hidden; });
+    .filter(function (c) {
+      if (/^m-pack/.test(c.id)) return !$('m-pack-row').hidden && !c.hidden;
+      return /^m-(playgo|fakelib|reset|overlay)$/.test(c.id) ? !$(c.id + '-row').hidden : !c.hidden;
+    });
 }
 function moveInModal(key) {
   var list = modalControls();

@@ -7,7 +7,7 @@
 //                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
-//                         [--ampr-fail checksum|older|none]
+//                         [--ampr-fail checksum|older|none] [--pack-fail <code>|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -33,6 +33,10 @@
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.3&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
 // as an unfinished install, a path with "replace" in it asks to confirm a replace, and so on).
+// The test compression (POST /api/pack, src/pack.rs) on a plain folder game's sheet ("Plain Racer", "Shell Title"):
+// it measures the memory for 2 s, copies the loose files for 3 s, packs for 10 s, then shows the lines to compare;
+// Cancel ends it as cancelled. --pack-fail answers the start with that refusal instead (maxpack_logic::pack::Refusal:
+// exists, no_space, pack_running, install_running, game_running). Default: none.
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
 // (PPSA01234, its sheet shows it and Copy report copies GET /api/report), Play (POST /api/launch:
 // the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
@@ -75,6 +79,7 @@ const mock = {
   tls: arg('tls', 'never'),
   tls_result: arg('tls-result', 'passed'),
   ampr_fail: arg('ampr-fail', 'none'),
+  pack_fail: arg('pack-fail', 'none'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
@@ -229,10 +234,44 @@ function apiState() {
       { mount: '/mnt/usb0', label: 'USB 1', kind: 'usb', total: 1000 * GB, free: 412 * GB, ejectable: true },
       { mount: '/data', label: 'Internal', kind: 'internal', total: 825 * GB, free: 311 * GB, ejectable: false },
     ],
+    pack: packValue(),
     cache: { path: '/data/maxpack/caches', size: 2 * GB, free: 311 * GB, low_space: false, ampr_present: true },
     log: ['2026-11-23 20:00:00Z [1000] web UI on port 8095', '2026-11-23 20:00:02Z [3000] installer: ready in 412 ms'],
   };
 }
+
+// The test compression of this run (src/pack.rs `json`): { source, level, threads, t0, cancelled } or null.
+let packJob = null;
+const PACK_REFUSALS = {
+  exists: [409, 'the .p5z is there already: it is never overwritten'],
+  no_space: [409, '3221.2 MB more is needed on that drive'],
+  pack_running: [409, 'a test compression is running'],
+  install_running: [409, 'the installer is running or queuing a job'],
+  game_running: [409, 'a game is running'],
+};
+function packValue() {
+  const j = packJob;
+  if (!j) return null;
+  const ms = Date.now() - j.t0;
+  const v = { source: j.source, dest: j.source + '.p5z', level: j.level, threads: j.threads, cancelling: false,
+    phase: null, done: 0, total: 0, mbps: null, elapsed_ms: ms, error: null, lines: null, size: null };
+  const loose = 180e6, packed = 8.2e9;
+  if (j.cancelled) return Object.assign(v, { state: 'cancelled', elapsed_ms: j.cancelled - j.t0, error: 'cancelled' });
+  if (ms < 2000) return Object.assign(v, { state: 'probe' });
+  if (ms < 5000) return Object.assign(v, { state: 'running', phase: 'loose', total: loose, done: Math.round(loose * (ms - 2000) / 3000), mbps: 60 });
+  if (ms < 15000) return Object.assign(v, { state: 'running', phase: 'packs', total: packed, done: Math.round(packed * (ms - 5000) / 10000), mbps: 820 });
+  const hex = (n, c) => c.repeat(n);
+  const lines = [
+    '# MaxPack 1.0.2 on the console, engine b3b526f; lines that start with # are notes',
+    `# zstd level ${j.level}, ${j.threads} threads for the packs, 1 for the loose files`,
+    '# Copying the loose files: 180.0 MB in 3.0 s, 60.0 MB/s',
+    `# Packing (zstd level ${j.level}): 8200.0 MB in 10.0 s, 820.0 MB/s`,
+    `level ${j.level}`, `archive_id ${hex(32, 'a')}`,
+    `ampr_zstd-000.pak 4294901760 ${hex(64, 'b')}`, `ampr_zstd-001.pak 1210351216 ${hex(64, 'c')}`, '',
+  ].join('\n');
+  return Object.assign(v, { state: 'done', phase: 'packs', done: packed, total: packed, mbps: 820, elapsed_ms: 15000, lines, size: 5505252976 });
+}
+function packRunningNow() { const v = packValue(); return !!v && ['probe', 'running', 'sums'].includes(v.state); }
 
 const settings = {
   scanpath: [], exclude: ['/data/homebrew/old-copies'], inject_ampr: true, add_emulators: true, ampr_auto_update: false,
@@ -429,7 +468,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
     if (p === '/mock') {
-      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
+      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail', 'pack_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
@@ -583,6 +622,26 @@ http.createServer((req, res) => {
       const bad = (v.scanpath || []).find((r) => /^\/(system[^/]*|user(?!\/data(\/|$))|mnt\/sandbox|data\/maxpack)(\/|$)|^\/+$/.test(r));
       if (bad !== undefined) return json(res, 400, { code: 'forbidden_root', path: bad, detail: `scanpath ${bad} is never scanned` });
       Object.assign(settings, v);
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p === '/api/pack') {
+      let v = {};
+      try { v = JSON.parse(chunks); } catch (e) { return json(res, 400, { code: 'bad_request', detail: 'bad request: not JSON' }); }
+      const g = games().find((x) => x.path === v.path);
+      if (!g) return json(res, 404, { code: 'not_found', detail: 'no game of the library is listed at that path' });
+      if (g.kind !== 'folder' || g.packing !== 'plain') return json(res, 409, { code: 'not_folder', detail: `not a plain folder game: ${g.kind}` });
+      const fail = packRunningNow() ? 'pack_running' : mock.pack_fail;
+      if (PACK_REFUSALS[fail]) {
+        const out = { code: fail, detail: PACK_REFUSALS[fail][1] };
+        if (fail === 'no_space') out.missing_bytes = 3221225472;
+        return json(res, PACK_REFUSALS[fail][0], out);
+      }
+      packJob = { source: v.path, level: v.level || 9, threads: v.threads || 5, t0: Date.now(), cancelled: 0 };
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p === '/api/pack/cancel') {
+      if (!packRunningNow()) return send(res, 409, 'text/plain', 'no test compression is running');
+      packJob.cancelled = Date.now();
       return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p.startsWith('/api/')) return send(res, 204, 'text/plain', '');
