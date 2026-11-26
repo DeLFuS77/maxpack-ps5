@@ -26,9 +26,9 @@
 // passed), broken (it becomes broken) or inconclusive (no internet: the record stays). Defaults:
 // --tls never, --tls-result passed.
 // "Update ampr-emu-ng now" (POST /api/ampr/update, 1 s) answers 409 tls_unchecked until --tls is
-// passed, as the payload (maxpack_logic::ampr); then it installs, or, with --ampr-fail checksum, refuses
-// the download as one that does not match the release's SHA256SUMS, or with --ampr-fail older, a release
-// older than the bundled ampr-emu-ng. Default: none.
+// passed, as the payload (maxpack_logic::ampr); then it installs a newer release (Settings then shows it as
+// downloaded), or, with --ampr-fail checksum, refuses the download as one that does not match the release's
+// SHA256SUMS, or with --ampr-fail older, a release older than the bundled ampr-emu-ng. Default: none.
 // The same switches at run time, without a restart (the page picks them up on its next poll):
 //   http://localhost:8095/mock?waiting=none&job=paused&last=needs_confirm&empty=0&update=v1.0.3&update_fail=checksum&tls=never&tls_result=broken&ampr_fail=checksum
 // The page's POSTs answer as the payload would (install queues a job, pause pauses it and it ends
@@ -47,6 +47,9 @@
 // /api/recommended); a hand change of Fakelib or PlayGo (POST /api/fakelib, /api/playgo) makes a game's settings
 // the user's, as the payload does. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
 // "Grown Example", a .p5z that grew, is not started with the ampr-emu-ng in use (error_code old_ng: its sheet says why).
+// That ampr-emu-ng is one put in /data/maxpack/ampr/ by hand, of a version MaxPack does not know (the only way a
+// console gets one that does not play it: the bundled one does, and no update installs an older release), so
+// Settings shows it as hand-placed and the game's error says its version is not known.
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -78,6 +81,9 @@ const mock = {
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
+// What /data/maxpack/ampr/libSceAmpr.sprx is (GET /api/ampr, main::ampr_status): hand-placed, as the Grown Example
+// needs, until "Update ampr-emu-ng now" installs a newer release.
+let ampr = { kind: 'hand', version: null };
 // state.update as src/update.rs `available` gives it: a newer release, or null.
 function updateValue() {
   if (!mock.update || mock.update === 'none' || mock.update.replace(/^v/, '') === version) return null;
@@ -197,10 +203,10 @@ function games() {
       size: 33 * GB, cache_built: null, cache_size: 0, error_code: 'no_space', missing_bytes: Math.round(3.84 * GB),
       error: 'PPSA07200 (/mnt/usb0/homebrew/Roomless Example.p5z): no space' }),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
-    // A .p5z that grew on the PC, and an ampr-emu-ng in /data/maxpack/ampr older than the one it needs (cache::OldNg).
+    // A .p5z that grew on the PC, and a hand-placed ampr-emu-ng in /data/maxpack/ampr, whose version is not known (cache::OldNg).
     g('PPSA00000', 'Grown Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Grown Example.p5z', drive: '/mnt/usb0',
       size: 24 * GB, cache_built: null, cache_size: 0, error_code: 'old_ng',
-      error: 'PPSA00000 (/mnt/usb0/homebrew/Grown Example.p5z): cache build: this .p5z grew (index version 2) and needs ampr-emu-ng v0.5.1-maxpack.2 or later; the ampr-emu-ng in use is v0.5.1-maxpack.1 (/data/maxpack/ampr/libSceAmpr.sprx): not started with it' }),
+      error: 'PPSA00000 (/mnt/usb0/homebrew/Grown Example.p5z): cache build: this .p5z grew (index version 2) and needs ampr-emu-ng v0.5.1-maxpack.2 or later; the version of the ampr-emu-ng in use is not known (/data/maxpack/ampr/libSceAmpr.sprx): not started with it' }),
     // A pkg whose fakelib mode is Off: its fakelib/ holds only ampr-emu-ng.
     g('PPSA10001', 'Starfall Odyssey', 'pkg', null, 'ready', { path: '/data/homebrew/Starfall Odyssey.pkg', playgo: true }),
     // The recommended settings: Fakelib Off and a notice from the list; and a recommendation the user overrode.
@@ -437,7 +443,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/api/state') return json(res, 200, apiState());
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
-    if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { kind: 'bundled', version: 'v0.5.1', updating: false });
+    if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { ...ampr, updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
     if (req.method === 'GET' && p.startsWith('/api/report/')) {
       const g = games().find((x) => x.title_id === p.slice('/api/report/'.length));
@@ -462,7 +468,7 @@ http.createServer((req, res) => {
         g.fakelib_mode === 'emulators' ? [`Fakelib mode: emulators only (the game's and backport's fakelib not used)${fromList}`] :
           g.fakelib_mode === 'off' ? [`Fakelib mode: off (${g.kind === 'folder' && g.packing === 'plain' ? 'empty: nothing at launch' : 'only ampr-emu-ng'})${fromList}`] :
             fromList ? [`Fakelib mode: full${fromList}`] : [],
-        ['ampr-emu-ng: bundled v0.5.1-maxpack.1',
+        [`ampr-emu-ng: ${ampr.kind}${ampr.version ? ' ' + ampr.version : ''}`,
           `PlayGo stub: ${g.fakelib_mode === 'off' ? 'not added (fakelib mode off)' : (g.playgo_off ? 'off' : 'on') + playgoFromList}`,
           `Last crash: ${g.crash ? `2026-11-23 20:10:00Z in ${g.crash.process}, ${g.crash.status} (console dump folder ${g.title_id}_1795166239)` : 'none recorded'}`,
           '', 'Row for docs/compatibility.md (fill in each ?; it names no game):',
@@ -497,10 +503,11 @@ http.createServer((req, res) => {
       // maxpack_logic::ampr::Fail: the self-update's gate first, then the SHA256SUMS check.
       if (mock.tls !== 'passed') return json(res, 409, { code: 'tls_unchecked', detail: UPDATE_FAILS.tls_unchecked[1] });
       return setTimeout(() => mock.ampr_fail === 'checksum'
-        ? json(res, 502, { code: 'checksum', detail: 'not the released libSceAmpr.sprx, not installed: v0.5.1-maxpack.1: SHA256SUMS lists no libSceAmpr.sprx' })
+        ? json(res, 502, { code: 'checksum', detail: 'not the released libSceAmpr.sprx, not installed: v0.5.1-maxpack.3: SHA256SUMS lists no libSceAmpr.sprx' })
         : mock.ampr_fail === 'older'
         ? json(res, 409, { code: 'older', detail: 'not installed: the latest release v0.5.1-maxpack.1 is older than the ampr-emu-ng MaxPack carries, v0.5.1-maxpack.2 (bundled v0.5.1-maxpack.2); a .p5z that grew would no longer start with it' })
-        : send(res, 200, 'text/plain', 'installed ampr-emu-ng v0.5.1-maxpack.1 (716176 bytes, matches SHA256SUMS)'), 1000);
+        : (ampr = { kind: 'downloaded', version: 'v0.5.1-maxpack.3' },
+          send(res, 200, 'text/plain', 'installed ampr-emu-ng v0.5.1-maxpack.3 (720048 bytes, matches SHA256SUMS)')), 1000);
     }
     if (req.method === 'POST' && p === '/api/selftest/tls') {
       if (tlsRunning) return send(res, 409, 'text/plain', 'a secure-connection check is already running');
