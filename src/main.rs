@@ -48,12 +48,16 @@ fn toast(s: &Settings, msg: &str) {
 
 /// What a failed game's retry waits for: another stamp, or any build input (pkg/folder files,
 /// backport) appearing, vanishing or changing mtime, the ampr dir's files its fakelib/ gets
-/// (cache::ampr_state: another ampr-emu-ng, for a .p5z that grew and an older one, cache::OldNg), or
+/// (cache::ampr_state: another ampr-emu-ng, for a .p5z that grew and an older one, cache::OldNg) and
+/// ampr.bundled, which says their version (ampr_mark), or
 /// the game's PlayGo, overlay or fakelib mode switch (the effective ones: a new recommended list
 /// changes them too).
 fn inputs_key(src: &Source, s: &Settings) -> String {
     let mut k = cache::stamp(src, s).to_string();
     k += &format!("|ampr={}", cache::ampr_state(src, s));
+    // The mark too: a .p5z that grew is refused while it does not describe the file (written right
+    // after it, or not written at all), and its change alone must try the build again.
+    k += &format!("|ampr_mark={:?}", ampr_mark());
     k += &format!("|playgo_off={}", cache::playgo_off(src, s));
     k += &format!("|overlay_off={}", cache::overlay_off(src, s));
     k += &format!("|fakelib_mode={}", cache::fakelib_mode(src, s).name());
@@ -680,6 +684,11 @@ pub(crate) fn ampr_version_of(path: &std::path::Path) -> Option<String> {
     let mark = std::fs::read_to_string(BUNDLED_MARK).ok();
     let file = (b.len(), ampr_index::crc32(&[&b]), b == BUNDLED_AMPR);
     ampr_logic::known_version(Some(file), BUNDLED_AMPR_VERSION.trim(), mark.as_deref()).map(str::to_owned)
+}
+
+/// ampr.bundled's text, for inputs_key: the version of the ampr dir's file is read from it.
+pub(crate) fn ampr_mark() -> Option<String> {
+    std::fs::read_to_string(BUNDLED_MARK).ok()
 }
 
 /// GET /api/ampr: what AMPR_DIR/libSceAmpr.sprx is now, and whether an update runs.
