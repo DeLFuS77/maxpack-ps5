@@ -30,7 +30,8 @@ pub struct Game {
     /// (register::installed_copy): the path that shows it.
     pub installed_copy: Option<String>,
     /// Set with status "error" for an error the page names in its language: "no_space" (a .p5z's
-    /// loose files do not fit on /data: cache::NoSpace, tried again every pass).
+    /// loose files do not fit on /data: cache::NoSpace, tried again every pass), "old_ng" (a .p5z
+    /// that grew, and an ampr-emu-ng in /data/maxpack/ampr that does not play it: cache::OldNg).
     pub error_code: Option<&'static str>,
     /// With "no_space": the bytes missing, the margin included.
     pub missing_bytes: Option<u64>,

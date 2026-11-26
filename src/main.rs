@@ -47,10 +47,13 @@ fn toast(s: &Settings, msg: &str) {
 }
 
 /// What a failed game's retry waits for: another stamp, or any build input (pkg/folder files,
-/// backport, ampr dir) appearing, vanishing or changing mtime, or the game's PlayGo, overlay or
-/// fakelib mode switch (the effective ones: a new recommended list changes them too).
+/// backport) appearing, vanishing or changing mtime, the ampr dir's files its fakelib/ gets
+/// (cache::ampr_state: another ampr-emu-ng, for a .p5z that grew and an older one, cache::OldNg), or
+/// the game's PlayGo, overlay or fakelib mode switch (the effective ones: a new recommended list
+/// changes them too).
 fn inputs_key(src: &Source, s: &Settings) -> String {
     let mut k = cache::stamp(src, s).to_string();
+    k += &format!("|ampr={}", cache::ampr_state(src, s));
     k += &format!("|playgo_off={}", cache::playgo_off(src, s));
     k += &format!("|overlay_off={}", cache::overlay_off(src, s));
     k += &format!("|fakelib_mode={}", cache::fakelib_mode(src, s).name());
@@ -269,7 +272,9 @@ fn install_staged(
 
 /// Status, toast (`notify`) and failure record of a processed title. Ok(true): registered now.
 /// A build short of space (cache::NoSpace) or whose .p5z the engine could not open just now
-/// (cache::TryAgain) is not recorded in `failed`: it is tried again every pass.
+/// (cache::TryAgain) is not recorded in `failed`: it is tried again every pass. A .p5z that grew,
+/// with an ampr-emu-ng that does not play it (cache::OldNg), is a failure with error_code `old_ng`
+/// and its own toast.
 fn finish(
     state: &State, s: &Settings, src: &Source, registered: &mut HashSet<String>, failed: &mut HashMap<PathBuf, String>,
     r: std::io::Result<bool>, notify: bool,
@@ -278,6 +283,7 @@ fn finish(
     let (size, built) = (cache::size(tid), cache::built_at(tid));
     let short = r.as_ref().err().and_then(cache::missing_bytes);
     let again = r.as_ref().err().is_some_and(cache::try_again);
+    let old_ng = r.as_ref().err().is_some_and(cache::old_ng);
     {
         let mut v = RETRYING.lock().unwrap_or_else(|e| e.into_inner());
         v.retain(|t| t != tid);
@@ -336,10 +342,11 @@ fn finish(
             failed.insert(src.path.clone(), inputs_key(src, s));
             state.update(&src.path, |g| {
                 (g.status, g.error, g.installed_copy, g.cache_size, g.cache_built) = ("error", Some(e.clone()), None, size, built);
-                (g.error_code, g.missing_bytes) = (None, None);
+                (g.error_code, g.missing_bytes) = (old_ng.then_some("old_ng"), None);
             });
             if notify {
-                toast(s, &i18n::failed(i18n::lang(), &src.title_name));
+                let l = i18n::lang();
+                toast(s, &if old_ng { i18n::old_ng(l, &src.title_name) } else { i18n::failed(l, &src.title_name) });
             }
         }
     }
@@ -672,6 +679,20 @@ fn ampr_update_inner(state: &State, force: bool, attempts: u32) -> Result<String
     toast(&s, &i18n::ampr_updated(i18n::lang(), &rel.tag));
     state.wake();
     Ok(format!("installed ampr-emu-ng {} ({} bytes, matches {})", rel.tag, b.len(), maxpack_logic::update::SUMS_ASSET))
+}
+
+/// The version of AMPR_DIR/libSceAmpr.sprx as MaxPack knows it (cache.rs, for a .p5z that grew:
+/// maxpack_logic::p5z::ng_plays): the bundled VERSION for the bundled copy, the version ampr.bundled
+/// records for another copy we wrote (downloaded, or bundled by another MaxPack). None for a file put
+/// there by hand, one a v0.4.0 build wrote (no version in its mark), none, or a read error.
+pub(crate) fn ampr_version_in_use() -> Option<String> {
+    let path = format!("{}/{AMPR_ASSET}", cache::AMPR_DIR);
+    let mark = std::fs::read_to_string(BUNDLED_MARK).ok();
+    match read_installed(&path, mark.as_deref()) {
+        Ok((_, true)) => Some(BUNDLED_AMPR_VERSION.trim().to_string()),
+        Ok((Installed::Ours(Some(v)), _)) => Some(v.to_string()),
+        Ok((Installed::Ours(None) | Installed::Hand | Installed::Missing, _)) | Err(_) => None,
+    }
 }
 
 /// GET /api/ampr: what AMPR_DIR/libSceAmpr.sprx is now, and whether an update runs.

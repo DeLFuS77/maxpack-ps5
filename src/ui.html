@@ -1044,6 +1044,8 @@ var MSG = {
     errInstalledCopy: 'This title is installed on the console ({path}): MaxPack does not register or mount this copy, so the installed game stays as it is.',
     // Library: a .p5z that cannot be built for lack of space, and the .p5z files that cannot be played
     errNoSpace: 'There is not enough room on the internal SSD for the loose files of this game: {size} missing. Free up space and it is tried again.',
+    // Game sheet: a .p5z that grew, with an ampr-emu-ng too old for it (error_code old_ng)
+    errOldNg: 'This .p5z grew on the PC (a DLC or an update was added to it) and needs a newer ampr-emu-ng than the one in /data/maxpack/ampr/, so MaxPack does not start it. Restart MaxPack to put back the one it carries (if you placed a libSceAmpr.sprx there by hand, delete it first), or make a compact copy of the .p5z on the PC (maxpack compact).',
     unplayTitle: '.p5z files that cannot be played', unplayHint: 'MaxPack does not list these as games.',
     unplayDamaged: 'Damaged or incomplete', unplayTooMany: 'Too many volumes',
     // Library: ShadowMountPlus images (listed, not mounted)
@@ -1258,6 +1260,7 @@ var MSG = {
     aboutLicense: "Свободное ПО по лицензии GPL-3.0-or-later, без гарантий. Лицензии — в THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Эта игра установлена на консоли ({path}): MaxPack не регистрирует и не монтирует эту копию, установленная игра остаётся как есть.",
     errNoSpace: "На внутреннем SSD не хватает места для файлов этой игры: недостаёт {size}. Освободите место, и попытка повторится.",
+    errOldNg: "Этот .p5z был дополнен на ПК (в него добавили DLC или обновление), и ему нужен более новый ampr-emu-ng, чем тот, что в /data/maxpack/ampr/, поэтому MaxPack его не запускает. Перезапустите MaxPack, чтобы он вернул свой (если вы положили туда libSceAmpr.sprx вручную, сначала удалите его), или сделайте на ПК компактную копию .p5z (maxpack compact).",
     unplayTitle: "Файлы .p5z, в которые нельзя играть",
     unplayHint: "MaxPack не показывает их как игры.",
     unplayDamaged: "Повреждён или неполный",
@@ -1510,6 +1513,7 @@ var MSG = {
     aboutLicense: "自由软件，遵循 GPL-3.0-or-later，不提供任何担保。许可证见 THIRD_PARTY_NOTICES。",
     errInstalledCopy: "此游戏已安装在主机上（{path}）：MaxPack 不会注册或挂载这份副本，已安装的游戏保持不变。",
     errNoSpace: "内部 SSD 的空间不足以存放此游戏的散装文件：还差 {size}。腾出空间后会自动重试。",
+    errOldNg: "此 .p5z 已在电脑上扩充（添加了 DLC 或更新），需要比 /data/maxpack/ampr/ 中更新的 ampr-emu-ng，因此 MaxPack 不会启动它。请重启 MaxPack 以放回它自带的版本（如果你手动在那里放了 libSceAmpr.sprx，请先删除），或在电脑上为该 .p5z 制作一份紧凑副本（maxpack compact）。",
     unplayTitle: "无法运行的 .p5z 文件",
     unplayHint: "MaxPack 不会将这些列为游戏。",
     unplayDamaged: "已损坏或不完整",
@@ -1762,6 +1766,7 @@ var MSG = {
     aboutLicense: "Freie Software unter GPL-3.0-or-later, ohne Gewährleistung. Die Lizenzen stehen in THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Dieser Titel ist auf der Konsole installiert ({path}): MaxPack registriert und bindet diese Kopie nicht ein, das installierte Spiel bleibt unverändert.",
     errNoSpace: "Auf der internen SSD ist nicht genug Platz für die losen Dateien dieses Spiels: {size} fehlen. Schaffe Platz, dann wird es erneut versucht.",
+    errOldNg: "Diese .p5z wurde am PC erweitert (ein DLC oder ein Update kam hinzu) und braucht ein neueres ampr-emu-ng als das in /data/maxpack/ampr/, daher startet MaxPack sie nicht. Starte MaxPack neu, damit es sein eigenes zurücklegt (hast du dort von Hand eine libSceAmpr.sprx abgelegt, lösche sie vorher), oder erstelle am PC eine kompakte Kopie der .p5z (maxpack compact).",
     unplayTitle: ".p5z-Dateien, die nicht gespielt werden können",
     unplayHint: "MaxPack listet diese nicht als Spiele auf.",
     unplayDamaged: "Beschädigt oder unvollständig",
@@ -1999,6 +2004,7 @@ var MSG = {
     aboutLicense: 'Software libre con licencia GPL-3.0-or-later, sin garantía. Las licencias están en THIRD_PARTY_NOTICES.',
     errInstalledCopy: 'Este título está instalado en la consola ({path}): MaxPack no registra ni monta esta copia, así que el juego instalado se queda como está.',
     errNoSpace: 'No hay sitio en el SSD interno para los archivos sueltos de este juego: faltan {size}. Libera espacio y se vuelve a intentar.',
+    errOldNg: 'Este .p5z creció en el PC (se le añadió un DLC o una actualización) y necesita un ampr-emu-ng más nuevo que el de /data/maxpack/ampr/, así que MaxPack no lo inicia. Reinicia MaxPack para que vuelva a poner el suyo (si pusiste ahí un libSceAmpr.sprx a mano, bórralo antes), o haz en el PC una copia compacta del .p5z (maxpack compact).',
     unplayTitle: 'Archivos .p5z que no se pueden jugar', unplayHint: 'MaxPack no los muestra como juegos.',
     unplayDamaged: 'Dañado o incompleto', unplayTooMany: 'Demasiados volúmenes',
     imagesTitle: 'Imágenes de ShadowMountPlus', imagesHint: 'MaxPack aún no monta estas imágenes.',
@@ -2211,6 +2217,7 @@ var MSG = {
     aboutLicense: "Logiciel libre sous GPL-3.0-or-later, sans garantie. Les licences figurent dans THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Ce titre est installé sur la console ({path}) : MaxPack n'enregistre ni ne monte cette copie, le jeu installé reste tel quel.",
     errNoSpace: "Il n'y a pas assez de place sur le SSD interne pour les fichiers de ce jeu : il manque {size}. Libérez de l'espace et une nouvelle tentative aura lieu.",
+    errOldNg: "Ce .p5z a été agrandi sur le PC (un DLC ou une mise à jour y a été ajouté) et demande un ampr-emu-ng plus récent que celui de /data/maxpack/ampr/ : MaxPack ne le lance donc pas. Redémarrez MaxPack pour qu'il remette le sien (si vous y avez placé un libSceAmpr.sprx à la main, supprimez-le d'abord), ou faites sur le PC une copie compacte du .p5z (maxpack compact).",
     unplayTitle: "Fichiers .p5z impossibles à lancer",
     unplayHint: "MaxPack ne les liste pas comme des jeux.",
     unplayDamaged: "Endommagé ou incomplet",
@@ -2463,6 +2470,7 @@ var MSG = {
     aboutLicense: "GPL-3.0-or-later のフリーソフトウェアで、無保証です。ライセンスは THIRD_PARTY_NOTICES にあります。",
     errInstalledCopy: "このタイトルは本体にインストール済みです（{path}）。MaxPack はこのコピーを登録もマウントもしないため、インストール済みのゲームはそのままです。",
     errNoSpace: "このゲームのファイルを置くには内蔵 SSD の空きが足りません: {size} 不足しています。空きを作ると再試行されます。",
+    errOldNg: "この .p5z は PC で拡張されています（DLC またはアップデートを追加）。/data/maxpack/ampr/ にあるものより新しい ampr-emu-ng が必要なため、MaxPack は起動しません。MaxPack を再起動すると同梱のものに戻ります（そこに libSceAmpr.sprx を手動で置いた場合は先に削除してください）。または PC で .p5z のコンパクトなコピーを作ってください（maxpack compact）。",
     unplayTitle: "プレイできない .p5z ファイル",
     unplayHint: "MaxPack はこれらをゲームとして一覧に表示しません。",
     unplayDamaged: "破損または不完全",
@@ -2715,6 +2723,7 @@ var MSG = {
     aboutLicense: "Software livre sob GPL-3.0-or-later, sem garantia. As licenças estão em THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Este título está instalado no console ({path}): o MaxPack não registra nem monta esta cópia, e o jogo instalado fica como está.",
     errNoSpace: "Não há espaço suficiente no SSD interno para os arquivos soltos deste jogo: faltam {size}. Libere espaço e ele será tentado de novo.",
+    errOldNg: "Este .p5z cresceu no PC (recebeu um DLC ou uma atualização) e precisa de um ampr-emu-ng mais novo que o de /data/maxpack/ampr/, por isso o MaxPack não o inicia. Reinicie o MaxPack para ele repor o seu (se você colocou um libSceAmpr.sprx ali à mão, apague-o antes), ou faça no PC uma cópia compacta do .p5z (maxpack compact).",
     unplayTitle: "Arquivos .p5z que não podem ser jogados",
     unplayHint: "O MaxPack não os lista como jogos.",
     unplayDamaged: "Danificado ou incompleto",
@@ -2967,6 +2976,7 @@ var MSG = {
     aboutLicense: "Software libero con licenza GPL-3.0-or-later, senza garanzia. Le licenze sono in THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Questo titolo è installato sulla console ({path}): MaxPack non registra né monta questa copia, e il gioco installato resta com'è.",
     errNoSpace: "Non c'è abbastanza spazio sull'SSD interno per i file sciolti di questo gioco: mancano {size}. Libera spazio e verrà ritentato.",
+    errOldNg: "Questo .p5z è stato ampliato sul PC (gli è stato aggiunto un DLC o un aggiornamento) e richiede un ampr-emu-ng più recente di quello in /data/maxpack/ampr/, quindi MaxPack non lo avvia. Riavvia MaxPack perché rimetta il suo (se ci hai messo a mano un libSceAmpr.sprx, eliminalo prima), oppure crea sul PC una copia compatta del .p5z (maxpack compact).",
     unplayTitle: "File .p5z che non si possono giocare",
     unplayHint: "MaxPack non li elenca come giochi.",
     unplayDamaged: "Danneggiato o incompleto",
@@ -3219,6 +3229,7 @@ var MSG = {
     aboutLicense: "GPL-3.0-or-later 자유 소프트웨어이며 보증하지 않습니다. 라이선스는 THIRD_PARTY_NOTICES에 있습니다.",
     errInstalledCopy: "이 타이틀은 콘솔에 설치되어 있습니다({path}). MaxPack은 이 사본을 등록하거나 마운트하지 않으며, 설치된 게임은 그대로 유지됩니다.",
     errNoSpace: "이 게임의 개별 파일을 두기에는 내장 SSD 공간이 부족합니다: {size} 모자랍니다. 공간을 확보하면 다시 시도합니다.",
+    errOldNg: "이 .p5z는 PC에서 확장되었습니다(DLC나 업데이트가 추가됨). /data/maxpack/ampr/에 있는 것보다 새로운 ampr-emu-ng가 필요하므로 MaxPack이 실행하지 않습니다. MaxPack을 다시 시작하면 내장된 것으로 되돌립니다(그곳에 libSceAmpr.sprx를 직접 넣었다면 먼저 삭제하세요). 또는 PC에서 .p5z의 압축 사본을 만드세요(maxpack compact).",
     unplayTitle: "플레이할 수 없는 .p5z 파일",
     unplayHint: "MaxPack은 이 파일들을 게임으로 표시하지 않습니다.",
     unplayDamaged: "손상되었거나 불완전함",
@@ -3471,6 +3482,7 @@ var MSG = {
     aboutLicense: "برنامج حر بموجب GPL-3.0-or-later، دون أي ضمان. التراخيص في THIRD_PARTY_NOTICES.",
     errInstalledCopy: "هذه اللعبة مثبّتة على الجهاز ({path}): لا يسجّل MaxPack هذه النسخة ولا يركّبها، وتبقى اللعبة المثبّتة كما هي.",
     errNoSpace: "لا توجد مساحة كافية على SSD الداخلي لملفات هذه اللعبة المنفصلة: ينقص {size}. وفّر مساحة وستُعاد المحاولة.",
+    errOldNg: "تمت زيادة ملف .p5z هذا على الكمبيوتر (أضيف إليه DLC أو تحديث) ويحتاج إلى ampr-emu-ng أحدث من الموجود في /data/maxpack/ampr/، لذا لا يشغّله MaxPack. أعد تشغيل MaxPack ليعيد النسخة المرفقة به (إن وضعت ملف libSceAmpr.sprx هناك يدويًا فاحذفه أولًا)، أو أنشئ على الكمبيوتر نسخة مضغوطة من ملف .p5z (maxpack compact).",
     unplayTitle: "ملفات .p5z التي لا يمكن تشغيلها",
     unplayHint: "لا يعرض MaxPack هذه الملفات كألعاب.",
     unplayDamaged: "تالف أو غير مكتمل",
@@ -4227,7 +4239,9 @@ function renderModal() {
     });
   }
   var noSpace = g.error_code === 'no_space' ? t('errNoSpace', { size: gb(Math.ceil((Number(g.missing_bytes) || 0) / 107374182.4) * 107374182.4) }) : '';
-  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || g.error) ||
+  // A .p5z that grew, with an ampr-emu-ng in /data/maxpack/ampr/ older than the one it needs (src/cache.rs OldNg).
+  var oldNg = g.error_code === 'old_ng' ? t('errOldNg') : '';
+  setText($('m-err'), modalActionError || (g.installed_copy ? t('errInstalledCopy', { path: g.installed_copy }) : noSpace || oldNg || g.error) ||
     (g.crash ? t('crashHint') : ''));
   setText($('m-note'), modalNote ? modalNote() : g.hidden ? t('hiddenNote') : g.overlay_off ? t('overlayOffNote') :
     g.overlay_off_listed && !overlayOptional(g) ? t('overlayStaleNote') : '');

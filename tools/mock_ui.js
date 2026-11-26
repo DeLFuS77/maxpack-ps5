@@ -44,6 +44,7 @@
 // recommendation the user overrode by hand, so its sheet offers "Back to the recommended setting" (POST
 // /api/recommended); a hand change of Fakelib or PlayGo (POST /api/fakelib, /api/playgo) makes a game's settings
 // the user's, as the payload does. Install: "Huge Example" does not fit on the internal SSD (the page says so per drive).
+// "Grown Example", a .p5z that grew, is not started with the ampr-emu-ng in use (error_code old_ng: its sheet says why).
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
 // an IPv4, an [IPv6] or localhost, with an optional port, so the page opened by a name
 // (http://<pc-name>:8095/) gets 403 as on the console; and a POST from another site (an Origin that
@@ -194,6 +195,10 @@ function games() {
       size: 33 * GB, cache_built: null, cache_size: 0, error_code: 'no_space', missing_bytes: Math.round(3.84 * GB),
       error: 'PPSA07200 (/mnt/usb0/homebrew/Roomless Example.p5z): no space' }),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
+    // A .p5z that grew on the PC, and an ampr-emu-ng in /data/maxpack/ampr older than the one it needs (cache::OldNg).
+    g('PPSA07300', 'Grown Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Grown Example.p5z', drive: '/mnt/usb0',
+      size: 24 * GB, cache_built: null, cache_size: 0, error_code: 'old_ng',
+      error: 'PPSA07300 (/mnt/usb0/homebrew/Grown Example.p5z): cache build: this .p5z grew (index version 2) and needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is v0.5.1-maxpack.1 (/data/maxpack/ampr/libSceAmpr.sprx): not started with it' }),
     // A pkg whose fakelib mode is Off: its fakelib/ holds only ampr-emu-ng.
     g('PPSA10001', 'Starfall Odyssey', 'pkg', null, 'ready', { path: '/data/homebrew/Starfall Odyssey.pkg', playgo: true }),
     // The recommended settings: Fakelib Off and a notice from the list; and a recommendation the user overrode.

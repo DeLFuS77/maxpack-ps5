@@ -291,6 +291,24 @@ pub fn failed(l: Lang, name: &str) -> String {
     }
 }
 
+/// A .p5z that grew is not started: the ampr-emu-ng in /data/maxpack/ampr/ is older than the one it
+/// needs, or of unknown version (cache.rs OldNg); the game's sheet says what to do.
+pub fn old_ng(l: Lang, name: &str) -> String {
+    match l {
+        Lang::En => format!("{name} needs a newer ampr-emu-ng: see the game on MaxPack's page"),
+        Lang::Ru => format!("{name}: нужен более новый ampr-emu-ng, подробности на странице MaxPack"),
+        Lang::Zh => format!("{name} 需要更新的 ampr-emu-ng：请在 MaxPack 页面查看该游戏"),
+        Lang::De => format!("{name} braucht ein neueres ampr-emu-ng: siehe das Spiel auf der Seite von MaxPack"),
+        Lang::Es => format!("{name} necesita un ampr-emu-ng más nuevo: mira el juego en la página de MaxPack"),
+        Lang::Fr => format!("{name} demande un ampr-emu-ng plus récent\u{202f}: voir le jeu sur la page de MaxPack"),
+        Lang::Ja => format!("{name} には新しい ampr-emu-ng が必要です：MaxPack のページでゲームを確認してください"),
+        Lang::Pt => format!("{name} precisa de um ampr-emu-ng mais novo: veja o jogo na página do MaxPack"),
+        Lang::It => format!("{name} richiede un ampr-emu-ng più recente: vedi il gioco nella pagina di MaxPack"),
+        Lang::Ko => format!("{name}에는 더 새로운 ampr-emu-ng가 필요합니다: MaxPack 페이지에서 게임을 확인하세요"),
+        Lang::Ar => format!("يحتاج {name} إلى ampr-emu-ng أحدث: راجع اللعبة في صفحة MaxPack"),
+    }
+}
+
 /// The install call for a batch of `n` games failed; each error is in maxpack.log and the UI.
 pub fn failed_many(l: Lang, n: usize) -> String {
     match l {
