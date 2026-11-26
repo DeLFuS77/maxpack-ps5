@@ -16,6 +16,7 @@ mod installer;
 mod launch;
 mod net;
 mod p5z;
+mod pack;
 mod recommended;
 mod register;
 mod scan;

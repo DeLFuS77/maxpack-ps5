@@ -46,6 +46,9 @@ printf '%s\n' "${engine_libs[@]}" > "$eng/libs.txt"
 # src/installer.rs's side of it: the console's env and the ShadowMountPlus client (ps5/installer.c).
 "$cc" -O2 -Wall -Wextra -Werror -Ivendor/maxpack/src/core -Ivendor/maxpack/src/net \
   -Ivendor/maxpack/src/install -Ivendor/maxpack/src/web -c ps5/installer.c -o "$out/shim/installer.o"
+# src/pack.rs's side of the test compression: mp_pack_run with the .p5z output, and the volumes' sums read back.
+"$cc" -O2 -Wall -Wextra -Werror -Ivendor/maxpack/src/core -Ivendor/maxpack/src/analyze -Ivendor/maxpack/src/pack \
+  -Ivendor/maxpack/third_party/zstd/lib -c ps5/pack.c -o "$out/shim/pack.o"
 # The mtime the installer gives the runtime it writes (installer::runtime_mtime): the file's, as
 # the engine's CMake takes it for -DMAXPACK_RUNTIME.
 MAXPACK_RUNTIME_MTIME=$(stat -c %Y vendor/ampr-emu-ng/libSceAmpr.sprx)
@@ -78,7 +81,7 @@ llvm-readelf -h -d "$out/maxpack.elf" > "$out/maxpack.elf.txt"
 {
   echo
   echo "MaxPack engine vendor/maxpack $(cat vendor/maxpack/COMMIT), symbols in maxpack.elf (lld map):"
-  for sym in mp_api_call mp_inst_install mp_play_open; do
+  for sym in mp_api_call mp_inst_install mp_play_open mp_pack_run; do
     line=$(grep -E "[[:space:]]$sym\$" "$out/maxpack.map" | head -n 1 || true)
     [[ -n "$line" ]] || { echo "build.sh: $sym is not in maxpack.elf ($out/maxpack.map)" >&2; exit 1; }
     echo "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+/ /g'

@@ -23,7 +23,7 @@ for lib in "${engine_libs[@]}"; do engine+=("$eng/lib$lib.a"); done
 # build.sh check that the engine is in maxpack.elf, which is stripped.
 exec "$PS5_PAYLOAD_SDK/bin/prospero-clang" "${args[@]}" \
   "$obj/freebsd11.o" "$obj/syscalls.o" "$obj/entry.o" "$obj/compat.o" "$obj/usb.o" "$obj/appdb.o" "$obj/sqlite3.o" \
-  "$obj/installer.o" "${engine[@]}" "${wraps[@]}" \
+  "$obj/installer.o" "$obj/pack.o" "${engine[@]}" "${wraps[@]}" \
   -Wl,--wrap=main -Wl,--wrap=fcntl -Wl,--wrap=cpuset_getaffinity -Wl,--error-limit=0 \
   -Wl,-Map=/work/target/ps5/maxpack.map \
   -ldl -lunwind -lc -lkernel_web -lSceLibcInternal -lSceNet -lSceSsl -lSceHttp -lSceSystemService -lSceUserService -lSceNotification -lSceAppInstUtil -lSceIpmi

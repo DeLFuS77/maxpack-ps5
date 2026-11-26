@@ -270,6 +270,7 @@ fn rebind(state: &State) -> TcpListener {
             Ok(l) => return l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && !state.paused() => {
                 log!("web: port {PORT} taken by another copy; quitting");
+                crate::pack::stop();
                 crate::installer::stop();
                 std::process::exit(0)
             }
@@ -488,7 +489,9 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
                 if toast {
                     sys::notify(crate::i18n::stopped(crate::i18n::lang()));
                 }
-                // An install in progress pauses first, so it resumes at the next start.
+                // A test compression is cancelled (it deletes its file); an install in progress pauses, so it
+                // resumes at the next start.
+                crate::pack::stop();
                 crate::installer::stop();
                 std::thread::sleep(Duration::from_millis(200));
                 std::process::exit(0)
@@ -515,6 +518,20 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
         ("POST", p) if p.starts_with("/api/delete/") => delete(state, &p["/api/delete/".len()..], body),
         ("POST", p) if p.starts_with("/api/launch/") => launch(state, &p["/api/launch/".len()..]),
         ("POST", "/api/eject") => eject(state, body),
+        // The test compression (src/pack.rs): a prototype the game sheet of a plain folder game starts.
+        ("POST", "/api/pack") => match crate::pack::start(state, body) {
+            Ok(()) => no_content(),
+            Err(r) => {
+                let mut v = serde_json::json!({"code": r.code(), "detail": r.detail()});
+                if let maxpack_logic::pack::Refusal::NoSpace { missing } = r {
+                    v["missing_bytes"] = missing.into();
+                }
+                reply(r.status(), "application/json", v.to_string())
+            }
+        },
+        ("POST", "/api/pack/cancel") => {
+            if crate::pack::cancel() { no_content() } else { reply(409, "text/plain", "no test compression is running") }
+        }
         ("POST", "/api/purge") => {
             log!("cache purge requested");
             state.purge.store(true, Ordering::SeqCst);
@@ -567,6 +584,18 @@ fn installer(state: &State, head: &str, method: &str, target: &str, body: &[u8],
         let body = serde_json::json!({"ok": false, "code": "game_running", "detail": "a game is running"}).to_string();
         return reply(409, "application/json", body);
     }
+    // A job of the installer shares the engine's cancel flag and progress hook with a test compression
+    // (src/pack.rs): not while one runs, and none starts while this is forwarded.
+    let _pack = if maxpack_logic::pack::blocks_installer(method, &path) {
+        let Some(g) = crate::pack::hold_off() else {
+            log!("installer: {path} refused: a test compression is running");
+            let body = serde_json::json!({"ok": false, "code": "pack_running", "detail": "a test compression is running"}).to_string();
+            return reply(409, "application/json", body);
+        };
+        Some(g)
+    } else {
+        None
+    };
     // The library's copy of that title now: the one MaxPack mounts, if any.
     let source = uninstall.as_deref().and_then(|t| state.source(t)).map(|s| s.path);
     let (host, ctype) = (header(head, "host").unwrap_or(""), header(head, "content-type").unwrap_or(""));
@@ -650,7 +679,10 @@ fn self_update(state: &State, body: &[u8]) -> Reply {
     };
     // The new copy's quit waits for a pass and take_port gives up after 5 s: install holds new
     // passes off (update::holding) and checks that none runs.
-    match crate::update::install(version, &|| state.paused(), &|| state.work.try_lock().is_ok(), &crate::installer::idle) {
+    // ponytail: a test compression counts as an installer job here (quitting would cancel it), so the page
+    // says the installer is busy; the real feature gets its own code.
+    let idle = || crate::installer::idle() && !crate::pack::running();
+    match crate::update::install(version, &|| state.paused(), &|| state.work.try_lock().is_ok(), &idle) {
         Ok(()) => reply(200, "application/json", "{}"),
         Err(f) => {
             let body = serde_json::json!({"code": f.code(), "detail": f.detail()}).to_string();
@@ -950,6 +982,8 @@ fn api_state(state: &State) -> Vec<u8> {
         "images": images,
         "unplayable": unplayable,
         "drives": drives,
+        // The test compression of this run (src/pack.rs), or null.
+        "pack": crate::pack::json(),
         "cache": {
             "path": cache::CACHES,
             "size": *state.cache_total.lock().unwrap(),
@@ -1206,6 +1240,9 @@ fn delete(state: &State, tid: &str, body: &[u8]) -> Reply {
     if state.games.lock().unwrap().iter().any(|g| g.src.title_id == tid && matches!(g.status, "building" | "checking")) {
         return reply(409, "text/plain", "the game is being built");
     }
+    if crate::pack::uses(&src.path) {
+        return reply(409, "text/plain", "a test compression is reading it");
+    }
     let roots = {
         let settings = state.settings.lock().unwrap();
         if settings.scan_paths.is_empty() { storage::default_scan_roots() } else { settings.scan_paths.clone() }
@@ -1332,6 +1369,10 @@ fn eject(state: &State, body: &[u8]) -> Reply {
     };
     if state.paused() {
         return reply(409, "text/plain", "a game is running");
+    }
+    if crate::pack::uses(Path::new(&path)) {
+        log!("eject {path}: refused: a test compression reads or writes there");
+        return reply(409, "text/plain", "a test compression reads or writes on this drive");
     }
     // Eject unmounts every /system_ex/app/<TID> from the drive, whoever mounted it.
     if let Err(r) = mounts_or_409(state) {
