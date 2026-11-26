@@ -412,6 +412,40 @@ impl<K: Ord, M: PartialEq> NeedMemo<K, M> {
     }
 }
 
+/// A failed look at a .p5z's index (`LookMemo`) is tried again after this long.
+pub const LOOK_RETRY_MS: u64 = 30_000;
+/// The most files a LookMemo keeps; past it, it starts over.
+pub const LOOK_MAX: usize = 256;
+
+/// The index version the console's own look read (src/p5z.rs index_version) of each .p5z the Install tab lists, kept
+/// by path for that very file (the same size and mtime); a look that read nothing (None) only for LOOK_RETRY_MS.
+pub struct LookMemo<K, M> {
+    seen: BTreeMap<K, (u64, M, Option<u32>, u64)>,
+}
+
+impl<K, M> LookMemo<K, M> {
+    pub const fn new() -> Self {
+        LookMemo { seen: BTreeMap::new() }
+    }
+}
+
+impl<K: Ord, M: PartialEq> LookMemo<K, M> {
+    /// What the last look found, while it holds: Some(Some(version)) for this very file, Some(None) for a failed look
+    /// within LOOK_RETRY_MS; None: look again.
+    pub fn get(&self, key: &K, size: u64, mtime: &M, now_ms: u64) -> Option<Option<u32>> {
+        let (s, m, version, at) = self.seen.get(key)?;
+        let fresh = version.is_some() || now_ms.saturating_sub(*at) < LOOK_RETRY_MS;
+        (*s == size && m == mtime && fresh).then_some(*version)
+    }
+
+    pub fn set(&mut self, key: K, size: u64, mtime: M, version: Option<u32>, now_ms: u64) {
+        if self.seen.len() >= LOOK_MAX {
+            self.seen.clear();
+        }
+        self.seen.insert(key, (size, mtime, version, now_ms));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,6 +822,32 @@ mod tests {
         assert_eq!(r.judge("b", 1, 1, d("crc")), Believe);
         // Too many volumes: believed at once.
         assert_eq!(r.judge("d", 1, 1, Some(Unplayable::TooManyVolumes(300))), Believe);
+    }
+
+    #[test]
+    fn a_look_at_the_index_is_kept_while_the_file_stays_and_a_failed_one_briefly() {
+        let mut m = LookMemo::new();
+        assert_eq!(m.get(&"a", 10, &5, 0), None);
+        m.set("a", 10, 5, Some(2), 0);
+        // Kept while the file has that size and mtime, however long.
+        assert_eq!(m.get(&"a", 10, &5, 10 * LOOK_RETRY_MS), Some(Some(2)));
+        assert_eq!(m.get(&"a", 11, &5, 0), None);
+        assert_eq!(m.get(&"a", 10, &6, 0), None);
+        assert_eq!(m.get(&"b", 10, &5, 0), None);
+        // A look that read nothing (a USB reset, out of memory) is tried again after LOOK_RETRY_MS.
+        assert_eq!(LOOK_RETRY_MS, 30_000);
+        m.set("c", 10, 5, None, 1000);
+        assert_eq!(m.get(&"c", 10, &5, 1000 + LOOK_RETRY_MS - 1), Some(None));
+        assert_eq!(m.get(&"c", 10, &5, 1000 + LOOK_RETRY_MS), None);
+        // Bounded: past LOOK_MAX entries it starts over.
+        let mut m = LookMemo::new();
+        for i in 0..LOOK_MAX as u64 {
+            m.set(i, 1, 1, Some(1), 0);
+        }
+        assert_eq!(m.get(&0, 1, &1, 0), Some(Some(1)));
+        m.set(LOOK_MAX as u64, 1, 1, Some(1), 0);
+        assert_eq!(m.get(&0, 1, &1, 0), None);
+        assert_eq!(m.get(&(LOOK_MAX as u64), 1, &1, 0), Some(Some(1)));
     }
 
     #[test]

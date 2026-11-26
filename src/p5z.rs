@@ -221,30 +221,25 @@ impl Play {
     }
 }
 
-/// Whether the .p5z at `path` grew (index version 2: PlayInfo::grew), by the console's own reader, kept by path for
-/// as long as its size and mtime stay (the Install tab asks every second); None when it does not open now.
+/// Whether the .p5z at `path` grew (index version 2), from its index alone (`index_version`: the footer, one CRC pass
+/// over the compressed index and its first 12 bytes; no `ampr_zstd.index`, no volume headers), kept by path for as
+/// long as its size and mtime stay (the Install tab asks every second; maxpack_logic::p5z::LookMemo). None when it
+/// cannot be read now, which is looked at again after 30 s.
 pub fn grew(path: &Path) -> Option<bool> {
-    use std::collections::BTreeMap;
+    use maxpack_logic::p5z::LookMemo;
     use std::path::PathBuf;
     use std::sync::Mutex;
     use std::time::SystemTime;
-    type Memo = BTreeMap<PathBuf, (u64, SystemTime, Option<bool>)>;
-    static MEMO: Mutex<Memo> = Mutex::new(BTreeMap::new());
+    static MEMO: Mutex<LookMemo<PathBuf, SystemTime>> = Mutex::new(LookMemo::new());
     let m = std::fs::metadata(path).ok()?;
-    let (size, mtime) = (m.len(), m.modified().ok()?);
-    if let Some((s, t, g)) = MEMO.lock().unwrap_or_else(|e| e.into_inner()).get(path) {
-        if (*s, *t) == (size, mtime) {
-            return *g;
-        }
+    let (size, mtime, now) = (m.len(), m.modified().ok()?, crate::sys::uptime_ms());
+    if let Some(v) = MEMO.lock().unwrap_or_else(|e| e.into_inner()).get(&path.to_path_buf(), size, &mtime, now) {
+        return v.map(|v| v == 2);
     }
-    // Opened without the lock held: another .p5z's look does not wait for this one.
-    let g = open(path).ok().map(|p| p.info.grew());
-    let mut memo = MEMO.lock().unwrap_or_else(|e| e.into_inner());
-    if memo.len() >= 256 {
-        memo.clear();
-    }
-    memo.insert(path.to_path_buf(), (size, mtime, g));
-    g
+    // Read without the lock held: another .p5z's look does not wait for this one.
+    let version = index_version(path);
+    MEMO.lock().unwrap_or_else(|e| e.into_inner()).set(path.to_path_buf(), size, mtime, version, now);
+    version.map(|v| v == 2)
 }
 
 /// The index version of a .p5z made by a newer MaxPack for the PC (index_version, above the ones read here), else
