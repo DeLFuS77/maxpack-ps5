@@ -55,8 +55,9 @@ one game of each kind of source: an unpacked folder, one packed with zstd, one w
 - [ ] **B.3. The ampr-emu-ng notice.**
   - Launch the zstd game.
   - Expected: the notice says "ampr-emu-ng: v0.5.1 (zstd) running", **without** `-beta`; with the LZ4
-    one, "(lz4)". In Settings, ampr-emu-ng shows as bundled, version `v0.5.2-maxpack.1` (`v0.5.1-maxpack.1`
-    in a 1.0.2 build or older). The notice still says v0.5.1: the bundled build's own identity (section 11).
+    one, "(lz4)". In Settings, ampr-emu-ng shows as bundled, version `v0.5.1-maxpack.2` (`v0.5.1-maxpack.1`
+    in a 1.0.2 build or older). The notice says v0.5.1 with both: it is upstream's version, which every MaxPack
+    build keeps; Settings shows which build it is.
   - This build has no `-beta` (the one on `main`, the stage-1 one, did: `v0.5.0-beta.a52648f`;
     `a52648f` is `ecae2ff` in ampr-emu-ng's public history). If
     `-beta` or another version appears, it is not this branch's: look at
@@ -302,7 +303,7 @@ root is a scan root by default) is already a game: MaxPack builds its cache and 
 install it, and this section does not test that (section 6 does). MaxPack does not scan below a
 drive's root, and the Install tab looks one level further down, so it finds them all the same. At
 start the log says `installer: ready in N ms (MaxPack engine b3b526f037befa3f540704ff0b55831198ea7e3a,
-runtime ampr-emu-ng v0.5.2-maxpack.1 720048 bytes)`; a 1.0.2 build or older says engine `e8de15a...` and
+runtime ampr-emu-ng v0.5.1-maxpack.2 720048 bytes)`; a 1.0.2 build or older says engine `e8de15a...` and
 runtime `v0.5.1-maxpack.1 716176 bytes`, and a build from before the repositories were public `e9e0ec4`.
 
 - [ ] **5.1. Install a `.p5z` and a `.exfat` as they are.**
@@ -716,7 +717,7 @@ the secure-connection check and installs `libSceAmpr.sprx` only when it matches 
 `libSceAmpr.sprx` is kept by the automatic update and moved to `/data/maxpack/libSceAmpr.sprx.hand`
 by "Update ampr-emu-ng now" (it asks first).
 
-> With a build that bundles `v0.5.2-maxpack.1` (section 11) while its release is not published, the latest
+> With a build that bundles `v0.5.1-maxpack.2` (section 11) while its release is not published, the latest
 > release is the older `v0.5.1-maxpack.1`: "Update ampr-emu-ng now" refuses it ("Update failed: the latest
 > release is older than the ampr-emu-ng MaxPack uses now, so nothing was installed: ..."; in the log
 > `ampr: update: nothing installed (older): ...`), and 9.2's install does not happen until a newer release
@@ -818,8 +819,8 @@ With a build of this branch, MaxPack alone, a game you already played from its `
 (packed with `maxpack pack --p5z`, a few GB, more than one volume if you can) and a MaxPack for the PC
 that has `maxpack add` and `maxpack update` (its branch `pc-ampliar`, or the release that brings them). On the PC, `maxpack info <game.p5z>` says how many
 times a `.p5z` grew and how much room it does not use. This build carries a CI build of ampr-emu-ng
-(`v0.5.2-maxpack.1`, not released yet), whose launch notice still says "v0.5.1": that is its own identity,
-not an older copy. Before anything, Settings shows ampr-emu-ng as bundled, `v0.5.2-maxpack.1`; if it says
+(`v0.5.1-maxpack.2`, not released yet), whose launch notice says "v0.5.1" as `v0.5.1-maxpack.1`'s does
+(upstream's version): only Settings tells the two apart. Before anything, Settings shows ampr-emu-ng as bundled, `v0.5.1-maxpack.2`; if it says
 downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and restart MaxPack.
 
 - [ ] **11.1. A DLC added with `maxpack add`.**
@@ -857,7 +858,7 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     `/data/maxpack/ampr/` in place of the bundled one, with no game running. ("Update ampr-emu-ng now" does
     not do it: it refuses a release older than the bundled one, 9.)
   - Expected, at the next pass: in the log `<TID> (...): fakelib refresh: this .p5z grew (index version 2) and
-    needs ampr-emu-ng v0.5.2-maxpack.1 or later; ...; rebuilding`, then the build fails with
+    needs ampr-emu-ng v0.5.1-maxpack.2 or later; ...; rebuilding`, then the build fails with
     `... not started with it`; the game shows Error and its sheet says "This .p5z grew on the PC ... needs a
     newer ampr-emu-ng ..." in the page's language; `/api/state` has `error_code` `old_ng`; one notice
     "<game> needs a newer ampr-emu-ng: see the game on MaxPack's page"; Play is off.
@@ -865,7 +866,7 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     files any more); it must never reach the game's own screens.
   - A `.p5z` that never grew (another game, or the compact copy of 11.3) still builds and plays.
   - Delete the file you put there and restart MaxPack. Expected: `ampr: installed bundled ampr-emu-ng
-    v0.5.2-maxpack.1`, then `building cache` of the grown game, and it starts.
+    v0.5.1-maxpack.2`, then `building cache` of the grown game, and it starts.
 - [ ] **11.4b. A copy in the middle of a build (optional).**
   - Delete the grown game's cache ("Rebuild cache") so that it builds again, and while the log says
     `building cache` for it (a large `.p5z` on USB gives time), put that `v0.5.1-maxpack.1` file into
