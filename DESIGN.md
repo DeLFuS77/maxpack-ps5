@@ -30,7 +30,13 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   engine out of memory) looks the same, so the first one for a (path, size, mtime) is a scan error that is tried
   again next pass (`cannot be read now, tried again next pass: <reason>`; not memoized, not listed, no toast), and
   only the same verdict in the next pass for the same size and mtime is memoized, listed and toasted. More than 256
-  volumes comes from a description that read fine: believed at once. Meanwhile it holds its title (Flow, Stability),
+  volumes comes from a description that read fine: believed at once. A `.p5z` whose index is of a version above 2
+  (made by a newer MaxPack for the PC) is never called damaged: the engine refuses it as "invalid .p5z: index" before
+  it says why, so on a refusal `src/p5z.rs` (`index_version`) reads the version itself (the footer and its CRC, the CRC of the
+  whole compressed index, the index's first 12 bytes through zstd's streaming decompression, linked with the engine);
+  a version above the ones read here is `maxpack_logic::p5z::Unplayable::Newer` (code `newer`, as is one the engine's
+  own description gives), believed at once, listed and toasted as made by a newer MaxPack for the PC, to be played
+  once MaxPack for the console is updated. Meanwhile it holds its title (Flow, Stability),
   and the engine's open in a build follows the same rule (Cache). A `.p5z` still being copied is skipped like a
   pkg (`stability_wait_seconds`).
   A `.p5z` that grew on the PC (`maxpack add --dlc`, `maxpack update`: index version 2, appended to, never rewritten)
@@ -175,7 +181,7 @@ is ignored as a whole). The web UI edits the same file.
   differs from the record (the next pass refreshes and checks it). A fakelib refresh of a built cache of a grown
   `.p5z` (the ampr dir changed) whose copy is refused does not keep that `fakelib/`: it removes `.done` and rebuilds,
   which clears the cache and stops the same way (so a rebuild that fails before clearing, an I/O error, leaves no
-  cache that says it is built). Whenever the copy is refused, in a build or a refresh, the cache's `eboot.bin` goes
+  cache that says it is built); the game's status goes from "checking" to "building" then (its `rebuilding` callback). Whenever the copy is refused, in a build or a refresh, the cache's `eboot.bin` goes
   first (`cache::keep_off`), so neither the tile nor Play can start the game with that copy even if the cache then
   cannot be cleared; when it cannot be removed either, `/system_ex/app/<TID>` is unmounted (`register::unmount_title`),
   so the tile has no `/app0` until a build registers the game again. A `.p5z` cache without `eboot.bin`, like one
@@ -565,7 +571,7 @@ pub fn pkg_file(pkg: &std::path::Path, name: &str) -> std::io::Result<Vec<u8>>; 
 pub enum Fresh { Fresh, Missing, Stale(String), Fakelib(String), Moved(std::path::PathBuf /* old source */) }
 pub fn relink(src: &Source, s: &Settings, from: &std::path::Path) -> std::io::Result<()>; // Moved: no rebuild
 pub fn pkg_id(pkg: &std::path::Path) -> std::io::Result<String>;   // sampled identity, see Cache
-pub fn refresh_fakelib(src: &Source, s: &Settings) -> std::io::Result<()>; // Fakelib: fakelib/ only
+pub fn refresh_fakelib(src: &Source, s: &Settings, rebuilding: impl FnOnce()) -> std::io::Result<()>; // Fakelib: fakelib/ only (rebuilding: it turned into a rebuild)
 pub fn overlay_off(src: &Source, s: &Settings) -> bool;                 // listed in overlay_off and a plain folder: empty fakelib/
 pub fn fakelib_mode(src: &Source, s: &Settings) -> maxpack_logic::fakelib::Mode; // effective: recommended::effective
 pub fn playgo_off(src: &Source, s: &Settings) -> bool;                  // effective: recommended::effective
@@ -726,7 +732,8 @@ minute):
   settings_source: "default"|"user"|"recommended" (where the two come from), recommended: {fakelib: mode|null,
   playgo_off: bool|null}|null (what the list says of the two for this title on this firmware; null when it says nothing
   of them), notice: "long_first_boot"|null (the list's notice for the title)}],
-  unplayable:[{path, code:"damaged"|"too_many_volumes", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, or the volume count; the page lists them under "Archivos .p5z que no se pueden jugar" and never as games),
+  add_emulators: bool (Settings > "Add the bundled emulators": off, no PlayGo stub is added, so the sheet's reset line never names it),
+  unplayable:[{path, code:"damaged"|"too_many_volumes"|"newer", detail}] (the `.p5z` files of the last scan that cannot be played: `detail` is the engine's reason, the volume count, or the index version of one made by a newer MaxPack for the PC; the page lists them under ".p5z files that cannot be played", never as games, and a `newer` one as made by a newer MaxPack for the PC, never as damaged),
   drives:[{mount, label, kind, total, free, ejectable}], cache:{path, size, free, low_space, ampr_present}, log:[last 100 lines of the last 64 KiB]}`
 - `GET /api/settings` -> settings JSON; `POST /api/settings` (JSON body) -> save, apply, rescan; a body
   without `playgo_off`, `hidden`, `overlay_off`, `fakelib_emulators`, `fakelib_off`, `manual_settings` or `exclude` keeps that current list
@@ -969,12 +976,20 @@ each destination drive says whether the chosen game fits, as the engine's plan c
 the engine's 256 MiB `space_margin` against the drive's free space, plus what an unfinished install of that title
 already copied there), "Does not fit: N more needed" when not, and Install then says so without asking the engine;
 the engine checks again when it plans the install (`no_space`). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
-the UI's words (`grown_p5z` among them), its `detail` (the engine's, in English) under them. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
+the UI's words (`grown_p5z` among them), its `detail` (the engine's, in English) under them. The engine's probe says
+nothing of a `.p5z`'s index, so web.rs marks the state's `found` items and a probe's answer with what the console's
+own reader knows (`maxpack_logic::inst::mark_grown`; `src/p5z.rs` `grew`: `mp_play_open`'s description, kept by path while
+its size and mtime stay): one that grew gets `"grown": true`, its row says at once that it plays from the `.p5z` and
+is not installed, and Install refuses it without asking the engine (which would refuse it with `grown_p5z` only when
+the job starts). A probe or an install the engine refuses as `bad_p5z` whose index `src/p5z.rs` (`index_version`) reads as made
+by a newer MaxPack for the PC answers `newer_p5z` instead (`inst::newer_refusal`), never "damaged". Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, a
+`.p5z` that grew in Install's list (marked) and a path added by hand that is refused as `newer_p5z`, a `.p5z` made by
+a newer MaxPack for the PC in the library's unplayable list, a
 `.p5z` verified OK and one found damaged with a verify that runs and refuses as the payload does, the receive's routes
 answered as the payload's (nothing written; the pairing code, turning receiving on and a new code only to a page opened
 at localhost; a receive that pauses, Stop and Delete; one file a send left) with `--receive demo|failed|paused` for a
@@ -1055,7 +1070,9 @@ on the page's server (port 8095), as the shared contract of both sides says:
   or a drive where a write failed with EFBIG in this run, and a size of 4 GiB or more); 409 `exists` (anything at
   `<homebrew>/<name>`, or something that is not a file at `<name>.maxpack-recv`); the receive under way of the same name,
   drive and size goes on (its token, its `have`), any other under way is 409 `busy`, as is a job of the engine; 507
-  `no_space` with `missing` (what is still to come plus 256 MiB, less the free space). A new receive makes `homebrew` if
+  `no_space` with `need` (what is still to come plus 256 MiB, less the free space; `missing` too, the same, as before
+  the contract's v3) and `have` (the bytes of a `<name>.maxpack-recv` of that name on the drive, 0 if none, so the PC
+  can offer to delete it with `discard`). The start looks at the drive under the jobs gate, which a discard holds too. A new receive makes `homebrew` if
   missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`). The same file paused in this run (same
   name, drive and size) goes on with its own token (`Start::Unpause`), after the same checks of the drive, the other
   jobs and the space: exactly where it was when it paused idle or stopped (every PUT was flushed), from the file as below
@@ -1073,7 +1090,8 @@ on the page's server (port 8095), as the shared contract of both sides says:
   100-continue` is answered once the request passes. A refused body is read and dropped first, so the PC reads the answer
   rather than a reset, only up to 4 MiB, never for the gate's refusals or a body too large (`receive::drain_len`: closing
   at once costs a stranger nothing; the PC can send `Expect: 100-continue`), and never with the writer lock held. A
-  write that fails pauses the receive (below): a full drive answers 507 `no_space` with what is really missing, EFBIG 400
+  write that fails pauses the receive (below): a full drive answers 507 `no_space` with what is really missing (`need`)
+  and `have`, EFBIG 400
   `fat32` (and the drive counts as FAT32 for the rest of the run), anything else 500 `write` (the drive went, an I/O
   error: the PC does not retry it).
 - `GET /api/receive/status?id=` -> `{"have","size","state":"receiving|verifying|done|failed|cancelled|paused","verify":{bytes,
@@ -1088,7 +1106,19 @@ on the page's server (port 8095), as the shared contract of both sides says:
   `.maxpack-recv` and `verify.bad` and `error` say what failed; a start of that name begins again from 0.
 - `POST /api/receive/cancel?id=`: the file deleted, `cancelled`; a verify under way stops first (up to 3 s); a receive that
   is `done` is 409 `state` (its `.p5z` is the library's). A cancel deletes only the file of the receive it was asked for
-  (told by its `seq`): a start that comes while it waits for a PUT to end keeps its file.
+  (told by its `seq`): a start that comes while it waits for a PUT to end keeps its file. A cancelled receive's `error`
+  says only why what arrived is still there (its delete failed; the OS error), null once it is deleted.
+- `POST /api/receive/discard`, `{"name","drive"}` (`drive` as in start, `internal` when missing; the contract's v3)
+  -> 200 `{"deleted":true,"bytes":N}`, or `{"deleted":false}` when nothing of it is there: what a send left of that file
+  deleted without a start, so it works on a full drive (`receive::discard_gate`, in this order): 400 `bad_request`; 400
+  `bad_name` (start's rules); 404 `no_drive` (as start's); a receive of that file under way (receiving or verifying)
+  409 `busy`. It deletes `<homebrew>/<name>.maxpack-recv` when a file is there, whatever its size and with no space
+  check, and never anything else (something there that is not a file stays); a failed delete is 500 `delete_failed`
+  with the OS error in `detail`, and the file and its receive stay. This run's receive of that file that is paused,
+  failed or cancelled ends: its token is forgotten (a later status or PUT is 404 `unknown_id`) and the page's banner
+  goes; one that is done is the library's `.p5z` and stays. It holds the jobs gate, as a start, so neither looks at the
+  file while the other changes it. One log line per discard (`receive: discard of <name> from the PC: deleted <path> (N
+  bytes)`, `nothing of it at <path>`, or why it was refused); the code is never logged.
 - **Paused** (`State::Paused(PauseReason)`). A receive with no request carrying its token for 10 minutes (reason `idle`,
   `receive::idle`), one whose write or flush failed (`write_error`), and one stopped from the page or by a quit during its
   verify (`stopped`) pause: the file stays and the receive no longer holds the other jobs, but it keeps its token while
@@ -1099,7 +1129,8 @@ on the page's server (port 8095), as the shared contract of both sides says:
 - **The page.** A receive shows in a banner over every screen: progress and MB/s, the verify, how it ended. While it is
   under way, "Stop (keep what arrived)" (`POST /api/pairing/stop`) pauses it (a verify under way stops first, the file
   kept); "Delete what arrived" (`POST /api/pairing/cancel`, the receive of this run, paused or failed too) asks first; the
-  D-pad reaches Stop or Close first, never Delete. Settings lists the `.maxpack-recv` files sends left on the drives
+  D-pad reaches Stop or Close first, never Delete. A cancel whose delete failed says so in amber, with the error and
+  where the file stays (Settings lists it with Delete). Settings lists the `.maxpack-recv` files sends left on the drives
   (`/api/state` `receive_left`: `[{path, name, size}]`, each drive the PC may send to, read again at most every 10 s, never
   the file of a receive under way), each with Delete behind a confirmation (`POST /api/pairing/left`, body the path: only
   a path the list has now, `receive::may_delete_leftover`).
@@ -1140,7 +1171,7 @@ beside a value the list leaves at its default); a game with a `notice` shows its
 the settings (`settings_source` "user") and the list recommends something for the game (`recommended` not null), "Back
 to the recommended setting" (`POST /api/recommended/<TID>`, body `reset`) shows under the Fakelib row, with a line
 under it that says what it sets (`resetWhat`: the list's Fakelib mode, Full when it sets none, and the PlayGo stub
-when the sheet shows that switch and the mode is not Off), and is in the D-pad's list of the sheet's controls only
+when the sheet shows that switch, the mode is not Off and `state.add_emulators` is on), and is in the D-pad's list of the sheet's controls only
 while it shows. A hand change draws the settings as the user's until the
 next state; the report is fetched again when `settings_source` or the stub changes. Settings has "Excluded paths"
 under "Scan paths", one path per line (`exclude`), and "Download updated recommended settings"

@@ -20,12 +20,23 @@ What changed in each version of MaxPack for the console. The format follows
   stays aside with what is wrong. A banner follows it on every screen, with **Stop** (keeps what arrived) and
   **Delete what arrived** (asks first); a send nobody finishes pauses after 10 minutes, and Settings lists the
   files sends left behind. Off by default, and only the console's own browser turns it on; wrong codes lock
-  the sender out for a minute.
+  the sender out for a minute. MaxPack for the PC can delete what a send left without starting another, also
+  on a full drive, and a refusal for space says how much of that game is already there. If what arrived
+  cannot be deleted, the banner says why and where it stays.
 
 ### Fixed
 
 - **"Back to the recommended setting"** says what it sets, under the button ("Sets Fakelib to "Off"."), so a
-  game you set by hand before 1.0.2 shows what the list would change.
+  game you set by hand before 1.0.2 shows what the list would change. With "Add the bundled emulators" off
+  it no longer says it sets the PlayGo stub, which is then never added.
+- A `.p5z` made by a newer MaxPack for the PC (a later index version) is listed, and announced, as made by a
+  newer MaxPack for the PC, to be played once MaxPack for the console is updated, instead of "Damaged or
+  incomplete"; Install no longer calls it damaged either.
+- Install marks a `.p5z` that grew on the PC as not installable as soon as it is listed (play it from the
+  `.p5z`, or make a compact copy on the PC), and Install refuses it at once, instead of only when its job
+  starts.
+- A game whose `fakelib/` refresh turns into a rebuild (an ampr-emu-ng too old for a `.p5z` that grew)
+  shows "Building", not "Checking".
 - When an older ampr-emu-ng stops several `.p5z` games that grew at once, the console shows one notice with
   their count instead of one per game.
 - A new list of recommended settings that arrives while a game's `fakelib/` is being made no longer leaves

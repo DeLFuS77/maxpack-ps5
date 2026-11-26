@@ -847,10 +847,15 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     old version loads, 10 minutes of play without errors, and `cleanup done`.
   - Grow it once more (a second `maxpack update`, or an add) and test again: the same.
 - [ ] **11.3. The installer refuses it.**
-  - In Install, pick the grown `.p5z` (put it under `/mnt/usb0/install/`, as in section 5) and install it.
-  - Expected: the job ends with "This .p5z grew on the PC (a DLC or an update was added to it), so it cannot
-    be installed. ..." in the page's language, and the engine's English detail under it. Nothing is left
-    on the destination drive.
+  - Put the grown `.p5z` under `/mnt/usb0/install/` (as in section 5) and open Install. Expected: its row says at
+    once "This .p5z grew on the PC (a DLC or an update was added to it), so it cannot be installed. ..." in the
+    page's language. Pick it and press Install. Expected: the same text in the message, no job starts (the
+    installer's state shows none), and nothing is written on the destination drive.
+  - Add its path by hand (the path box, Add). Expected: the row it adds says the same.
+  - Past the page, with the installer's API (`curl -X POST -H "Content-Type: application/json" --data
+    '{"p5z":"<path>","dest":"/data"}' http://<ip>:8095/api/inst/install`): the engine still refuses it when the job
+    starts; the Install tab's last result says the same text with the engine's English detail under it, and nothing
+    is left on the destination drive.
   - On the PC, `maxpack compact "<game>.p5z" -o "<compact>.p5z"`. Expected: the compact copy installs as in
     5.1 and starts.
   - Grow on the PC the very `.p5z` that compact copy was installed from (`maxpack add` or `maxpack update`
@@ -862,7 +867,8 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     `/data/maxpack/ampr/` in place of the bundled one, with no game running. ("Update ampr-emu-ng now" does
     not do it: it refuses a release older than the bundled one, 9.)
   - Expected, at the next pass: in the log `<TID> (...): fakelib refresh: this .p5z grew (index version 2) and
-    needs ampr-emu-ng v0.5.1-maxpack.2 or later; ...; rebuilding`, then the build fails with
+    needs ampr-emu-ng v0.5.1-maxpack.2 or later; ...; rebuilding` (the card says "Building" from then, not
+    "Checking"), then the build fails with
     `... not started with it`; the game shows Error and its sheet says "This .p5z grew on the PC ... needs a
     newer ampr-emu-ng ..." in the page's language; `/api/state` has `error_code` `old_ng`; one notice
     "<game> needs a newer ampr-emu-ng: see the game on MaxPack's page"; Play is off.
@@ -982,7 +988,8 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
 - [ ] **13.6. What a start refuses.**
   - The small game again to the same drive. Expected: the PC says the `.p5z` is already there.
   - A `.p5z` larger than 4 GiB to a FAT32 drive (optional). Expected: refused as FAT32.
-  - A `.p5z` larger than a drive's free space. Expected: refused, with how much more is needed.
+  - A `.p5z` larger than a drive's free space. Expected: refused, with how much more is needed (the answer's
+    `need`, and `have` 0: nothing of it is there).
   - While an install runs, or a verify of 12 runs. Expected: busy. While a send runs, a second one from
     another PC (or another window) of another game. Expected: busy.
   - While a send runs: the Install tab's Install says "MaxPack is verifying a .p5z or receiving a game from
@@ -1014,3 +1021,21 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
   - Fill a USB drive's free space to less than the game (optional). Expected: the PC is refused with how much is
     missing; if the drive fills during the send, the receive pauses with "the drive is full: N more bytes needed".
   - "New code" in Settings. Expected: the PC's old code is refused, the new one works.
+- [ ] **13.9. Delete what a send left, from the PC (the contract's v3).**
+  - Start a send of the large game to `usb0` and press Stop on the console halfway (or end the PC's command). On
+    the PC, Delete what arrived (`maxpack send --discard "<large game>.p5z" <ip> --code <code> --drive usb0`, or the
+    window's button). Expected: the PC says what it deleted; `/mnt/usb0/homebrew/<name>.maxpack-recv` is gone;
+    Settings no longer lists it; the banner goes; the log has one line, `receive: discard of <name> from the PC:
+    deleted /mnt/usb0/homebrew/<name>.maxpack-recv (N bytes); this run's receive of it ended`, and never the code.
+    The old token's status (`/api/receive/status?id=...` with the code) answers 404 `unknown_id`.
+  - The same again. Expected: the PC says nothing of it is on the console (not "deleted"); the log says
+    `nothing of it at ...`.
+  - During a send of that game, Delete what arrived from another window. Expected: refused as busy; the send
+    goes on.
+  - With curl: `curl -X POST -H "X-MaxPack-Code: <code>" --data '{"name":"../x.p5z"}' http://<ip>:8095/api/receive/discard`
+    answers 400 `bad_name`; with `"drive":"usb7"` (nothing there) 404 `no_drive`; with no drive at all it looks on
+    the internal drive.
+  - A full drive (optional): leave a large send's `.maxpack-recv` on a USB drive, then fill the drive so the rest
+    does not fit, and send the same game again. Expected: refused for space with `have` (what is there) and
+    `need`, and the PC offers Delete what arrived; it deletes the file although the drive is full, and the drive's
+    free space comes back.

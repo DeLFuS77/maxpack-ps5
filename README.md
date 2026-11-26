@@ -261,7 +261,8 @@ The whole flow, from packing on the PC:
   not, the game shows "Error" with how much is missing, and mounts by itself once you free that space.
 - **Damaged files are caught.** A cut or damaged `.p5z`, or one with more than 256 volumes, is listed
   apart under ".p5z files that cannot be played", with a notification. A USB drive that resets for a
-  moment is retried, not reported as damage.
+  moment is retried, not reported as damage. One made by a newer MaxPack for the PC is listed as such, never
+  as damaged: update MaxPack for the console to play it.
 - **Moving is fine.** Move the `.p5z` to another drive and MaxPack recognises it ("moved to...")
   without preparing it again.
 - **Any name.** File names with accents, ™ or Japanese work, as MaxPack for the PC writes them.
@@ -331,7 +332,8 @@ The whole flow, from packing on the PC:
   `<name>.maxpack-recv`, and the banner says what does not match.
 - **Cut short?** Run the same command again: it goes on where it was, also after a restart of the console. A send
   nobody finishes pauses after 10 minutes and keeps what arrived; **Stop** keeps it too, **Delete what arrived**
-  (it asks first) removes it, and Settings lists what sends left behind.
+  (it asks first) removes it, and Settings lists what sends left behind. MaxPack on the PC can delete what a send
+  left too (`maxpack send --discard`), also when the drive is full.
 - **Safe by default:** without the code nothing is written; wrong codes lock the sender out for a minute; only a plain
   `.p5z` name is taken, and only into a drive's `homebrew/`.
 
