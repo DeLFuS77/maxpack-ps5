@@ -42,6 +42,12 @@ pub struct Settings {
     pub auto_remove_missing: bool,
     pub auto_remove_delay_secs: u64,
     pub notify: bool,
+    /// Settings > "Receive games from the PC" (src/receive.rs): off by default; off, every /api/receive/* route
+    /// answers 403. Set by POST /api/pairing, never by POST /api/settings.
+    pub receive_from_pc: bool,
+    /// The pairing code the PC sends (X-MaxPack-Code): six digits, made when the switch is first turned on and by
+    /// "New code"; empty until then. Never in GET /api/settings: the page shows it only on the console itself.
+    pub receive_code: String,
     /// Write /data/maxpack/maxpack.log (the payload's stdout always gets the lines).
     pub log: bool,
     pub debug: bool,
@@ -69,6 +75,8 @@ impl Default for Settings {
             auto_remove_missing: true,
             auto_remove_delay_secs: 300,
             notify: true,
+            receive_from_pc: false,
+            receive_code: String::new(),
             log: true,
             debug: false,
         }
@@ -96,6 +104,8 @@ const HELP: &[(&str, &str)] = &[
     ("auto_remove_missing", "true = remove a title from the home screen when its source is missing for auto_remove_delay_seconds (the cache stays; not while a game runs, not with DLC in /user/addcont/<TID>)"),
     ("auto_remove_delay_seconds", "how long a source must stay missing before auto_remove_missing removes its title, 1..86400"),
     ("notify", "true = system toasts"),
+    ("receive_from_pc", "true = accept a .p5z sent by MaxPack on the PC (maxpack send) with the pairing code below; off by default (Settings > Receive games from the PC turns it on and off)"),
+    ("receive_code", "the six-digit pairing code MaxPack on the PC sends; made by the console (Settings > New code), never typed here"),
     ("log", "true = write /data/maxpack/maxpack.log (starts over past 1 MiB)"),
     ("debug", "true = klog capture to /data/maxpack/klog.txt and the /file/data/... route"),
 ];
@@ -179,6 +189,9 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
             n => return Err(format!("{n} not in 1..86400")),
         },
         "notify" => s.notify = flag(v)?,
+        "receive_from_pc" => s.receive_from_pc = flag(v)?,
+        "receive_code" if v.is_empty() || maxpack_logic::receive::valid_code(v) => s.receive_code = v.to_string(),
+        "receive_code" => return Err(format!("expected six digits, got {} characters", v.chars().count())),
         "log" => s.log = flag(v)?,
         "debug" => s.debug = flag(v)?,
         _ => return Err("unknown key".into()),
@@ -392,6 +405,8 @@ fn render(s: &Settings) -> String {
             "auto_remove_missing" => out += &format!("{k} = {}\n", s.auto_remove_missing),
             "auto_remove_delay_seconds" => out += &format!("{k} = {}\n", s.auto_remove_delay_secs),
             "notify" => out += &format!("{k} = {}\n", s.notify),
+            "receive_from_pc" => out += &format!("{k} = {}\n", s.receive_from_pc),
+            "receive_code" => out += &format!("{k} = {}\n", toml_quote(&s.receive_code)),
             "log" => out += &format!("{k} = {}\n", s.log),
             _ => out += &format!("{k} = {}\n", s.debug),
         }
@@ -516,6 +531,10 @@ pub fn from_json(v: &Value) -> Result<Settings, String> {
     let obj = v.as_object().ok_or("settings: expected a JSON object")?;
     let mut s = Settings::default();
     for (k, val) in obj {
+        // Their own routes (POST /api/pairing, POST /api/pairing/new): the settings form never sends them.
+        if matches!(k.as_str(), "receive_from_pc" | "receive_code") {
+            return Err(format!("{k}: set from Settings > Receive games from the PC"));
+        }
         let vals: Vec<&Value> = match (k.as_str(), val) {
             ("scanpath" | "exclude" | "playgo_off" | "hidden" | "overlay_off" | "fakelib_emulators" | "fakelib_off" | "manual_settings",
                 Value::Array(a)) => a.iter().collect(),

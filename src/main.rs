@@ -17,6 +17,7 @@ mod jobs;
 mod launch;
 mod net;
 mod p5z;
+mod receive;
 mod recommended;
 mod register;
 mod scan;
@@ -1005,6 +1006,8 @@ fn main() {
     let state = Arc::new(State::new(s));
     // The phase-2 installer (/api/inst/*): up whatever the mounter state, as the web UI.
     installer::start(state.clone(), BUNDLED_AMPR, BUNDLED_AMPR_VERSION);
+    // The receive from the PC wakes the scan loop once a .p5z is in place.
+    receive::init(state.clone());
     let st = state.settings.lock().unwrap().clone();
     // Not gated on inject_ampr: pkg games get the ampr dir regardless.
     if st.ampr_auto_update {

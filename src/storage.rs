@@ -9,6 +9,8 @@ pub struct Drive {
     pub kind: &'static str,
     pub total: u64,
     pub free: u64,
+    /// statfs f_fstypename ("ufs", "exfatfs", "msdosfs"...); empty when it could not be read.
+    pub fs: String,
 }
 
 const USB: usize = 8;
@@ -22,6 +24,11 @@ fn statfs(path: &str) -> Option<libc::statfs> {
 
 fn on_name(fs: &libc::statfs) -> String {
     let b: Vec<u8> = fs.f_mntonname.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    String::from_utf8_lossy(&b).into_owned()
+}
+
+fn type_name(fs: &libc::statfs) -> String {
+    let b: Vec<u8> = fs.f_fstypename.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
     String::from_utf8_lossy(&b).into_owned()
 }
 
@@ -45,7 +52,8 @@ pub fn drives() -> Vec<Drive> {
         let (total, free) = fs.map_or((0, 0), |f| {
             (f.f_blocks as u64 * f.f_bsize as u64, avail(&f))
         });
-        Drive { mount, label, kind, total, free }
+        let fs = fs.map(|f| type_name(&f)).unwrap_or_default();
+        Drive { mount, label, kind, total, free, fs }
     };
     let mut v = vec![mk("/data".into(), "Internal".into(), "internal", statfs("/data"))];
     for i in 0..USB {

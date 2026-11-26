@@ -274,6 +274,7 @@ fn rebind(state: &State) -> TcpListener {
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && !state.paused() => {
                 log!("web: port {PORT} taken by another copy; quitting");
                 crate::verify::stop();
+                crate::receive::stop();
                 crate::installer::stop();
                 std::process::exit(0)
             }
@@ -322,26 +323,41 @@ fn not_found() -> Reply {
 fn handle(state: &State, mut conn: TcpStream) -> std::io::Result<()> {
     conn.set_read_timeout(Some(Duration::from_secs(5)))?;
     conn.set_write_timeout(Some(Duration::from_secs(10)))?;
-    let loopback = conn.peer_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    let peer = conn.peer_addr().map(|a| a.ip()).unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+    let loopback = peer.is_loopback();
     let r = match read_request(&mut conn)? {
-        Ok((head, body)) => match maxpack_logic::http::check(&head) {
-            Ok(()) => route(state, &head, &body, loopback),
+        Ok(Request::Whole(head, body)) => match maxpack_logic::http::check(&head) {
+            Ok(()) => route(state, &head, &body, loopback, peer),
+            Err(why) => refused(&head, why),
+        },
+        // PUT /api/receive/data: its body (up to 64 MiB) goes to the file as it comes (src/receive.rs).
+        Ok(Request::Stream { head, pre, len }) => match maxpack_logic::http::check(&head) {
+            Ok(()) => {
+                let target = head.lines().next().unwrap_or("").split(' ').nth(1).unwrap_or("");
+                let query = target.split_once('?').map_or("", |(_, q)| q);
+                receive_reply(crate::receive::put(state, &head, query, &pre, len, &mut conn, peer))
+            }
             Err(why) => refused(&head, why),
         },
         Err(code) => reply(code, "text/plain", "bad or too large request"),
     };
     let reason = match r.code {
         200 => "OK",
+        202 => "Accepted",
         204 => "No Content",
         400 => "Bad Request",
+        401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
+        411 => "Length Required",
         413 => "Content Too Large",
+        429 => "Too Many Requests",
         431 => "Request Header Fields Too Large",
         500 => "Internal Server Error",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
+        507 => "Insufficient Storage",
         _ => "Error",
     };
     let mut head = format!("HTTP/1.1 {} {reason}\r\nConnection: close\r\n", r.code);
@@ -356,9 +372,26 @@ fn handle(state: &State, mut conn: TcpStream) -> std::io::Result<()> {
     conn.flush()
 }
 
+/// A request read: whole (head and body), or the head of PUT /api/receive/data, whose body is left on the
+/// connection for src/receive.rs to write as it comes (`pre`: the part read with the head; `len`: Content-Length,
+/// None when there is none).
+enum Request {
+    Whole(String, Vec<u8>),
+    Stream { head: String, pre: Vec<u8>, len: Option<u64> },
+}
+
+/// The receive's data route, by its request line: its body is not held in memory.
+fn streams(head: &str) -> bool {
+    let line = head.lines().next().unwrap_or("");
+    let mut parts = line.split(' ');
+    parts.next() == Some("PUT") && parts.next().is_some_and(|t| t.split('?').next() == Some("/api/receive/data"))
+}
+
 /// Request line + headers, and the body by Content-Length; Err(status) when the head exceeds
-/// MAX_REQUEST (431), the whole request would (413), or Content-Length is not a number (400).
-fn read_request(conn: &mut TcpStream) -> std::io::Result<Result<(String, Vec<u8>), u16>> {
+/// MAX_REQUEST (431), the whole request would (413), or Content-Length is not a number (400). The receive's
+/// data route (`streams`) comes back with its head only: its body may be up to 64 MiB; a chunked body is refused
+/// (411, as no length).
+fn read_request(conn: &mut TcpStream) -> std::io::Result<Result<Request, u16>> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 2048];
     // (end of the head, end of the body)
@@ -371,6 +404,15 @@ fn read_request(conn: &mut TcpStream) -> std::io::Result<Result<(String, Vec<u8>
                     let (k, v) = l.split_once(':')?;
                     k.trim().eq_ignore_ascii_case("content-length").then(|| v.trim().parse::<usize>())
                 });
+                if streams(&head) {
+                    let chunked = maxpack_logic::inst::header(&head, "transfer-encoding").is_some();
+                    let len = match (len, chunked) {
+                        (Some(Ok(n)), false) => Some(n as u64),
+                        (Some(Err(_)), _) => return Ok(Err(400)),
+                        _ => None,
+                    };
+                    return Ok(Ok(Request::Stream { pre: buf[end + 4..].to_vec(), head, len }));
+                }
                 let len = match len {
                     None => 0,
                     Some(Ok(n)) => n,
@@ -386,7 +428,7 @@ fn read_request(conn: &mut TcpStream) -> std::io::Result<Result<(String, Vec<u8>
         match need {
             Some((end, n)) if buf.len() >= n => {
                 let head = String::from_utf8_lossy(&buf[..end]).into_owned();
-                return Ok(Ok((head, buf[end + 4..n].to_vec())));
+                return Ok(Ok(Request::Whole(head, buf[end + 4..n].to_vec())));
             }
             None if buf.len() > MAX_REQUEST => return Ok(Err(431)),
             _ => {}
@@ -430,10 +472,40 @@ fn refused(head: &str, why: maxpack_logic::http::Refusal) -> Reply {
         let body = serde_json::json!({"ok": false, "code": "forbidden", "detail": es}).to_string();
         return reply(403, "application/json", body);
     }
+    // The receive's routes answer the PC in the contract's shape.
+    if line.split(' ').nth(1).is_some_and(|t| t.starts_with("/api/receive/")) {
+        return reply(403, "application/json", serde_json::json!({"error": "forbidden", "detail": en}).to_string());
+    }
     reply(403, "text/plain; charset=utf-8", format!("{es}\n{en}\n"))
 }
 
-fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
+/// An answer of src/receive.rs as JSON.
+fn receive_reply(a: crate::receive::Answer) -> Reply {
+    reply(a.status, "application/json", a.body.to_string())
+}
+
+/// `/api/receive/*`, the PC's routes (src/receive.rs; DESIGN.md "Receive from the PC"): each behind the switch,
+/// the pairing code and its lockout. The data PUT never comes here: `handle` streams it.
+fn receive_route(state: &State, head: &str, method: &str, path: &str, query: &str, body: &[u8], peer: std::net::IpAddr) -> Reply {
+    use crate::receive as rx;
+    if let Err(r) = rx::gate(state, head, peer) {
+        return receive_reply(r.into());
+    }
+    let a = match (method, path) {
+        ("GET", "/api/receive/drives") => rx::drives(state),
+        ("POST", "/api/receive/start") => rx::start(state, body),
+        ("GET", "/api/receive/status") => rx::status(query),
+        ("POST", "/api/receive/finish") => rx::finish(query),
+        ("POST", "/api/receive/cancel") => match maxpack_logic::receive::query_param(query, "id") {
+            Some(id) if maxpack_logic::receive::valid_token(id) => rx::cancel(Some(id)),
+            _ => maxpack_logic::receive::Refusal::BadRequest("expected ?id=<token>".into()).into(),
+        },
+        _ => return reply(404, "application/json", serde_json::json!({"error": "not_found", "detail": "no such route"}).to_string()),
+    };
+    receive_reply(a)
+}
+
+fn route(state: &State, head: &str, body: &[u8], loopback: bool, peer: std::net::IpAddr) -> Reply {
     let mut parts = head.lines().next().unwrap_or("").split(' ');
     let method = parts.next().unwrap_or("");
     let target = parts.next().unwrap_or("");
@@ -441,10 +513,26 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
     match (method, path) {
         // The installer's routes (also in installer-only mode: never gated on the mounter state).
         (_, p) if p.starts_with("/api/inst/") => installer(state, head, method, target, body, loopback),
+        // The PC's routes to send a .p5z here (also in installer-only mode: they mount nothing).
+        (_, p) if p.starts_with("/api/receive/") => receive_route(state, head, method, path, query, body, peer),
         ("GET", "/") => cached("text/html; charset=utf-8", UI.replace("__VERSION__", env!("CARGO_PKG_VERSION"))),
         ("GET", "/maxpack.appcache") => cached("text/cache-manifest", appcache()),
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
-        ("GET", "/api/state") => reply(200, "application/json", api_state(state)),
+        ("GET", "/api/state") => reply(200, "application/json", api_state(state, loopback)),
+        // Settings > "Receive games from the PC" (src/receive.rs): the switch, a new pairing code, and the page's
+        // cancel of the receive under way.
+        ("POST", "/api/pairing") => match maxpack_logic::titles::switch_body(body) {
+            None => reply(400, "text/plain", "expected on or off"),
+            Some(on) => match crate::receive::set_on(state, on) {
+                Ok(()) => no_content(),
+                Err((code, why)) => reply(code, "text/plain", why),
+            },
+        },
+        ("POST", "/api/pairing/new") => match crate::receive::renew(state) {
+            Ok(()) => no_content(),
+            Err((code, why)) => reply(code, "text/plain", why),
+        },
+        ("POST", "/api/pairing/cancel") => receive_reply(crate::receive::cancel(None)),
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
         ("GET", p) if p.starts_with("/api/report/") => report(state, &p["/api/report/".len()..]),
         ("GET", "/api/settings") => {
@@ -494,6 +582,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
                 }
                 // A verify is cancelled; an install in progress pauses, so it resumes at the next start.
                 crate::verify::stop();
+                crate::receive::stop();
                 crate::installer::stop();
                 std::thread::sleep(Duration::from_millis(200));
                 std::process::exit(0)
@@ -742,6 +831,11 @@ fn post_settings(state: &State, body: &[u8]) -> Reply {
             s.exclude = file.exclude;
         }
     }
+    // The receive's switch and pairing code have their own routes (POST /api/pairing): always the file's.
+    {
+        let file = config::load();
+        (s.receive_from_pc, s.receive_code) = (file.receive_from_pc, file.receive_code);
+    }
     // A title is in one fakelib list at most (a body or the file's other list may name it too): off wins.
     let both = maxpack_logic::fakelib::exclusive(&mut s.fakelib_emulators, &s.fakelib_off);
     if !both.is_empty() {
@@ -888,6 +982,14 @@ fn dbg_file(path: &str, query: &str) -> Reply {
     if path.contains("..") {
         return not_found();
     }
+    // config.toml holds the receive's pairing code: never served, by whatever path names it.
+    let config = |p: &str| std::fs::canonicalize(p).ok();
+    if let Some(real) = config(path) {
+        let tmp = format!("{}.tmp", config::CONFIG_PATH);
+        if [config(config::CONFIG_PATH), config(&tmp)].iter().flatten().any(|c| *c == real) {
+            return not_found();
+        }
+    }
     let arg = |k: &str| {
         query.split('&').find_map(|kv| kv.strip_prefix(k)?.strip_prefix('=')?.parse::<u64>().ok())
     };
@@ -914,7 +1016,8 @@ fn dbg_file(path: &str, query: &str) -> Reply {
     }
 }
 
-fn api_state(state: &State) -> Vec<u8> {
+/// `loopback`: the page is open on the console itself, the only place it is shown the pairing code.
+fn api_state(state: &State, loopback: bool) -> Vec<u8> {
     let settings = state.settings.lock().unwrap().clone();
     // ponytail: crashes.json is read on every state poll (a few hundred bytes per crashed title).
     let crashes = crate::crash::load();
@@ -978,6 +1081,15 @@ fn api_state(state: &State) -> Vec<u8> {
         "drives": drives,
         // The verify of this run (src/verify.rs), or null.
         "verify": crate::verify::json(),
+        // The receive from the PC of this run (src/receive.rs), or null; and Settings > "Receive games from the
+        // PC": the switch, and the pairing code only for the page open on the console itself (anyone on the network
+        // can read this page; the code is what keeps them from writing to the drives).
+        "receive": crate::receive::json(),
+        "pairing": {
+            "on": settings.receive_from_pc,
+            "code": (loopback && maxpack_logic::receive::valid_code(&settings.receive_code)).then_some(settings.receive_code.as_str()),
+            "here": loopback,
+        },
         "cache": {
             "path": cache::CACHES,
             "size": *state.cache_total.lock().unwrap(),
@@ -1370,6 +1482,10 @@ fn eject(state: &State, body: &[u8]) -> Reply {
     if crate::verify::uses(Path::new(&path)) {
         log!("eject {path}: refused: a .p5z on it is being verified");
         return reply(409, "text/plain", "a .p5z on this drive is being verified");
+    }
+    if crate::receive::uses(Path::new(&path)) {
+        log!("eject {path}: refused: a game from the PC is arriving on it");
+        return reply(409, "text/plain", "a game from the PC is arriving on this drive");
     }
     // Eject unmounts every /system_ex/app/<TID> from the drive, whoever mounted it.
     if let Err(r) = mounts_or_409(state) {
