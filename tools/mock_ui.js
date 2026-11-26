@@ -197,9 +197,9 @@ function games() {
       error: 'PPSA07200 (/mnt/usb0/homebrew/Roomless Example.p5z): no space' }),
     g('PPSA05678', 'Broken Sample', 'pkg', null, 'error', { error: 'PPSA05678 (/data/homebrew/broken.pkg): bad header' }),
     // A .p5z that grew on the PC, and an ampr-emu-ng in /data/maxpack/ampr older than the one it needs (cache::OldNg).
-    g('PPSA07300', 'Grown Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Grown Example.p5z', drive: '/mnt/usb0',
+    g('PPSA00000', 'Grown Example', 'p5z', null, 'error', { path: '/mnt/usb0/homebrew/Grown Example.p5z', drive: '/mnt/usb0',
       size: 24 * GB, cache_built: null, cache_size: 0, error_code: 'old_ng',
-      error: 'PPSA07300 (/mnt/usb0/homebrew/Grown Example.p5z): cache build: this .p5z grew (index version 2) and needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is v0.5.1-maxpack.1 (/data/maxpack/ampr/libSceAmpr.sprx): not started with it' }),
+      error: 'PPSA00000 (/mnt/usb0/homebrew/Grown Example.p5z): cache build: this .p5z grew (index version 2) and needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is v0.5.1-maxpack.1 (/data/maxpack/ampr/libSceAmpr.sprx): not started with it' }),
     // A pkg whose fakelib mode is Off: its fakelib/ holds only ampr-emu-ng.
     g('PPSA10001', 'Starfall Odyssey', 'pkg', null, 'ready', { path: '/data/homebrew/Starfall Odyssey.pkg', playgo: true }),
     // The recommended settings: Fakelib Off and a notice from the list; and a recommendation the user overrode.
@@ -282,7 +282,7 @@ function lastValue() {
   switch (mock.last) {
     case 'done': return { kind: 'install', title_id: 'PPSA09012', code: 'done', detail: '' };
     case 'failed': return { kind: 'install', title_id: 'PPSA07890', code: 'io_error', detail: 'could not write /data/maxpack/tmp/PPSA07890/eboot.bin' };
-    case 'grown': return { kind: 'install', title_id: 'PPSA07300', code: 'grown_p5z',
+    case 'grown': return { kind: 'install', title_id: 'PPSA00000', code: 'grown_p5z',
       detail: 'this .p5z grew (DLC or an update were added to it): play it from the .p5z, or make a compact copy of it on the PC (maxpack compact) to install it' };
     case 'needs_confirm': return { kind: 'install', title_id: 'PPSA07890', code: 'needs_confirm', detail: '',
       existing: [{ path: '/data/homebrew/PPSA07890', size: 39 * GB, from_maxpack: false }],
