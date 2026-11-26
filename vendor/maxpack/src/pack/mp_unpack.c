@@ -71,21 +71,17 @@ int mp_unpack_folder(mp_p5z *p, const char *out_dir, unsigned threads, int progr
 
 // A .p5z that grew: its volumes hold the chunks in any order and with room between them, which only
 // ampr-emu-ng's p5z mode takes. The folder gets them laid out again, as pack --folder lays them out, with
-// the ampr_zstd.index that goes with them (nothing is compressed again).
-static int relayout_to(mp_p5z *p, const char *out_dir, uint64_t limit, mp_progress *prog, mp_err *e) {
-    size_t zi = 0;
-    while (zi < p->nfiles && p->files[zi].role != MP_ROLE_ZPK_INDEX) zi++;
-    if (zi == p->nfiles) return 0;   // no packs
-    mp_zpk *z = NULL;
+// the ampr_zstd.index that goes with them (nothing is compressed again). z: its packs; zi: the record of
+// its ampr_zstd.index.
+static int relayout_to(mp_p5z *p, mp_zpk *z, size_t zi, const char *out_dir, uint64_t limit, mp_progress *prog,
+                       mp_err *e) {
     mp_zpk_sink sink;
     memset(&sink, 0, sizeof sink);
     uint8_t *index = NULL, aid[16];
     size_t len = 0;
-    int rc = mp_p5z_zpk(p, &z, e);
-    if (!rc) rc = mp_zpk_sink_dir(out_dir, &sink, e);
+    int rc = mp_zpk_sink_dir(out_dir, &sink, e);
     if (!rc) rc = mp_zpk_relayout(z, limit, &sink, prog, &index, &len, aid, e);
     mp_zpk_sink_free(&sink);
-    mp_zpk_close(z);
     char *path = rc ? NULL : out_path(out_dir, p->files[zi].path, e);
     if (!rc && (!path || mp_write_file(path, index, len, e) != 0)) rc = -1;
     if (!rc && p->files[zi].mtime) rc = mp_set_mtime(path, p->files[zi].mtime, e);
@@ -98,10 +94,22 @@ int mp_unpack_folder_ex(mp_p5z *p, const char *out_dir, uint64_t volume_limit, u
                         mp_err *e) {
     (void)threads;
     if (prepare_out(out_dir, e) != 0) return -1;
+    // a .p5z that grew has its packs laid out again: what is written of them is their chunks, not the room
+    // between them, and that is what the progress counts
     int grown = p->version == 2;
+    size_t zi = SIZE_MAX;
+    mp_zpk *z = NULL;
     uint64_t total = 0;
-    for (size_t i = 0; i < p->nfiles; i++)
-        if (p->files[i].role != MP_ROLE_ORIGINAL) total += p->files[i].size;
+    for (size_t i = 0; i < p->nfiles; i++) {
+        int role = p->files[i].role;
+        if (role == MP_ROLE_ZPK_INDEX) zi = i;
+        if (role != MP_ROLE_ORIGINAL && !(grown && (role == MP_ROLE_VOLUME || role == MP_ROLE_ZPK_INDEX)))
+            total += p->files[i].size;
+    }
+    if (grown && zi != SIZE_MAX) {
+        if (mp_p5z_zpk(p, &z, e) != 0) return -1;
+        total += mp_zpk_stored_bytes(z);
+    }
     mp_progress prog;
     mp_progress_init(&prog, "Extracting the folder", total, progress);
     int rc = 0;
@@ -110,10 +118,11 @@ int mp_unpack_folder_ex(mp_p5z *p, const char *out_dir, uint64_t volume_limit, u
         if (role == MP_ROLE_ORIGINAL || (grown && (role == MP_ROLE_VOLUME || role == MP_ROLE_ZPK_INDEX))) continue;
         rc = write_stored(p, i, out_dir, p->files[i].path, p->files[i].mtime, &prog, e);
     }
-    if (!rc && grown) rc = relayout_to(p, out_dir, volume_limit, &prog, e);
+    if (!rc && z) rc = relayout_to(p, z, zi, out_dir, volume_limit, &prog, e);
     if (!rc) rc = mp_cancel_check(e);
     if (!rc && progress) fprintf(stderr, "\rExtracting the folder: 100.0 %%\n");
     mp_progress_free(&prog);
+    mp_zpk_close(z);
     return rc;
 }
 

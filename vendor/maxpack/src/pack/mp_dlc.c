@@ -189,8 +189,10 @@ static int check_dlc(mp_source *s, const char *path, const char *title, const ch
 }
 
 // ---- reading a dlc_emu.ini --------------------------------------------------------------------
+// As dlc_emu 0.3 reads it (DlcIniParser in its dlc_content.cpp), for the fields that decide what it takes
+// and where: content_id, label (or entitlement_label) and mount_point.
 
-static int blank(char c) { return c == ' ' || c == '\t' || c == '\r'; }
+static int blank(char c) { return c == ' ' || c == '\t'; }
 
 // [p, q) without the blanks at its ends.
 static void trim(const char **p, const char **q) {
@@ -206,31 +208,102 @@ static int is(const char *p, const char *q, const char *word) {
     return 1;
 }
 
+// A key as dlc_emu matches it: without '_' and '-', in any case (word has neither).
+static int key_is(const char *p, const char *q, const char *word) {
+    for (;; word++, p++) {
+        while (p < q && (*p == '_' || *p == '-')) p++;
+        if (p == q || !*word) return p == q && !*word;
+        if (lower((unsigned char)*p) != lower((unsigned char)*word)) return 0;
+    }
+}
+
+static int alnum(int c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+
+// A label dlc_emu takes: 1 to 16 letters and digits.
+static int label_ok(const char *s) {
+    size_t n = strlen(s);
+    if (n == 0 || n > 16) return 0;
+    for (size_t i = 0; i < n; i++)
+        if (!alnum((unsigned char)s[i])) return 0;
+    return 1;
+}
+
+// dlc_emu holds a value in 128 bytes: a longer one spoils its section.
+#define DLC_VALUE 128
+
 typedef struct {
     int kind;   // 0 none (or another kind), 1 PSAC, 2 PSAL
-    char cid[37], mount[64];
-    int have_cid;
+    int bad;    // a value dlc_emu cannot hold: it skips the section
+    char cid[DLC_VALUE], label[DLC_VALUE], mount[DLC_VALUE];   // "" when not given
 } section;
 
-// The DLC of a section that has ended, when it is one.
-static int close_section(section *sec, mp_dlc_list *out, size_t *cap) {
-    if (!sec->kind || !sec->have_cid || out->n >= MP_DLC_MAX_ENTRIES) return 0;
-    if (out->n == *cap) {
-        size_t c = *cap ? *cap * 2 : 8;
+typedef struct {
+    mp_dlc_list *out;
+    size_t cap;
+    char (*labels)[17];   // the label of each one listed: dlc_emu takes a label once
+    unsigned autos;       // the [PSAC] that got /app0/addcont<n> for want of a mount_point
+} lister;
+
+static void value(section *sec, char *to, const char *v, const char *ve) {
+    size_t n = (size_t)(ve - v);
+    if (n >= DLC_VALUE) {
+        sec->bad = 1;
+        return;
+    }
+    memcpy(to, v, n);
+    to[n] = 0;
+}
+
+// The DLC of a section that has ended, when dlc_emu takes it: 0, or -1 out of memory.
+static int close_section(const section *sec, lister *l) {
+    mp_dlc_list *out = l->out;
+    if (!sec->kind || sec->bad || out->n >= MP_DLC_MAX_ENTRIES) return 0;
+    // a content ID dlc_emu takes: 36 characters, the 16 after its last '-' letters and digits (and, for
+    // MaxPack to show it, every one printable)
+    size_t cl = strlen(sec->cid);
+    if (cl != 36) return 0;
+    for (size_t i = 0; i < cl; i++)
+        if ((unsigned char)sec->cid[i] <= 0x20 || (unsigned char)sec->cid[i] >= 0x7F) return 0;
+    const char *dash = strrchr(sec->cid, '-');
+    if (!dash || strlen(dash + 1) != 16) return 0;
+    for (const char *c = dash + 1; *c; c++)
+        if (!alnum((unsigned char)*c)) return 0;
+    // its label, the one given or the content ID's, taken once
+    const char *label = sec->label[0] ? sec->label : dash + 1;
+    if (!label_ok(label)) return 0;
+    for (size_t i = 0; i < out->n; i++)
+        if (!strcmp(l->labels[i], label)) return 0;
+    // its mount point: the one given, or /app0/addcont<n> for a [PSAC]; dlc_emu holds 15 characters
+    char mount[16] = "";
+    unsigned automatic = 0;
+    if (sec->mount[0]) {
+        if (strlen(sec->mount) >= sizeof mount) return 0;
+        snprintf(mount, sizeof mount, "%s", sec->mount);
+    } else if (sec->kind == 1) {
+        int m = snprintf(mount, sizeof mount, "/app0/addcont%u", l->autos);
+        if (m < 0 || (size_t)m >= sizeof mount) return 0;
+        automatic = 1;
+    }
+    if (out->n == l->cap) {
+        size_t c = l->cap ? l->cap * 2 : 8;
         mp_dlc *g = realloc(out->v, c * sizeof *g);
         if (!g) return -1;
         out->v = g;
-        *cap = c;
+        char (*b)[17] = realloc(l->labels, c * sizeof *b);
+        if (!b) return -1;
+        l->labels = b;
+        l->cap = c;
     }
+    snprintf(l->labels[out->n], sizeof l->labels[out->n], "%s", label);
     mp_dlc *d = &out->v[out->n++];
     memset(d, 0, sizeof *d);
     memcpy(d->content_id, sec->cid, sizeof d->content_id);
     d->data = sec->kind == 1;
-    // a mount point dlc_emu takes (at most 15 characters) in the game: "/app0/<folder>"
-    size_t ml = strlen(sec->mount);
-    if (d->data && ml > 6 && ml <= 15 && !strncmp(sec->mount, "/app0/", 6) && !strstr(sec->mount, "..") &&
-        sec->mount[ml - 1] != '/')
-        snprintf(d->folder, sizeof d->folder, "%s", sec->mount + 6);
+    l->autos += automatic;
+    // a mount point in the game: "/app0/<folder>"
+    size_t ml = strlen(mount);
+    if (d->data && ml > 6 && !strncmp(mount, "/app0/", 6) && !strstr(mount, "..") && mount[ml - 1] != '/')
+        snprintf(d->folder, sizeof d->folder, "%s", mount + 6);
     return 0;
 }
 
@@ -241,20 +314,31 @@ int mp_dlc_parse(const char *ini, size_t len, mp_dlc_list *out) {
         ini += 3;
         len -= 3;
     }
-    size_t cap = 0;
+    lister l = {out, 0, NULL, 0};
     section sec;
     memset(&sec, 0, sizeof sec);
+    int failed = 0;
     const char *end = ini + len;
-    for (const char *line = ini; line < end;) {
+    for (const char *line = ini; line < end && *line;) {   // dlc_emu stops at a line that starts with NUL
         const char *nl = memchr(line, '\n', (size_t)(end - line));
-        const char *p = line, *q = nl ? nl : end;
+        const char *p = line, *q = nl ? nl : end, *cut;
         line = nl ? nl + 1 : end;
+        // a line as dlc_emu reads it: up to a NUL, a '\r' or a '#', without the blanks at its ends
+        if ((cut = memchr(p, 0, (size_t)(q - p)))) q = cut;
+        if ((cut = memchr(p, '\r', (size_t)(q - p)))) q = cut;
+        if ((cut = memchr(p, '#', (size_t)(q - p)))) q = cut;
         trim(&p, &q);
         if (p == q) continue;
-        if (*p == '[' && q[-1] == ']') {
-            if (close_section(&sec, out, &cap) != 0) goto oom;
+        if (*p == '[') {
+            if (close_section(&sec, &l) != 0) goto oom;
             memset(&sec, 0, sizeof sec);
-            sec.kind = is(p + 1, q - 1, "PSAC") ? 1 : is(p + 1, q - 1, "PSAL") ? 2 : 0;
+            const char *s = p + 1, *se = memchr(s, ']', (size_t)(q - s));
+            if (se) trim(&s, &se);
+            if (!se || s == se) {   // dlc_emu then reads no DLC of the file
+                failed = 1;
+                break;
+            }
+            sec.kind = is(s, se, "PSAC") ? 1 : is(s, se, "PSAL") ? 2 : 0;
             continue;
         }
         const char *eq = memchr(p, '=', (size_t)(q - p));
@@ -262,27 +346,16 @@ int mp_dlc_parse(const char *ini, size_t len, mp_dlc_list *out) {
         const char *k = p, *ke = eq, *v = eq + 1, *ve = q;
         trim(&k, &ke);
         trim(&v, &ve);
-        size_t vl = (size_t)(ve - v);
-        if (is(k, ke, "content_id")) {
-            int ok = vl == 36;
-            for (size_t i = 0; ok && i < vl; i++) ok = (unsigned char)v[i] > 0x20 && (unsigned char)v[i] < 0x7F;
-            sec.have_cid = ok;
-            if (ok) {
-                memcpy(sec.cid, v, 36);
-                sec.cid[36] = 0;
-            }
-        } else if (is(k, ke, "mount_point")) {
-            if (vl < sizeof sec.mount) {
-                memcpy(sec.mount, v, vl);
-                sec.mount[vl] = 0;
-            } else {
-                sec.mount[0] = 0;
-            }
-        }
+        if (key_is(k, ke, "contentid")) value(&sec, sec.cid, v, ve);
+        else if (key_is(k, ke, "label") || key_is(k, ke, "entitlementlabel")) value(&sec, sec.label, v, ve);
+        else if (key_is(k, ke, "mountpoint")) value(&sec, sec.mount, v, ve);
     }
-    if (close_section(&sec, out, &cap) != 0) goto oom;
+    if (!failed && close_section(&sec, &l) != 0) goto oom;
+    free(l.labels);
+    if (failed) mp_dlc_list_free(out);
     return 0;
 oom:
+    free(l.labels);
     mp_dlc_list_free(out);
     return -1;
 }

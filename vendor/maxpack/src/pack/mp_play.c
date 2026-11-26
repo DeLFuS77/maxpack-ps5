@@ -77,10 +77,23 @@ mp_play *mp_play_open(const char *p5z, char *err, size_t errlen) {
         put_err(err, errlen, NULL, "invalid .p5z: the header's archive_id is not ampr_zstd.index's");
         goto fail;
     }
+    // maxpack.image is made of the volume records (mp_play_json): they must be the packs' volumes, every
+    // one and no other. How many the console takes is its own check (it says "too many volumes", which a
+    // refusal here would turn into "damaged"); info --play checks it too.
+    if (mp_play_volume_count(p) != mp_zpk_volume_count(p->zpk)) {
+        put_err(err, errlen, NULL, "invalid .p5z: its volumes are not those of its packs");
+        goto fail;
+    }
     return p;
 fail:
     mp_play_close(p);
     return NULL;
+}
+
+size_t mp_play_volume_count(const mp_play *p) {
+    size_t nvol = 0;
+    for (size_t k = 0; k < p->p5z->nfiles; k++) nvol += p->p5z->files[k].role == MP_ROLE_VOLUME;
+    return nvol;
 }
 
 void mp_play_close(mp_play *p) {

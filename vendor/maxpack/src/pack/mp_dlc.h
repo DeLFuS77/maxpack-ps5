@@ -62,11 +62,17 @@ int mp_dlc_content_id_ok(const char *cid);
 // 1 if a DLC has files of its own: one outside sce_sys/ that is not the OS's (mp_complete_is_junk).
 int mp_dlc_has_data(mp_source *s);
 
-// The DLC a dlc_emu.ini lists (a game's, written by MaxPack or by hand), as dlc_emu would take them:
-// each [PSAC] (data, its folder the mount point less "/app0/", "" when it is not one dlc_emu takes) and
-// [PSAL] section with a content_id of 36 printable characters, in their order, at most
-// MP_DLC_MAX_ENTRIES; other sections and keys are not read. More than MP_DLC_INI_MAX bytes lists none,
-// as dlc_emu reads none. Files and bytes are 0 (see mp_dlc_sizes). 0, or -1 out of memory.
+// The DLC a dlc_emu.ini lists (a game's, written by MaxPack or by hand), as dlc_emu 0.3 takes them: each
+// [PSAC] (data, its folder the mount point less "/app0/", "" when it is not in the game) and [PSAL]
+// section, in their order, at most MP_DLC_MAX_ENTRIES. As dlc_emu reads it: '#' starts a comment, spaces
+// and tabs around a section's name, a key or a value do not count, and a key is the same without '_', '-'
+// and case; a content_id dlc_emu does not take (36 printable characters, the 16 after its last '-'
+// letters and digits), a label (label, else the content ID's 16) it does not take or already took, a
+// mount_point of 16 characters or more, or a value of 128 or more leaves the section out; a [PSAC] with
+// no mount_point gets /app0/addcont<n>, n counting the ones that got one so; a section with no ']' or no
+// name lists none, as dlc_emu reads none. Other sections and keys are not read. More than MP_DLC_INI_MAX
+// bytes lists none, as dlc_emu reads none. Files and bytes are 0 (see mp_dlc_sizes). 0, or -1 out of
+// memory.
 int mp_dlc_parse(const char *ini, size_t len, mp_dlc_list *out);
 // The files and bytes of each DLC with a folder: those of files[0..n) in it (ASCII case aside).
 void mp_dlc_sizes(mp_dlc_list *l, const mp_cfile *files, size_t n);

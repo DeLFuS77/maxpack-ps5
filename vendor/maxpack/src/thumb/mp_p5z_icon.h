@@ -20,7 +20,7 @@ typedef struct {
 // Caps: a .p5z over any of them gives no icon.
 #define MP_ICON_INDEX_MAX (64u << 20)     // compressed index
 #define MP_ICON_UINDEX_MAX (128u << 20)   // uncompressed index
-#define MP_ICON_MAX (8u << 20)            // the icon
+#define MP_ICON_MAX (8u << 20)            // the icon (in at most 64 frames, each no larger than zstd makes it)
 
 // 0: *png (malloc'd; the caller frees it) and *len set; 1: the .p5z has no icon; -1: not a readable
 // .p5z, or over a cap (err says why). err may be NULL.

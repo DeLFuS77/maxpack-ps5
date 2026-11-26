@@ -18,7 +18,9 @@
 #define FRAME_REC 16u
 #define MANIFEST_REC 64u
 #define FRAME_MAX (32u << 20)   // the .p5z's frames are of up to 32 MiB
-#define CFRAME_MAX ZSTD_COMPRESSBOUND(FRAME_MAX)
+// The packer gives an icon of up to MP_ICON_MAX one frame of FRAME_MAX: more than this is not an icon it
+// wrote, and each frame reads at most what zstd takes for its size, so an icon reads about its own size.
+#define ICON_FRAMES_MAX 64u
 #define ROLE_LOOSE 0
 #define STORE_RAW 0
 #define STORE_FRAMES 1
@@ -185,7 +187,7 @@ int mp_p5z_icon_read(const mp_icon_src *src, uint8_t **png, size_t *len, char *e
     const uint8_t *frames = ix + hs + FILE_REC * nf;
     size_t in_cap = 0;
     if (storage == STORE_FRAMES) {
-        if ((uint64_t)first + nframes > nfr) {
+        if ((uint64_t)first + nframes > nfr || nframes > ICON_FRAMES_MAX) {
             fail(err, errlen, "invalid .p5z: the icon's frames");
             goto done;
         }
@@ -193,7 +195,7 @@ int mp_p5z_icon_read(const mp_icon_src *src, uint8_t **png, size_t *len, char *e
         for (uint32_t k = 0; k < nframes; k++) {
             const uint8_t *fr = frames + (size_t)FRAME_REC * (first + k);
             uint32_t csize = rd32(fr + 8), usize = rd32(fr + 12);
-            if (rd64(fr) != pos || usize == 0 || usize > FRAME_MAX || csize > CFRAME_MAX) {
+            if (rd64(fr) != pos || usize == 0 || usize > FRAME_MAX || csize > ZSTD_COMPRESSBOUND(usize)) {
                 fail(err, errlen, "invalid .p5z: the icon's frames");
                 goto done;
             }

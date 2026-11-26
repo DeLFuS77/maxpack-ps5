@@ -33,17 +33,30 @@ int mp_compact(const char *in, const char *out, unsigned threads, uint64_t volum
     size_t zlen = 0;
     int rc = -1, laid = 0;
     if (mp_p5z_open(in, &p, e) != 0) return -1;
-    if (mp_pack_out_p5z(out, threads, &w, e) != 0) goto done;
     uint64_t total = 0;
     size_t zrec = SIZE_MAX;
+    uint32_t nvol = 0;
     for (size_t i = 0; i < p->nfiles; i++) {
         if (p->files[i].role == MP_ROLE_ZPK_INDEX) zrec = i;
         if (p->files[i].role != MP_ROLE_VOLUME) total += p->files[i].data_len;
+        nvol += p->files[i].role == MP_ROLE_VOLUME;
     }
     if (zrec != SIZE_MAX) {
         if (mp_p5z_zpk(p, &z, e) != 0) goto done;
         total += mp_zpk_stored_bytes(z);
     }
+    // the volumes are copied as its packs lay them out: a volume they do not have, or a packed file with no
+    // packs, would be left out of the copy without a word
+    if ((z ? mp_zpk_volume_count(z) : 0) != nvol) {
+        mp_err_set(e, "invalid .p5z: its volumes are not those of its packs");
+        goto done;
+    }
+    for (size_t i = 0; !z && i < p->man.n; i++)
+        if (p->man.v[i].flags & MP_MANIFEST_PACKED) {
+            mp_err_set(e, "invalid .p5z: its manifest has files in packs it does not have (%s)", p->man.v[i].path);
+            goto done;
+        }
+    if (mp_pack_out_p5z(out, threads, &w, e) != 0) goto done;
     mp_progress prog;
     mp_progress_init(&prog, "Copying the .p5z", total, progress);
     // the records of both versions are in a fresh pack's order: loose files, volumes, ampr_emu.index, the

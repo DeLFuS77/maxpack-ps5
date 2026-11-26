@@ -228,6 +228,11 @@ int mp_grow_run(const char *p5z, mp_source *dump, mp_grow_known known, void *kct
         mp_err_set(e, "invalid .p5z: its volumes are not those of its packs");
         goto done;
     }
+    // what is appended goes with the header's archive_id and level, which must be the old packs'
+    if (z && (memcmp(mp_zpk_archive_id(z), p->man.archive_id, 16) || mp_zpk_level(z) != p->man.level)) {
+        mp_err_set(e, "invalid .p5z: its header names another archive_id or level than its packs");
+        goto done;
+    }
     for (size_t i = 0; !z && i < p->man.n; i++)
         if (p->man.v[i].flags & MP_MANIFEST_PACKED) {
             mp_err_set(e, "invalid .p5z: its manifest has files in packs it does not have (%s)", p->man.v[i].path);

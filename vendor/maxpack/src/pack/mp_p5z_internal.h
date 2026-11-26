@@ -5,6 +5,7 @@
 
 #include "mp_p5z.h"
 #include "mp_platform.h"
+#include "mp_play.h"
 
 typedef struct {
     char *path;
@@ -24,8 +25,8 @@ typedef struct {
 // .p5z before the append that wrote this index; its footer then is its last 32 bytes), u32 grown (how
 // many appends) and u32 0.
 #define P5Z_INDEX_HEADER_V2 72u
-// The most volumes maxpack.image takes (ampr-emu-ng's p5z mode): a .p5z grows only up to that many.
-#define P5Z_PLAY_MAX_VOLUMES 256u
+// A .p5z grows only up to the most volumes maxpack.image takes (MP_PLAY_MAX_VOLUMES).
+#define P5Z_PLAY_MAX_VOLUMES MP_PLAY_MAX_VOLUMES
 
 struct mp_p5z {
     mp_file *f;
