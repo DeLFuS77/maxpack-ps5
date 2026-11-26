@@ -1141,6 +1141,9 @@ pub fn refresh_fakelib(src: &Source, s: &Settings) -> Result<()> {
         // cannot start the game half-way with that fakelib/; the build stops at the same check (an OldNg).
         Err(e) if old_ng(&e) => {
             log!("{} ({}): fakelib refresh: {e}; rebuilding", src.title_id, src.path.display());
+            // `.done` first: a build that fails before it clears the cache (an I/O error) must not leave
+            // one that still says it is built, with the refused copy in its fakelib/.
+            let _ = fs::remove_file(dir(&src.title_id).join(DONE));
             return build(src, s);
         }
         r => r,

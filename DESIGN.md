@@ -171,8 +171,9 @@ is ignored as a whole). The web UI edits the same file.
   `fakelib/` got, which is what the game loads, made after the state `check` compares was read. A file swapped in
   the ampr dir during a long build is therefore either the refused copy (an OldNg, nothing recorded) or one that
   differs from the record (the next pass refreshes and checks it). A fakelib refresh of a built cache of a grown
-  `.p5z` (the ampr dir changed) whose copy is refused does not keep that `fakelib/`: it rebuilds, which clears the
-  cache and stops the same way. A `.p5z` that
+  `.p5z` (the ampr dir changed) whose copy is refused does not keep that `fakelib/`: it removes `.done` and rebuilds,
+  which clears the cache and stops the same way (so a rebuild that fails before clearing, an I/O error, leaves no
+  cache that says it is built). A `.p5z` that
   never grew is not looked at (an older ampr-emu-ng plays it as before). A grown `.p5z`'s `maxpack.image` has a line
   for every volume, as the description lists them: a volume with no chunk, or with room no chunk uses, keeps its
   region (ampr-emu-ng checks each chunk against its own record).
