@@ -17,8 +17,10 @@ What changed in each version of MaxPack for the console. The format follows
   `.p5z` straight to a drive of the console (`maxpack send`), with the six-digit pairing code that only the
   console's own screen shows. A send cut short goes on where it was, also after a restart. The console checks
   what arrived with the quick verify: a `.p5z` that checks out shows up in the library, one that does not
-  stays aside with what is wrong. A banner follows it on every screen, with Cancel. Off by default; wrong codes
-  lock the sender out for a minute.
+  stays aside with what is wrong. A banner follows it on every screen, with **Stop** (keeps what arrived) and
+  **Delete what arrived** (asks first); a send nobody finishes pauses after 10 minutes, and Settings lists the
+  files sends left behind. Off by default, and only the console's own browser turns it on; wrong codes lock
+  the sender out for a minute.
 
 ### Fixed
 

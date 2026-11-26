@@ -925,7 +925,8 @@ Note for each test the size of the `.p5z`, the time and the MB/s the sheet shows
     unpacked).
   - Put the good copy back. Expected: the sheet says "Not verified on this console yet." (another file).
 - [ ] **12.5. What a verify waits for.**
-  - With a game running, press "Verify quickly". Expected: "Close the game first."; the log says which game.
+  - With a game started from the home screen (not with MaxPack's Play, which greys the buttons while its game
+    runs), press "Verify quickly". Expected: "Close the game first."; the log says which game.
   - With an install running in the Install tab, press it. Expected: "The installer is busy: try again when its
     job ends."
   - While a verify runs: start an install in the Install tab. Expected: "MaxPack is verifying a .p5z or
@@ -951,12 +952,16 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
   - In a browser on the PC, `http://<ip>:8095`, Settings. Expected: the switch is on, and instead of the code
     "For safety, the code shows only on the console's own screen: ...". `http://<ip>:8095/api/state` has
     `"pairing":{"on":true,"code":null,...}`, and `http://<ip>:8095/api/settings` has no code either.
+  - Still on the PC: turn the switch off. Expected: it goes off, and stays greyed with "To turn it on, open MaxPack
+    in the console's own browser ...". `curl -X POST --data on http://<ip>:8095/api/pairing` and `curl -X POST
+    http://<ip>:8095/api/pairing/new` answer 403 `console_only`. Turn it on again from the console: the code is the
+    same as before.
   - In `/data/maxpack/config.toml` (FTP): `receive_from_pc = true` and `receive_code`. With `debug` on,
     `http://<ip>:8095/file/data/maxpack/config.toml` answers 404.
 - [ ] **13.3. A wrong code.**
   - Run `maxpack send` with a wrong code five times. Expected: a wrong-code answer each time; the sixth answers
-    that it is locked for a minute; the log has `receive: wrong pairing code from <PC address>` (never a code)
-    and `refused for N s more`. After a minute the right code works.
+    that it is locked for a minute; the log has one line, `receive: <PC address> locked out for 60 s after 5 wrong
+    pairing codes in a row` (never a code), and no line per wrong code. After a minute the right code works.
 - [ ] **13.4. A send that works.**
   - `maxpack send "<small game>.p5z" <ip> --code <code> --drive usb0`. Expected on the console: a banner on
     every screen, "Receiving <name> from the PC on USB 1: N % (...), M MB/s.", then "Checking <name> as it
@@ -971,9 +976,9 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
     back. Expected: the PC goes on where it was (its retries) and it ends as in 13.4.
   - Send it again to another drive; halfway end the PC's command (Ctrl+C) and run the same command again.
     Expected: it goes on from where it was, not from 0 (the log says `the PC goes on at N`).
-  - Once more; halfway stop MaxPack on the console (Settings > Stop) and start it from its tile, turn nothing
-    on (the switch stays on), and run the same command again. Expected: `resuming the file there at N bytes`
-    and it ends as in 13.4.
+  - Once more; halfway stop MaxPack on the console ("Stop MaxPack" in the top bar) and start it from its tile
+    (the switch stays on), and run the same command again. Expected: `resuming the file there at N bytes`, N about
+    64 MB short of where it stopped (the last 64 MB are sent again), and it ends as in 13.4.
 - [ ] **13.6. What a start refuses.**
   - The small game again to the same drive. Expected: the PC says the `.p5z` is already there.
   - A `.p5z` larger than 4 GiB to a FAT32 drive (optional). Expected: refused as FAT32.
@@ -982,16 +987,28 @@ In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
     another PC (or another window) of another game. Expected: busy.
   - While a send runs: the Install tab's Install says "MaxPack is verifying a .p5z or receiving a game from
     the PC: ..."; "Verify quickly" on a sheet says "A game is arriving from the PC: ..."; unmounting the target
-    drive is refused; turning the switch off says "A game is arriving from the PC: cancel it first."
+    drive is refused; turning the switch off says "A game is arriving from the PC: stop it first."
 - [ ] **13.7. A damaged copy.**
   - Send the damaged copy of 12.4. Expected: "<name> arrived damaged: ampr_zstd-00N.pak do not match. It stays
     as <path>.maxpack-recv: ..." in the banner (in amber), the PC ends with an error naming that volume, and the
     `.maxpack-recv` is there; the library does not list it.
   - Without cancelling, send the good copy with that name. Expected: it starts from 0 (the damaged one is not
     resumed), and it checks out.
-  - Send the damaged copy once more (to another drive), and Cancel in the banner. Expected: "The receive of
-    <name> was cancelled: ..." and the `.maxpack-recv` is gone.
-- [ ] **13.8. Cancel from the console, and a new code.**
-  - During a send, Cancel in the banner. Expected: the PC stops with a "cancelled" answer, the `.maxpack-recv`
-    is gone, the log says `cancelled at N of M bytes`.
+  - Send the damaged copy once more (to another drive). In the banner, "Delete what arrived". Expected: it asks
+    first, with the path and the size (Cancel keeps it); confirmed, "The receive of <name> was cancelled: ..." and the
+    `.maxpack-recv` is gone.
+- [ ] **13.8. Stop, Delete, a send the PC leaves, and a new code.**
+  - During a send, on the console with the D-pad: from the top bar, Down. Expected: the focus lands on "Stop (keep
+    what arrived)", never on "Delete what arrived".
+  - Press Stop. Expected: "The receive of <name> is paused: ... stays as <path>. Send it again from the PC ...";
+    the PC stops; the Install tab installs again. Run the same send again. Expected: it goes on exactly where it was
+    (`resuming`, no 64 MB back-off) and ends as in 13.4.
+  - During another send, Delete what arrived and confirm. Expected: the PC stops with a "cancelled" answer, the
+    `.maxpack-recv` is gone, the log says `cancelled at N of M bytes`.
+  - Start a send and end the PC's command (Ctrl+C) without running it again. Expected: within 10 minutes the
+    banner says the receive is paused (`nothing from the PC for 10 min` in the log) and installs, verifies and the
+    switch work again. Settings lists the `.maxpack-recv` under "Unfinished games from the PC" with its size;
+    Delete asks first and removes it.
+  - Fill a USB drive's free space to less than the game (optional). Expected: the PC is refused with how much is
+    missing; if the drive fills during the send, the receive pauses with "the drive is full: N more bytes needed".
   - "New code" in Settings. Expected: the PC's old code is refused, the new one works.

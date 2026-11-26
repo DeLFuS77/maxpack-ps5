@@ -107,7 +107,7 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `auto_remove_missing` | true | remove a title from the home screen when its source stays missing for `auto_remove_delay_seconds` (the cache stays; see Flow) |
 | `auto_remove_delay_seconds` | 300 | how long a source must stay missing before `auto_remove_missing` removes its title (1..86400) |
 | `notify` | true | system toasts |
-| `receive_from_pc` | false | Settings > "Receive games from the PC" (Receive from the PC, below): off, every `/api/receive/*` route answers 403 `receive_off`. Set only by `POST /api/pairing` (`POST /api/settings` refuses the key and keeps the file's value) |
+| `receive_from_pc` | false | Settings > "Receive games from the PC" (Receive from the PC, below): off, every `/api/receive/*` route answers 403 `receive_off`. Set only by `POST /api/pairing` (`POST /api/settings` refuses the key and keeps the file's value); turned on only from the console's own browser |
 | `receive_code` | "" | the six-digit pairing code the PC sends (`X-MaxPack-Code`): made by the console when the switch is first turned on and by "New code" (`POST /api/pairing/new`), evenly over the million codes from `/dev/urandom`; never typed in the file (one that is not six digits is logged and left empty). Never in `GET /api/settings`, never logged, never served by `/file/data/...`: `/api/state` `pairing.code` gives it only to the page open on the console itself |
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
@@ -845,11 +845,15 @@ minute):
   `{kind, at, ok, files_ok, files_bad, bad:[{what, name}]}` while its file is the one verified, else null.
 - `/api/receive/*`: the PC's routes (Receive from the PC, below), each behind the switch, the pairing code and its lockout,
   answered in JSON (`{error, detail}` on a refusal; the Host and Origin checks above answer 403 `{error:"forbidden"}`).
-  `POST /api/pairing`, body exactly `on` or `off` -> 204 (409 text for `off` while a receive is under way);
-  `POST /api/pairing/new` -> 204; `POST /api/pairing/cancel` -> the receive of this run cancelled as the PC's cancel
-  does. `/api/state` `receive`: `{seq, state, name, drive, path, dest, size, have, from, mbps, cancelling, verify:{bytes,
-  total, nbad, bad:[{what, name, why}]}|null, error, elapsed_ms}` of this run (never its token), or null; `pairing`:
-  `{on, code, here}`, `code` only for a request from loopback (the console's own browser), else null.
+  `POST /api/pairing`, body exactly `on` or `off` -> 204 (`on` only from loopback, else 403 `{code:"console_only"}`;
+  409 text for `off` while a receive is under way); `POST /api/pairing/new` -> 204 (only from loopback, as `on`);
+  `POST /api/pairing/stop` -> the receive under way paused, its file kept; `POST /api/pairing/cancel` -> the receive of
+  this run (paused or failed too) cancelled as the PC's cancel does; `POST /api/pairing/left`, body a path of
+  `receive_left` -> 204 once deleted, 404 otherwise. `/api/state` `receive`: `{seq, state:"receiving"|"verifying"|
+  "done"|"failed"|"cancelled"|"paused", name, drive, path, dest, size, have, from, mbps, cancelling, verify:{bytes, total,
+  nbad, bad:[{what, name, why}]}|null, error, elapsed_ms}` of this run (never its token), or null; `receive_left`:
+  `[{path, name, size}]`; `pairing`: `{on, code, here}`, `code` only for a request from loopback (the console's own
+  browser), else null.
 - `/api/inst/<x>`: the installer's own API as `/api/<x>` (`maxpack_logic::inst::installer_path`): GET `state`,
   `icon?p5z=`; POST `scan`, `probe`, `install`, `pause`, `verify`, `uninstall`, `discard` (JSON bodies, see the
   engine's `src/web/mp_api.h`); anything else 404. Method, Host, Content-Type and body go as sent, `loopback`
@@ -971,8 +975,9 @@ Host and Origin checks as the payload (with a hidden game, a recorded crash, Pla
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, a
 `.p5z` verified OK and one found damaged with a verify that runs and refuses as the payload does, the receive's routes
-answered as the payload's (nothing written; the pairing code only to a page opened at localhost) with `--receive
-demo|failed` for a receive that runs by itself, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
+answered as the payload's (nothing written; the pairing code, turning receiving on and a new code only to a page opened
+at localhost; a receive that pauses, Stop and Delete; one file a send left) with `--receive demo|failed|paused` for a
+receive that runs by itself or one paused, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
 ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
 refuses, or with `--ampr-fail older` refuses an older release).
 
@@ -984,7 +989,8 @@ the installer runs or queues one (`installer::idle`) or another console job runs
 `verify_running`, `receive_running`; the receive's start says `busy`), and the installer's `install`, `verify` and
 `uninstall` are 409 `console_busy` while one runs. `jobs::gate` is held while a console job checks and sets itself up
 and while web.rs forwards such an installer request (`hold_off`), so neither slips in beside the other. A receive
-counts from its start to the end of its verify, also while it waits for the PC: the page's banner cancels it. Any game
+counts from its start to the end of its verify, also while it waits for the PC, but 10 minutes with nothing from the PC
+pause it (Receive from the PC), and the banner's Stop pauses it at once, its file kept. Any game
 running blocks a verify: MaxPack's launches (`running`) and every process's app info title id
 (`launch::games_running`, as `launch::title_runs` reads one; not MaxPack's tile, not a system app; a walk that fails
 counts as a game). Quitting (`POST /api/quit`, another copy taking the port) cancels a verify and stops a receive's
@@ -1019,30 +1025,41 @@ a file of the game. A `.p5z` received from the PC is recorded as verified quickl
 ## Receive from the PC (`src/receive.rs`, `maxpack_logic::receive`)
 MaxPack on the PC sends a `.p5z` with `maxpack send <game.p5z> <ps5-ip> --code <6 digits> [--drive <id>]`. The routes are
 on the page's server (port 8095), as the shared contract of both sides says:
-- **The switch and the code.** Settings > "Receive games from the PC" (`receive_from_pc`, off by default; `POST
-  /api/pairing` turns it on and off at once, off is refused while a receive is under way) and the pairing code
-  (`receive_code`: six digits made when the switch is first turned on, `receive::code_from` evenly over the million codes
-  from `/dev/urandom`; "New code", `POST /api/pairing/new`, replaces it and the old one stops working). The page shows
-  the code only on the console's own screen: `/api/state` `pairing.code` is given only to a request from loopback (the
-  tile opens the page at 127.0.0.1), since anyone on the network can read the page and the code is what keeps them from
-  writing to the drives; elsewhere the row says where to see it. The code is never logged nor served by `/file/data/...`.
+- **The switch and the code.** Settings > "Receive games from the PC" (`receive_from_pc`, off by default) and the pairing
+  code (`receive_code`: six digits made when the switch is first turned on, `receive::code_from` evenly over the million
+  codes from `/dev/urandom`). `POST /api/pairing` turns the switch on and off at once; "New code", `POST
+  /api/pairing/new`, replaces the code and the old one stops working. Turning it on and a new code come only from the
+  console's own browser (`receive::pairing_allowed`: a request from loopback; elsewhere 403 `{code:"console_only"}`), so
+  no device on the network can undo "off by default" or break a send; turning it off comes from anywhere, and is refused
+  while a receive is under way (Stop it first). It holds the jobs gate across its check and save, and a start looks at
+  the switch again under that gate, so the two cannot race. The page shows the code only on the console's own screen:
+  `/api/state` `pairing.code` goes only to a request from loopback (the tile opens the page at 127.0.0.1), since anyone
+  on the network can read the page and the code is what keeps them from writing to the drives; elsewhere the row says
+  where to see it, and the switch is greyed while off. The code is never logged nor served by `/file/data/...`.
 - **The gate** of every `/api/receive/*` route (`receive::gate`), after the page's Host and Origin checks: off, 403
   `receive_off`; no `X-MaxPack-Code` or not the code, 401 `bad_code` (compared in constant time; a missing header is not
   counted); 5 wrong codes in a row from one address (an IPv4 address, or an IPv6 /64), 429 `locked` for 60 s, and so do
   every address 20 wrong codes from all addresses within a minute, or more than 256 addresses guessing within 30 minutes
-  (`receive::Lockout`); while locked the code is not even compared. A wrong code is logged with its address only.
+  (`receive::Lockout`); while locked the code is not even compared. A request whose query names the token of the receive
+  under way passes the lock of every address with the right code (its own address's lock still holds), so a stranger's
+  flood cannot stall a send. A lockout is logged once when it starts (`receive::LockEvent`: the address, or how many
+  wrong codes from how many addresses); single wrong codes are not logged.
 - `GET /api/receive/drives` -> `{"drives":[{"id","free","total","fs"}]}`: `internal` (`/data`), `usb0`..`usb7` and
   `ext0`..`ext1` (`/mnt/<id>`) when mounted and their `homebrew` is listed by the scan (`receive::scanned`: a scan root, or
   one level under a root that is not a drive's own root; not excluded) and is a folder or not there yet, never a link.
 - `POST /api/receive/start`, `{"name","size","drive"}` -> 200 `{"id","have"}` (`receive::start_gate`, in this order):
   400 `bad_request`; 400 `bad_name` (`receive::valid_name`: 1 to 200 bytes ending in `.p5z`, no `/`, `\`, `..`, control
-  character, none of `"*:<>?|`, no leading dot); 400 `bad_size` (under 96 bytes); 404 `no_drive`; 400 `fat32` (`fs`
-  `msdosfs` and size of 4 GiB or more); 409 `exists` (anything at `<homebrew>/<name>`, or something that is not a file at
-  `<name>.maxpack-recv`); the receive under way of the same name, drive and size goes on (its token, its `have`), any other
-  under way is 409 `busy`, as is a job of the engine; 507 `no_space` with `missing` (what is still to come plus 256 MiB).
-  A new receive makes `homebrew` if missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`): `have` is
-  its length when it is no longer than the size and did not fail its verify in this run, so a receive cut by the network
-  or a restart goes on where it was; else it is truncated to 0. The token is 16 random bytes in hex.
+  or Unicode format character (bidi overrides and isolates, zero-width characters, the soft hyphen, tags), none of
+  `"*:<>?|`, no leading dot); 400 `bad_size` (under 96 bytes); 404 `no_drive`; 400 `fat32` (`fs` `msdosfs` and the like,
+  or a drive where a write failed with EFBIG in this run, and a size of 4 GiB or more); 409 `exists` (anything at
+  `<homebrew>/<name>`, or something that is not a file at `<name>.maxpack-recv`); the receive under way of the same name,
+  drive and size goes on (its token, its `have`), any other under way is 409 `busy`, as is a job of the engine; 507
+  `no_space` with `missing` (what is still to come plus 256 MiB, less the free space). A new receive makes `homebrew` if
+  missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`). `have` is: for the same file paused in this
+  run, exactly what it had; for a file left on the disk (a restart, an earlier run), its length less 64 MiB
+  (`receive::resume_have`: a power cut during a PUT may have left a length whose tail never reached the disk), when it is
+  no longer than the size and did not fail its verify in this run; else 0, and the file is truncated. The token is 16
+  random bytes in hex.
 - `PUT /api/receive/data?id=<token>&offset=<n>`: web.rs hands its head to `receive::put` without reading the body (the
   16 KiB request limit does not apply), which streams it (up to 64 MiB, else 413 `too_large`; no Content-Length 411
   `length_required`) in 1 MiB pieces written with `pwrite` at the offset, and `fdatasync`s before answering 200
@@ -1050,21 +1067,37 @@ on the page's server (port 8095), as the shared contract of both sides says:
   receiving 409 `state`; an unknown token 404 `unknown_id`. One PUT writes at a time: another waits up to 10 s (a PUT
   whose connection is going ends within the 5 s read timeout). A body cut short keeps what arrived (`have` grows piece by
   piece): the PC asks again from its last answer, gets 409 `offset` with the real `have`, and goes on. `Expect:
-  100-continue` is answered once the request passes; otherwise a refused body is read and dropped first, so the PC reads
-  the answer rather than a reset.
+  100-continue` is answered once the request passes. A refused body is read and dropped first, so the PC reads the answer
+  rather than a reset, only up to 4 MiB, never for the gate's refusals or a body too large (`receive::drain_len`: closing
+  at once costs a stranger nothing; the PC can send `Expect: 100-continue`), and never with the writer lock held. A
+  write that fails pauses the receive (below): a full drive answers 507 `no_space` with what is really missing, EFBIG 400
+  `fat32` (and the drive counts as FAT32 for the rest of the run), anything else 500 `write` (the drive went, an I/O
+  error: the PC does not retry it).
 - `GET /api/receive/status?id=` -> `{"have","size","state":"receiving|verifying|done|failed|cancelled","verify":{bytes,
-  total, nbad, bad:[{kind, volume, name, expected, found, why}]}|null,"error"}`; it answers for a receive that ended too,
-  until another starts or the payload restarts.
+  total, nbad, bad:[...]}|null,"error"}`; each item of `bad` is as the PC's `maxpack verify --quick --json` gives it:
+  `{"volume":N}` for a volume or `{"path":"..."}` for a file, with `why` (`sha256`, `header`, `data`, `read`), `expected`
+  and, when something whole could be hashed, `found`. It answers for a receive that ended too, until another starts or
+  the payload restarts.
 - `POST /api/receive/finish?id=` (only with every byte: else 409 `incomplete` with `have`) -> 202 and the status: the file
   is `fsync`ed, then the engine's quick verify runs on it (state `verifying`, its progress in `verify`). All of it
   matches: renamed to `<name>` (only onto nothing; the folder `fsync`ed), `done`, recorded as verified quickly, and the
   scan loop is woken, so the library lists it on that pass. Damaged or unreadable: `failed`, the file stays
   `.maxpack-recv` and `verify.bad` and `error` say what failed; a start of that name begins again from 0.
-- `POST /api/receive/cancel?id=` (the page's `POST /api/pairing/cancel` for the receive of this run): the file deleted,
-  `cancelled`; a verify under way stops first (up to 3 s); a receive that is `done` is 409 `state` (its `.p5z` is the
-  library's).
-- Nothing else is written: the bytes go only to `<drive>/homebrew/<name>.maxpack-recv` and its rename. The page shows a
-  receive in a banner over every screen (progress, MB/s, the verify, how it ended, Cancel and Close).
+- `POST /api/receive/cancel?id=`: the file deleted, `cancelled`; a verify under way stops first (up to 3 s); a receive that
+  is `done` is 409 `state` (its `.p5z` is the library's). A cancel deletes only the file of the receive it was asked for
+  (told by its `seq`): a start that comes while it waits for a PUT to end keeps its file.
+- **Paused.** A receive with no request carrying its token for 10 minutes (`receive::idle`), one stopped from the page,
+  and one whose write failed end as `paused`: the file stays, the receive no longer holds the other jobs, and its token
+  is over as after a restart (404 `unknown_id`: the PC starts again, and a start of the same file goes on exactly where it
+  was). The page's `/api/state` `receive.state` says `paused`; the PC's status never does.
+- **The page.** A receive shows in a banner over every screen: progress and MB/s, the verify, how it ended. While it is
+  under way, "Stop (keep what arrived)" (`POST /api/pairing/stop`) pauses it (a verify under way stops first, the file
+  kept); "Delete what arrived" (`POST /api/pairing/cancel`, the receive of this run, paused or failed too) asks first; the
+  D-pad reaches Stop or Close first, never Delete. Settings lists the `.maxpack-recv` files sends left on the drives
+  (`/api/state` `receive_left`: `[{path, name, size}]`, each drive the PC may send to, read again at most every 10 s, never
+  the file of a receive under way), each with Delete behind a confirmation (`POST /api/pairing/left`, body the path: only
+  a path the list has now, `receive::may_delete_leftover`).
+- Nothing else is written: the bytes go only to `<drive>/homebrew/<name>.maxpack-recv` and its rename.
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -1114,7 +1147,8 @@ with its bar, phase, MB/s and Cancel while it runs (off while any verify runs or
 result with its date, what fails, and what to do; the report is fetched again when it changes. Settings has "Receive
 games from the PC" (a switch that acts at once) and, with it on, the pairing code in large digits with "New code" on the
 console's own screen, or a line saying where to see it elsewhere. A receive shows in a banner over every screen
-(Receive from the PC), whose Cancel and Close are in the D-pad's row of banner buttons with the update notice's.
+(Receive from the PC), whose Stop, Close and Delete are in the D-pad's row of banner buttons with the update notice's
+(Delete last). Under the code, Settings lists the files sends left on the drives, each with Delete.
 Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
 an extra one, changes a `{placeholder}` or keeps the English text.
 

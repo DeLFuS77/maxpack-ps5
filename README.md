@@ -319,6 +319,31 @@ The whole flow, from packing on the PC:
 - **Verify and uninstall** what you installed, and optionally delete the `.p5z` once the game is
   installed and verified (it rereads the whole game first).
 
+### Send games from the PC, checked when they arrive
+
+- **Turn it on on the console:** Settings > **Receive games from the PC**, from the console's own browser (its
+  tile). It shows a six-digit **pairing code**, only on the console's screen; type it in MaxPack on the PC. It is off
+  by default, and another device on the network can only turn it off.
+- **Send** with `maxpack send "<game>.p5z" <PS5 IP> --code <code> [--drive usb0]` on the PC. The `.p5z` goes to
+  `homebrew/` on the drive you pick, and a banner on the console shows its progress and speed.
+- **Checked on arrival:** the console reads what arrived and checks each volume and loose file against the SHA-256
+  the `.p5z` was written with. A copy that checks out shows up in the library; one that does not stays aside as
+  `<name>.maxpack-recv`, and the banner says what does not match.
+- **Cut short?** Run the same command again: it goes on where it was, also after a restart of the console. A send
+  nobody finishes pauses after 10 minutes and keeps what arrived; **Stop** keeps it too, **Delete what arrived**
+  (it asks first) removes it, and Settings lists what sends left behind.
+- **Safe by default:** without the code nothing is written; wrong codes lock the sender out for a minute; only a plain
+  `.p5z` name is taken, and only into a drive's `homebrew/`.
+
+### Check a `.p5z` on the console
+
+- On a `.p5z` game's sheet, **Verify quickly** reads the file at the speed of the drive and checks each volume and
+  loose file against its SHA-256: it finds a copy that was cut short or damaged. **Verify fully** also unpacks every
+  file and checks it, as `maxpack verify` does on the PC.
+- The sheet keeps the result with its date. If something is damaged it says what, and to repair the file on the PC
+  with its repair data (PAR2) or copy it again. **Copy report** includes the result without naming any file of the
+  game. A verify waits while a game runs, an install runs or a game arrives from the PC.
+
 ### Settings, with secure self-update
 
 <p align="center"><img src="docs/img/console-settings.jpg" alt="Settings: scan paths, excluded paths, emulators, ampr-emu-ng, the secure-connection check and backports"></p>
