@@ -405,15 +405,20 @@ fn publish(state: &State, r: &scan::ScanResult) {
         }
     }
 }
-/// A toast for each .p5z that cannot be played, once per path and run (the page lists them all).
+/// A toast for each .p5z that cannot be played, once per path and run (the page lists them all). One made by a
+/// newer MaxPack for the PC says so, never "damaged".
 fn warn_unplayable(s: &Settings, r: &scan::ScanResult) {
     static WARNED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
     let mut warned = WARNED.lock().unwrap_or_else(|e| e.into_inner());
-    for (path, _) in &r.unplayable {
+    for (path, u) in &r.unplayable {
         if !warned.contains(path) {
             warned.push(path.clone());
             let name = path.file_name().map_or_else(|| path.to_string_lossy(), |n| n.to_string_lossy());
-            toast(s, &i18n::p5z_unplayable(i18n::lang(), &name));
+            let text = match u {
+                maxpack_logic::p5z::Unplayable::Newer(_) => i18n::p5z_newer(i18n::lang(), &name),
+                _ => i18n::p5z_unplayable(i18n::lang(), &name),
+            };
+            toast(s, &text);
         }
     }
 }

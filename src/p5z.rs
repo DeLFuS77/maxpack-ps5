@@ -1,8 +1,9 @@
 //! A .p5z game file played without installing it, through the MaxPack engine's `mp_play_*`
 //! (vendor/maxpack src/pack/mp_play.h, linked by ps5/build.sh): open and check it, describe its
-//! loose files and volumes (maxpack_logic::p5z::PlayInfo), extract one loose file.
-use maxpack_logic::p5z::{parse_play_json, PlayInfo, Unplayable, MAX_VOLUMES};
-use std::ffi::{c_char, c_int, CStr, CString};
+//! loose files and volumes (maxpack_logic::p5z::PlayInfo), extract one loose file. For a file the engine
+//! refuses, the version its index says (`index_version`): one made by a newer MaxPack for the PC is never "damaged".
+use maxpack_logic::p5z::{crc32, footer_index, index_head_version, parse_play_json, PlayInfo, Unplayable, FOOTER_LEN, HEADER_LEN, MAX_VOLUMES};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::fs::File;
 use std::io::{self, Error, ErrorKind};
 use std::os::unix::ffi::OsStrExt;
@@ -24,6 +25,94 @@ extern "C" {
     fn mp_play_extract(p: *mut MpPlay, rel: *const c_char, dest: *const c_char, err: *mut c_char, errlen: usize) -> c_int;
     fn mp_play_close(p: *mut MpPlay);
     fn mp_play_free_str(s: *mut c_char);
+}
+
+/// zstd's decompression context, opaque.
+#[repr(C)]
+struct ZstdDCtx {
+    _private: [u8; 0],
+}
+
+/// zstd's ZSTD_inBuffer and ZSTD_outBuffer (zstd.h, stable API).
+#[repr(C)]
+struct ZstdIn {
+    src: *const c_void,
+    size: usize,
+    pos: usize,
+}
+
+#[repr(C)]
+struct ZstdOut {
+    dst: *mut c_void,
+    size: usize,
+    pos: usize,
+}
+
+// zstd's streaming decompression (vendor/maxpack third_party/zstd, linked with the engine, whose reader uses these
+// same calls).
+extern "C" {
+    fn ZSTD_createDCtx() -> *mut ZstdDCtx;
+    fn ZSTD_freeDCtx(d: *mut ZstdDCtx) -> usize;
+    fn ZSTD_decompressStream(d: *mut ZstdDCtx, output: *mut ZstdOut, input: *mut ZstdIn) -> usize;
+    fn ZSTD_isError(code: usize) -> c_uint;
+}
+
+/// A zstd context, freed on drop.
+struct DCtx(*mut ZstdDCtx);
+
+impl Drop for DCtx {
+    fn drop(&mut self) {
+        // SAFETY: a context ZSTD_createDCtx returned, freed once.
+        unsafe { ZSTD_freeDCtx(self.0) };
+    }
+}
+
+/// The version a .p5z's own index says, read past the engine (which refuses a version it does not know before it
+/// says why): the footer (maxpack_logic::p5z::footer_index), the CRC-32 of the whole compressed index as the footer
+/// gives it, and the index's first 12 bytes decompressed (index_head_version). None when any of it does not check
+/// out (cut short, damaged, an append under way, a read error).
+pub fn index_version(path: &Path) -> Option<u32> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = File::open(path).ok()?;
+    let size = f.metadata().ok()?.len();
+    if size < HEADER_LEN + FOOTER_LEN {
+        return None;
+    }
+    let mut foot = [0u8; FOOTER_LEN as usize];
+    f.seek(SeekFrom::Start(size - FOOTER_LEN)).ok()?;
+    f.read_exact(&mut foot).ok()?;
+    let at = footer_index(&foot, size)?;
+    f.seek(SeekFrom::Start(at.offset)).ok()?;
+    // SAFETY: no arguments; NULL when out of memory.
+    let d = DCtx(unsafe { ZSTD_createDCtx() });
+    if d.0.is_null() {
+        return None;
+    }
+    let mut head = [0u8; 12];
+    let mut out = ZstdOut { dst: head.as_mut_ptr().cast(), size: head.len(), pos: 0 };
+    let (mut crc, mut left) = (0u32, at.len);
+    let mut buf = vec![0u8; 1 << 20];
+    while left > 0 {
+        let n = buf.len().min(usize::try_from(left).unwrap_or(usize::MAX));
+        f.read_exact(&mut buf[..n]).ok()?;
+        crc = crc32(crc, &buf[..n]);
+        left -= n as u64;
+        let mut input = ZstdIn { src: buf.as_ptr().cast(), size: n, pos: 0 };
+        while out.pos < out.size && input.pos < input.size {
+            let before = (input.pos, out.pos);
+            // SAFETY: a live context; `out` points into `head` and `input` into `buf[..n]`, both outliving the call.
+            let r = unsafe { ZSTD_decompressStream(d.0, &mut out, &mut input) };
+            // SAFETY: a plain function of the code.
+            if unsafe { ZSTD_isError(r) } != 0 || (input.pos, out.pos) == before {
+                return None;
+            }
+            if r == 0 {
+                // The frame ended (an index shorter than its head is no index).
+                break;
+            }
+        }
+    }
+    (crc == at.crc && out.pos == out.size).then(|| index_head_version(&head)).flatten()
 }
 
 const ERR_LEN: usize = 512;
@@ -57,6 +146,8 @@ pub fn reason(u: &Unplayable) -> String {
     match u {
         Unplayable::Damaged(why) => why.clone(),
         Unplayable::TooManyVolumes(n) => format!("{n} volumes (at most {MAX_VOLUMES})"),
+        Unplayable::Newer(v) => format!(
+            "made by a newer MaxPack for the PC (index version {v}; this MaxPack reads versions 1 and 2): update MaxPack for the console to play it"),
     }
 }
 
@@ -92,6 +183,11 @@ pub fn open(path: &Path) -> Result<Play, OpenError> {
     // SAFETY: a NUL-terminated path and an err buffer of err.len() bytes, both outliving the call.
     let ptr = unsafe { mp_play_open(c.as_ptr(), err.as_mut_ptr(), err.len()) };
     if ptr.is_null() {
+        // The engine refuses an index version it does not know as "invalid .p5z: index": one made by a newer MaxPack
+        // for the PC is told apart by its own index, never called damaged.
+        if let Some(newer) = index_version(path).and_then(maxpack_logic::p5z::index_verdict) {
+            return Err(OpenError::Unplayable(newer));
+        }
         return Err(OpenError::Unplayable(Unplayable::Damaged(err_text(&err))));
     }
     let handle = Handle(ptr);

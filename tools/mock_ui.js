@@ -306,6 +306,8 @@ function apiState(req) {
     unplayable: mock.empty ? [] : [
       { path: '/mnt/usb0/homebrew/Broken Pack.p5z', code: 'damaged', detail: 'volume 2 is incomplete' },
       { path: '/mnt/usb0/homebrew/Huge Pack.p5z', code: 'too_many_volumes', detail: '300' },
+      // Made by a newer MaxPack for the PC (its index version 3): listed as such, never as damaged.
+      { path: '/mnt/usb0/homebrew/Future Pack [PPSA05557].p5z', code: 'newer', detail: '3' },
     ],
     drives: [
       { mount: '/mnt/usb0', label: 'USB 1', kind: 'usb', total: 1000 * GB, free: 412 * GB, ejectable: true },

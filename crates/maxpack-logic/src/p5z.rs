@@ -60,6 +60,9 @@ pub enum Unplayable {
     /// A short English reason (it goes to the log and to the page).
     Damaged(String),
     TooManyVolumes(usize),
+    /// Its index is of this version, above the ones this MaxPack reads: made by a newer MaxPack for the PC, to be
+    /// played once MaxPack for the console is updated. Never "damaged".
+    Newer(u32),
 }
 
 impl Unplayable {
@@ -67,8 +70,66 @@ impl Unplayable {
         match self {
             Unplayable::Damaged(_) => "damaged",
             Unplayable::TooManyVolumes(_) => "too_many_volumes",
+            Unplayable::Newer(_) => "newer",
         }
     }
+}
+
+/// A .p5z's header and footer, in bytes (the engine's P5Z_HEADER and P5Z_FOOTER).
+pub const HEADER_LEN: u64 = 64;
+pub const FOOTER_LEN: u64 = 32;
+/// The largest index the engine reads (its INDEX_MAX).
+pub const INDEX_MAX: u64 = 1 << 31;
+
+/// Where a .p5z's footer says its index is, and the CRC-32 of its compressed bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IndexAt {
+    pub offset: u64,
+    pub len: u64,
+    pub crc: u32,
+}
+
+/// CRC-32 (IEEE, as zlib's `crc32`, which the engine's footer and index use), going on from `prev` (0 to begin).
+pub fn crc32(prev: u32, data: &[u8]) -> u32 {
+    let mut c = !prev;
+    for &b in data {
+        c ^= u32::from(b);
+        for _ in 0..8 {
+            c = (c >> 1) ^ (0xedb8_8320 & 0u32.wrapping_sub(c & 1));
+        }
+    }
+    !c
+}
+
+fn le64(b: &[u8]) -> u64 {
+    u64::from_le_bytes(b[..8].try_into().unwrap_or([0; 8]))
+}
+
+fn le32(b: &[u8]) -> u32 {
+    u32::from_le_bytes(b[..4].try_into().unwrap_or([0; 4]))
+}
+
+/// The index a .p5z of `size` bytes has, by its last 32 bytes, as the engine reads them: `P5ZFOOT1`, the footer's
+/// own CRC-32, and an index of 1 byte to INDEX_MAX right before the footer, past the header. None for anything
+/// else (cut short, damaged, an append under way).
+pub fn footer_index(footer: &[u8; 32], size: u64) -> Option<IndexAt> {
+    if &footer[..8] != b"P5ZFOOT1" || crc32(0, &footer[..28]) != le32(&footer[28..]) {
+        return None;
+    }
+    let (offset, len) = (le64(&footer[8..]), le64(&footer[16..]));
+    let end = offset.checked_add(len)?.checked_add(FOOTER_LEN)?;
+    (offset >= HEADER_LEN && len > 0 && len <= INDEX_MAX && end == size).then_some(IndexAt { offset, len, crc: le32(&footer[24..]) })
+}
+
+/// The version an index says, from its first bytes once decompressed: `P5ZIDX01`, then the version (u32 LE).
+pub fn index_head_version(head: &[u8]) -> Option<u32> {
+    (head.len() >= 12 && &head[..8] == b"P5ZIDX01").then(|| le32(&head[8..]))
+}
+
+/// What the console makes of an index version it read itself (src/p5z.rs, for a .p5z the engine refused, which it
+/// does before saying why for a version it does not know): Newer above the versions read here, else nothing to add.
+pub fn index_verdict(version: u32) -> Option<Unplayable> {
+    (version > INDEX_VERSIONS[INDEX_VERSIONS.len() - 1]).then_some(Unplayable::Newer(version))
 }
 
 /// Extension p5z in any case, with a name before it.
@@ -115,6 +176,10 @@ pub fn parse_play_json(s: &str) -> Result<PlayInfo, Unplayable> {
     }
     if raw.volumes.iter().enumerate().any(|(i, v)| v.id as usize != i) {
         return Err(bad("volume ids are not 0..n-1 in order"));
+    }
+    // A later version comes from a newer MaxPack for the PC: never "damaged" (index_verdict).
+    if let Some(newer) = index_verdict(raw.index_version) {
+        return Err(newer);
     }
     if !INDEX_VERSIONS.contains(&raw.index_version) {
         return Err(Unplayable::Damaged(format!("index version {} (this MaxPack reads versions 1 and 2)", raw.index_version)));
@@ -260,7 +325,8 @@ pub enum Refusal {
 /// comes from a description that opened and read fine: believed at once.
 pub fn refusal<M: PartialEq>(previous: Option<&(u64, M, Unplayable)>, size: u64, mtime: &M, verdict: &Unplayable) -> Refusal {
     match verdict {
-        Unplayable::TooManyVolumes(_) => Refusal::Believe,
+        // Newer: from an index that read whole, CRCs and all (or the engine's own description).
+        Unplayable::TooManyVolumes(_) | Unplayable::Newer(_) => Refusal::Believe,
         Unplayable::Damaged(_) => match previous {
             Some((s, m, v)) if *s == size && m == mtime && v == verdict => Refusal::Believe,
             _ => Refusal::Retry,
@@ -414,10 +480,8 @@ mod tests {
         let tail = ",\"index_version\":2,\"grown\":2}";
         assert!(ENGINE_V2.ends_with(tail));
         let with = |t: &str| ENGINE_V2.replace(tail, t);
-        // No version 0, none this MaxPack does not know (a later one may need a later ampr-emu-ng).
-        for t in [",\"index_version\":0}", ",\"index_version\":3,\"grown\":1}", ",\"index_version\":4294967295,\"grown\":1}"] {
-            assert!(damaged(&with(t)), "{t}");
-        }
+        // No version 0.
+        assert!(damaged(&with(",\"index_version\":0}")));
         // A grown file says how many times it grew; one that never grew says none.
         for t in [",\"index_version\":2}", ",\"index_version\":2,\"grown\":0}", ",\"grown\":1}", ",\"index_version\":1,\"grown\":1}"] {
             assert!(damaged(&with(t)), "{t}");
@@ -428,6 +492,82 @@ mod tests {
             assert!(damaged(&with(t)), "{t}");
         }
         assert_eq!(parse_play_json(&with(",\"index_version\":2,\"grown\":4294967295}")).map(|i| i.grown), Ok(u32::MAX));
+    }
+
+    /// An index version this MaxPack does not read comes from a newer MaxPack for the PC: never "damaged" (the user
+    /// could delete a good file for it), and believed at once, as it comes from an index that read whole.
+    #[test]
+    fn a_newer_index_is_never_damaged() {
+        let tail = ",\"index_version\":2,\"grown\":2}";
+        for (t, v) in [(",\"index_version\":3,\"grown\":1}", 3), (",\"index_version\":3}", 3), (",\"index_version\":3,\"grown\":0}", 3),
+                       (",\"index_version\":4294967295,\"grown\":1}", u32::MAX)] {
+            assert_eq!(parse_play_json(&ENGINE_V2.replace(tail, t)), Err(Unplayable::Newer(v)), "{t}");
+        }
+        assert_eq!(Unplayable::Newer(3).code(), "newer");
+        assert_eq!(refusal::<i64>(None, 10, &5, &Unplayable::Newer(3)), Refusal::Believe);
+        // What the console's own look at the index makes of the version it read (the engine refuses such a file
+        // before it describes it): only a version above the ones read here is newer.
+        assert_eq!(index_verdict(3), Some(Unplayable::Newer(3)));
+        assert_eq!(index_verdict(u32::MAX), Some(Unplayable::Newer(u32::MAX)));
+        for v in [0, 1, 2] {
+            assert_eq!(index_verdict(v), None, "{v}");
+        }
+    }
+
+    #[test]
+    fn crc32_is_zlibs() {
+        assert_eq!(crc32(0, b"123456789"), 0xcbf4_3926);
+        assert_eq!(crc32(0, b""), 0);
+        // In pieces, as a long index is read.
+        assert_eq!(crc32(crc32(0, b"1234"), b"56789"), 0xcbf4_3926);
+    }
+
+    /// The footer of a .p5z the PC engine packed (a made-up game folder, 1,206,514 bytes): its index is 828
+    /// bytes at 1,205,654, with that CRC.
+    const FOOTER: &str = "50355a464f4f543196651200000000003c03000000000000ee367d4d4762ee52";
+
+    fn footer() -> [u8; 32] {
+        std::array::from_fn(|i| u8::from_str_radix(&FOOTER[2 * i..2 * i + 2], 16).unwrap())
+    }
+
+    #[test]
+    fn the_footer_says_where_the_index_is() {
+        assert_eq!(footer_index(&footer(), 1_206_514), Some(IndexAt { offset: 1_205_654, len: 828, crc: 0x4d7d_36ee }));
+        // Another size: the index is not where it says.
+        assert_eq!(footer_index(&footer(), 1_206_515), None);
+        // Not a footer, or one whose CRC does not match.
+        let mut f = footer();
+        f[0] = b'X';
+        assert_eq!(footer_index(&f, 1_206_514), None);
+        let mut f = footer();
+        f[20] ^= 1;
+        assert_eq!(footer_index(&f, 1_206_514), None);
+        // Out of place, with its CRC made right: inside the header, empty, past 2 GiB, wrapping around.
+        let with = |offset: u64, len: u64| {
+            let mut f = footer();
+            f[8..16].copy_from_slice(&offset.to_le_bytes());
+            f[16..24].copy_from_slice(&len.to_le_bytes());
+            let c = crc32(0, &f[..28]);
+            f[28..].copy_from_slice(&c.to_le_bytes());
+            f
+        };
+        assert_eq!(footer_index(&with(1_205_654, 828), 1_206_514).map(|i| i.len), Some(828));
+        assert_eq!(footer_index(&with(63, 1_206_514 - 63 - 32), 1_206_514), None);
+        assert_eq!(footer_index(&with(1_206_482, 0), 1_206_514), None);
+        assert_eq!(footer_index(&with(64, (2 << 30) + 1), 64 + (2 << 30) + 1 + 32), None);
+        assert_eq!(footer_index(&with(u64::MAX - 10, 100), 1_206_514), None);
+        assert_eq!(footer_index(&footer(), 31), None);
+    }
+
+    #[test]
+    fn the_index_says_its_version() {
+        let head = |v: u32| [&b"P5ZIDX01"[..], &v.to_le_bytes(), &[0; 4]].concat();
+        assert_eq!(index_head_version(&head(1)), Some(1));
+        assert_eq!(index_head_version(&head(3)), Some(3));
+        assert_eq!(index_head_version(&head(3)[..12]), Some(3));
+        assert_eq!(index_head_version(&head(3)[..11]), None);
+        assert_eq!(index_head_version(&[&b"P5ZIDX02"[..], &3u32.to_le_bytes()].concat()), None);
+        assert_eq!(index_head_version(b""), None);
     }
 
     #[test]

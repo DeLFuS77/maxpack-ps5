@@ -1075,11 +1075,13 @@ fn api_state(state: &State, loopback: bool) -> Vec<u8> {
         }
         o
     }).collect();
-    // {path, code, detail}: detail is the engine's reason (damaged) or the volume count (too_many_volumes).
+    // {path, code, detail}: detail is the engine's reason (damaged), the volume count (too_many_volumes) or the
+    // index version (newer: made by a newer MaxPack for the PC).
     let unplayable: Vec<_> = state.unplayable.lock().unwrap().iter().map(|(p, u)| {
         let detail = match u {
             maxpack_logic::p5z::Unplayable::Damaged(why) => why.clone(),
             maxpack_logic::p5z::Unplayable::TooManyVolumes(n) => n.to_string(),
+            maxpack_logic::p5z::Unplayable::Newer(v) => v.to_string(),
         };
         serde_json::json!({"path": p.to_string_lossy(), "code": u.code(), "detail": detail})
     }).collect();

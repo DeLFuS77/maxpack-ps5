@@ -165,6 +165,24 @@ pub fn p5z_unplayable(l: Lang, file_name: &str) -> String {
     }
 }
 
+/// A .p5z whose index is of a version this MaxPack does not read (maxpack_logic::p5z::Unplayable::Newer): made by a
+/// newer MaxPack for the PC; never "damaged".
+pub fn p5z_newer(l: Lang, file_name: &str) -> String {
+    match l {
+        Lang::En => format!("{file_name} was made by a newer MaxPack for the PC: update MaxPack for the console to play it"),
+        Lang::Ru => format!("{file_name} создан более новой версией MaxPack для ПК: обновите MaxPack на консоли, чтобы играть в него"),
+        Lang::Zh => format!("{file_name} 由更新版本的电脑版 MaxPack 制作：请更新主机上的 MaxPack 后再运行"),
+        Lang::De => format!("{file_name} stammt von einem neueren MaxPack für den PC: Aktualisiere MaxPack auf der Konsole, um es zu spielen"),
+        Lang::Es => format!("{file_name} lo hizo un MaxPack para PC más nuevo: actualiza MaxPack en la consola para jugarlo"),
+        Lang::Fr => format!("{file_name} a été créé par un MaxPack pour PC plus récent\u{202f}: mettez à jour MaxPack sur la console pour y jouer"),
+        Lang::Ja => format!("{file_name} は新しいバージョンの PC 版 MaxPack で作られています：プレイするにはコンソールの MaxPack を更新してください"),
+        Lang::Pt => format!("{file_name} foi feito por um MaxPack para PC mais novo: atualize o MaxPack no console para jogá-lo"),
+        Lang::It => format!("{file_name} è stato creato da un MaxPack per PC più recente: aggiorna MaxPack sulla console per giocarci"),
+        Lang::Ko => format!("{file_name}은(는) 더 새로운 PC용 MaxPack으로 만들어졌습니다: 플레이하려면 콘솔의 MaxPack을 업데이트하세요"),
+        Lang::Ar => format!("أُنشئ {file_name} بإصدار أحدث من MaxPack للحاسوب: حدّث MaxPack على الجهاز لتشغيله"),
+    }
+}
+
 /// `bytes` in GB (2^30) with one decimal and `mark` between, rounded up: a shortage never reads 0.0.
 fn gb_up(bytes: u64, mark: char) -> String {
     let tenths = (u128::from(bytes) * 10).div_ceil(1 << 30);
