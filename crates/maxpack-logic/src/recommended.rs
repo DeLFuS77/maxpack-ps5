@@ -93,6 +93,30 @@ fn valid_key(k: &str) -> bool {
     k.len() == 32 && k.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// How many characters of a key or value a reason quotes: each reason is one log line, and the log
+/// starts over past 1 MiB.
+const QUOTE_MAX: usize = 40;
+
+/// `text` whole when short, else its first QUOTE_MAX characters, and what follows them ("..." when cut).
+fn cut(text: &str) -> (&str, &'static str) {
+    match text.char_indices().nth(QUOTE_MAX) {
+        None => (text, ""),
+        Some((i, _)) => (&text[..i], "..."),
+    }
+}
+
+/// `text` for a reason, cut.
+fn short(text: &str) -> String {
+    let (t, more) = cut(text);
+    format!("{t}{more}")
+}
+
+/// `text` quoted for a reason (as `{:?}`), cut.
+fn quoted(text: &str) -> String {
+    let (t, more) = cut(text);
+    format!("{t:?}{more}")
+}
+
 /// A known field of the wrong type, or a malformed firmware bound: the whole file is refused.
 fn field<'a>(e: &'a Map<String, Value>, k: &str, name: &str, want: &str, ok: fn(&Value) -> bool) -> Result<Option<&'a Value>, String> {
     match e.get(name) {
@@ -106,7 +130,7 @@ fn entry(k: &str, v: &Value) -> Result<Entry, String> {
     let text = |name| field(e, k, name, "a string", Value::is_string).map(|v| v.and_then(Value::as_str));
     let fw = |name| match text(name)? {
         None => Ok(None),
-        Some(s) => parse_fw(s).map(Some).ok_or_else(|| format!("title {k}: {name} {s:?} is not NN.NN")),
+        Some(s) => parse_fw(s).map(Some).ok_or_else(|| format!("title {k}: {name} {} is not NN.NN", quoted(s))),
     };
     Ok(Entry {
         fakelib: text("fakelib")?.and_then(Mode::from_name),
@@ -125,10 +149,10 @@ pub fn parse(bytes: &[u8]) -> Result<List, String> {
     let v: Value = serde_json::from_slice(bytes).map_err(|e| format!("not JSON: {e}"))?;
     let top = v.as_object().ok_or("not a JSON object")?;
     if top.get("format").and_then(Value::as_u64) != Some(1) {
-        return Err(format!("format {} is not 1", top.get("format").unwrap_or(&Value::Null)));
+        return Err(format!("format {} is not 1", short(&top.get("format").unwrap_or(&Value::Null).to_string())));
     }
     let version = top.get("version").and_then(Value::as_u64).filter(|&n| n > 0)
-        .ok_or_else(|| format!("version {} is not a positive integer", top.get("version").unwrap_or(&Value::Null)))?;
+        .ok_or_else(|| format!("version {} is not a positive integer", short(&top.get("version").unwrap_or(&Value::Null).to_string())))?;
     let titles = top.get("titles").and_then(Value::as_object).ok_or("no titles object")?;
     if titles.len() > MAX_TITLES {
         return Err(format!("{} titles, over {MAX_TITLES}", titles.len()));
@@ -136,7 +160,7 @@ pub fn parse(bytes: &[u8]) -> Result<List, String> {
     let mut out = HashMap::with_capacity(titles.len());
     for (k, v) in titles {
         if !valid_key(k) {
-            return Err(format!("title key {k:?} is not 32 lowercase hex digits"));
+            return Err(format!("title key {} is not 32 lowercase hex digits", quoted(k)));
         }
         out.insert(k.clone(), entry(k, v)?);
     }
@@ -404,6 +428,31 @@ mod tests {
         assert!(over.len() <= MAX_BYTES, "rejected for its titles, not its size");
         assert!(parse(over.as_bytes()).is_err());
         assert!(parse(file(&format!("{{{}}}", titles(10_000))).as_bytes()).is_err());
+    }
+
+    #[test]
+    fn parse_errors_quote_at_most_a_short_piece_of_the_input() {
+        // Each reason is one log line: a long key or value must not fill the log (it starts over past 1 MiB).
+        let long = "a".repeat(200_000);
+        let cases = [
+            format!(r#"{{"format": "{long}", "version": 7, "titles": {{}}}}"#),
+            format!(r#"{{"format": 1, "version": "{long}", "titles": {{}}}}"#),
+            file(&format!(r#"{{"{long}": {{}}}}"#)),
+            file(&format!(r#"{{"{K}": {{"fw_min": "{long}"}}}}"#)),
+            file(&format!(r#"{{"{K}": {{"fw_max": "1{long}"}}}}"#)),
+        ];
+        for f in cases {
+            let e = parse(f.as_bytes()).unwrap_err();
+            assert!(e.len() < 200, "{} bytes: {}...", e.len(), &e[..80]);
+            assert!(e.contains("aaaa"), "still shows the start of the value: {e}");
+        }
+        // A short value is quoted whole, as before.
+        let e = parse(br#"{"format": 2, "version": 7, "titles": {}}"#).unwrap_err();
+        assert_eq!(e, "format 2 is not 1");
+        let e = parse(file(&format!(r#"{{"{K}": {{"fw_min": "13.6"}}}}"#)).as_bytes()).unwrap_err();
+        assert_eq!(e, format!(r#"title {K}: fw_min "13.6" is not NN.NN"#));
+        let e = parse(file(r#"{"PPSA01234": {}}"#).as_bytes()).unwrap_err();
+        assert_eq!(e, r#"title key "PPSA01234" is not 32 lowercase hex digits"#);
     }
 
     #[test]
