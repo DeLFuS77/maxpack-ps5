@@ -103,8 +103,9 @@ pub enum Refusal {
     Fat32,
     Exists,
     Busy(Busy),
-    /// Bytes short on the drive, the margin included.
-    NoSpace(u64),
+    /// Bytes short on the drive, the margin included (`need`), and the bytes of a `<name>.maxpack-recv` of that
+    /// name already there (`have`, 0 if none), which the PC may offer to delete.
+    NoSpace { need: u64, have: u64 },
     UnknownId,
     /// A PUT not at the current `have`.
     Offset(u64),
@@ -117,6 +118,8 @@ pub enum Refusal {
     Incomplete(u64),
     /// Data or finish on a paused receive: why, and what it has.
     Paused { reason: PauseReason, have: u64 },
+    /// A discard whose delete failed: the OS error.
+    DeleteFailed(String),
 }
 
 impl Refusal {
@@ -129,9 +132,10 @@ impl Refusal {
             Refusal::NoDrive | Refusal::UnknownId => 404,
             Refusal::Exists | Refusal::Busy(_) | Refusal::Offset(_) | Refusal::State(_) | Refusal::Incomplete(_)
             | Refusal::Paused { .. } => 409,
-            Refusal::NoSpace(_) => 507,
+            Refusal::NoSpace { .. } => 507,
             Refusal::TooLarge => 413,
             Refusal::LengthRequired => 411,
+            Refusal::DeleteFailed(_) => 500,
         }
     }
 
@@ -147,7 +151,7 @@ impl Refusal {
             Refusal::Fat32 => "fat32",
             Refusal::Exists => "exists",
             Refusal::Busy(_) => "busy",
-            Refusal::NoSpace(_) => "no_space",
+            Refusal::NoSpace { .. } => "no_space",
             Refusal::UnknownId => "unknown_id",
             Refusal::Offset(_) => "offset",
             Refusal::PastSize => "past_size",
@@ -156,6 +160,7 @@ impl Refusal {
             Refusal::State(_) => "state",
             Refusal::Incomplete(_) => "incomplete",
             Refusal::Paused { .. } => "paused",
+            Refusal::DeleteFailed(_) => "delete_failed",
         }
     }
 
@@ -172,7 +177,9 @@ impl Refusal {
             Refusal::Fat32 => "the drive is FAT32, which keeps no file of 4 GiB or more".into(),
             Refusal::Exists => "that .p5z is already there".into(),
             Refusal::Busy(b) => b.detail().into(),
-            Refusal::NoSpace(n) => format!("not enough space on the drive: {n} more bytes needed (256 MiB are kept free)"),
+            Refusal::NoSpace { need, have: 0 } => format!("not enough space on the drive: {need} more bytes needed (256 MiB are kept free)"),
+            Refusal::NoSpace { need, have } => format!(
+                "not enough space on the drive: {need} more bytes needed (256 MiB are kept free); {have} bytes of this file are there from an earlier send"),
             Refusal::UnknownId => "no receive with that id (the console restarted, or another receive took its place): start again".into(),
             Refusal::Offset(h) => format!("the data must go on at byte {h}"),
             Refusal::PastSize => "past the size given at start".into(),
@@ -181,10 +188,12 @@ impl Refusal {
             Refusal::State(s) => format!("the receive is {}", s.name()),
             Refusal::Incomplete(h) => format!("only {h} bytes arrived"),
             Refusal::Paused { reason, have } => format!("the receive is paused ({}) at {have} bytes: start it again to go on", reason.name()),
+            Refusal::DeleteFailed(why) => why.clone(),
         }
     }
 
-    /// The answer's body: `{"error":code,"detail":...}`, with `have`, `missing` or `retry_after` (seconds) when it has one.
+    /// The answer's body: `{"error":code,"detail":...}`, with `have`, `need` (and `missing`, the same, as before v3)
+    /// or `retry_after` (seconds) when it has one.
     pub fn json(&self) -> Value {
         let mut v = json!({"error": self.code(), "detail": self.detail()});
         match self {
@@ -193,7 +202,11 @@ impl Refusal {
                 v["reason"] = reason.name().into();
                 v["have"] = (*have).into();
             }
-            Refusal::NoSpace(m) => v["missing"] = (*m).into(),
+            Refusal::NoSpace { need, have } => {
+                v["need"] = (*need).into();
+                v["missing"] = (*need).into();
+                v["have"] = (*have).into();
+            }
             Refusal::Locked(ms) => v["retry_after"] = ms.div_ceil(1000).into(),
             _ => {}
         }
@@ -424,9 +437,75 @@ pub fn start_gate(f: &StartFacts) -> Result<Start, Refusal> {
         None => resume_have(f.partial, r.size, f.failed_before),
     };
     if let Some(m) = missing(d.free, r.size, have) {
-        return Err(Refusal::NoSpace(m));
+        // With what of it is there already (the partial's length, not where it would resume): the PC may offer
+        // to delete it (`discard`).
+        return Err(Refusal::NoSpace { need: m, have: f.partial.unwrap_or(0) });
     }
     Ok(if unpause.is_some() { Start::Unpause { have } } else { Start::New { have } })
+}
+
+fn internal() -> String {
+    "internal".into()
+}
+
+/// `POST /api/receive/discard`'s body: `drive` as in start, the internal drive when it is missing.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct DiscardReq {
+    pub name: String,
+    #[serde(default = "internal")]
+    pub drive: String,
+}
+
+pub fn parse_discard(body: &[u8]) -> Result<DiscardReq, Refusal> {
+    serde_json::from_slice(body).map_err(|e| Refusal::BadRequest(format!("expected {{\"name\",\"drive\"}}: {e}")))
+}
+
+/// What `POST /api/receive/discard` looks at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscardFacts {
+    pub req: DiscardReq,
+    /// The drive is mounted and the PC may send to it (DriveFacts::usable).
+    pub usable: bool,
+    /// `<name>.maxpack-recv`, as StartFacts::partial.
+    pub partial: Option<u64>,
+    /// This run's receive; `same`: of that very file (the same name and drive).
+    pub active: Option<Active>,
+}
+
+/// What a discard does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Discard {
+    /// The bytes of the file it deletes; None when there is no file a send left there.
+    pub bytes: Option<u64>,
+    /// This run's receive of that file ends: its token is forgotten.
+    pub forget: bool,
+}
+
+/// The discard's checks, in this order: the name (start's rules), the drive, the receive of that file under way
+/// (receiving or verifying: busy). Then it deletes `<name>.maxpack-recv` when a file is there, whatever its size and
+/// with no space check, and never anything else (something there that is not a file is left as it is); a receive
+/// of that file that is paused, failed or cancelled ends (one that is done is the library's `.p5z` now).
+pub fn discard_gate(f: &DiscardFacts) -> Result<Discard, Refusal> {
+    if !valid_name(&f.req.name) {
+        return Err(Refusal::BadName);
+    }
+    if !f.usable {
+        return Err(Refusal::NoDrive);
+    }
+    let same = f.active.as_ref().filter(|a| a.same);
+    if same.is_some_and(|a| a.state.active()) {
+        return Err(Refusal::Busy(Busy::Receive));
+    }
+    let bytes = f.partial.filter(|n| *n != u64::MAX);
+    Ok(Discard { bytes, forget: same.is_some_and(|a| a.state != State::Done) })
+}
+
+/// The discard's answer: `{"deleted":true,"bytes":N}`, or `{"deleted":false}` when nothing of it was there.
+pub fn discard_json(bytes: Option<u64>) -> Value {
+    match bytes {
+        Some(n) => json!({"deleted": true, "bytes": n}),
+        None => json!({"deleted": false}),
+    }
 }
 
 /// A `PUT /api/receive/data` of `len` bytes at `offset` into a receive in `state` with `have` of `size`.
@@ -784,7 +863,7 @@ mod tests {
         assert_eq!(start_gate(&StartFacts { active: paused.clone(), partial: Some(5), busy: Some(Busy::Install), ..facts() }),
             Err(Refusal::Busy(Busy::Install)));
         let full = Some(DriveFacts { free: 0, fat32: false, usable: true });
-        assert!(matches!(start_gate(&StartFacts { active: paused, partial: Some(5), drive: full, ..facts() }), Err(Refusal::NoSpace(_))));
+        assert!(matches!(start_gate(&StartFacts { active: paused, partial: Some(5), drive: full, ..facts() }), Err(Refusal::NoSpace { .. })));
         // Another file paused: nothing under way, the start goes on as usual (a new receive).
         let other = Some(Active { state: State::Paused(PauseReason::Stopped), same: false, have: 5 });
         assert_eq!(start_gate(&StartFacts { active: other, ..facts() }), Ok(Start::New { have: 0 }));
@@ -962,7 +1041,7 @@ mod tests {
         assert_eq!(start_gate(&StartFacts { partial: Some(u64::MAX), ..f() }), Err(Refusal::Exists));
         // The space: what is still to come and the margin.
         let tight = Some(DriveFacts { free: (10 << 30) + MARGIN - 1, fat32: false, usable: true });
-        assert_eq!(start_gate(&StartFacts { drive: tight.clone(), ..f() }), Err(Refusal::NoSpace(1)));
+        assert_eq!(start_gate(&StartFacts { drive: tight.clone(), ..f() }), Err(Refusal::NoSpace { need: 1, have: 0 }));
         assert_eq!(start_gate(&StartFacts { drive: tight, partial: Some(MAX_PUT + 1), ..f() }), Ok(Start::New { have: 1 }));
         let full = Some(DriveFacts { free: 0, fat32: false, usable: true });
         assert_eq!(start_gate(&StartFacts { drive: full, busy: Some(Busy::Install), ..f() }), Err(Refusal::Busy(Busy::Install)));
@@ -982,6 +1061,95 @@ mod tests {
         assert_eq!(missing(MARGIN + 99, 100, 0), Some(1));
         assert_eq!(missing(MARGIN, 100, 100), None);
         assert_eq!(missing(0, u64::MAX, 0), Some(u64::MAX));
+    }
+
+    #[test]
+    fn no_space_says_what_is_there() {
+        // Nothing of it on the drive: have 0, need what is short.
+        let tight = Some(DriveFacts { free: (10 << 30) + MARGIN - 5, fat32: false, usable: true });
+        assert_eq!(start_gate(&StartFacts { drive: tight, ..facts() }), Err(Refusal::NoSpace { need: 5, have: 0 }));
+        // A .maxpack-recv of that name: have is its length (what the PC may offer to delete), need what is short once
+        // it resumes from it.
+        let full = Some(DriveFacts { free: 0, fat32: false, usable: true });
+        let partial = (3 << 30) + MAX_PUT;
+        assert_eq!(start_gate(&StartFacts { drive: full, partial: Some(partial), ..facts() }),
+            Err(Refusal::NoSpace { need: (10 << 30) - (3 << 30) + MARGIN, have: partial }));
+        let r = Refusal::NoSpace { need: 7, have: 9 };
+        assert_eq!((r.status(), r.code()), (507, "no_space"));
+        let j = r.json();
+        assert_eq!((j["need"].as_u64(), j["have"].as_u64(), j["missing"].as_u64()), (Some(7), Some(9), Some(7)));
+        assert_eq!(Refusal::NoSpace { need: 7, have: 0 }.json()["have"], 0);
+    }
+
+    #[test]
+    fn the_discard_body() {
+        assert_eq!(parse_discard(br#"{"name":"A.p5z","drive":"usb0"}"#),
+            Ok(DiscardReq { name: "A.p5z".into(), drive: "usb0".into() }));
+        // No drive: the internal one, as start.
+        assert_eq!(parse_discard(br#"{"name":"A.p5z"}"#), Ok(DiscardReq { name: "A.p5z".into(), drive: "internal".into() }));
+        for bad in [&b""[..], b"{}", b"[]", br#"{"name":1}"#, br#"{"name":"A.p5z","drive":5}"#, b"\xff"] {
+            assert!(matches!(parse_discard(bad), Err(Refusal::BadRequest(_))), "{bad:?}");
+        }
+    }
+
+    fn discard_facts() -> DiscardFacts {
+        DiscardFacts {
+            req: DiscardReq { name: "Game [PPSA01234].p5z".into(), drive: "usb0".into() },
+            usable: true, partial: Some(3 << 30), active: None,
+        }
+    }
+
+    #[test]
+    fn a_discard_deletes_what_a_send_left() {
+        // The file is there, whatever its size: deleted, with no space check.
+        assert_eq!(discard_gate(&discard_facts()), Ok(Discard { bytes: Some(3 << 30), forget: false }));
+        assert_eq!(discard_gate(&DiscardFacts { partial: Some(0), ..discard_facts() }), Ok(Discard { bytes: Some(0), forget: false }));
+        // Nothing there, or something that is not a file (never deleted): nothing to delete.
+        for partial in [None, Some(u64::MAX)] {
+            assert_eq!(discard_gate(&DiscardFacts { partial, ..discard_facts() }), Ok(Discard { bytes: None, forget: false }), "{partial:?}");
+        }
+        // A paused receive of that file (or one that failed or was cancelled) is ended: its token is forgotten.
+        for state in [State::Paused(PauseReason::Stopped), State::Paused(PauseReason::Idle), State::Failed, State::Cancelled] {
+            let active = Some(Active { state, same: true, have: 5 });
+            assert_eq!(discard_gate(&DiscardFacts { active: active.clone(), ..discard_facts() }),
+                Ok(Discard { bytes: Some(3 << 30), forget: true }), "{state:?}");
+            assert_eq!(discard_gate(&DiscardFacts { active, partial: None, ..discard_facts() }),
+                Ok(Discard { bytes: None, forget: true }), "{state:?}");
+        }
+        // One that is done is the library's .p5z now: kept as it is.
+        let done = Some(Active { state: State::Done, same: true, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { active: done, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false }));
+        // Another file's receive under way does not stop it.
+        let other = Some(Active { state: State::Receiving, same: false, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { active: other, ..discard_facts() }), Ok(Discard { bytes: Some(3 << 30), forget: false }));
+    }
+
+    #[test]
+    fn a_discard_refuses_in_order() {
+        // The name rules of start, before anything else.
+        let mut bad = discard_facts();
+        bad.req.name = "../x.p5z".into();
+        bad.usable = false;
+        assert_eq!(discard_gate(&bad), Err(Refusal::BadName));
+        bad.req.name = "x.p5z.maxpack-recv".into();
+        assert_eq!(discard_gate(&bad), Err(Refusal::BadName));
+        // A drive that is not there, or whose homebrew the PC may not send to.
+        let under_way = Some(Active { state: State::Receiving, same: true, have: 5 });
+        assert_eq!(discard_gate(&DiscardFacts { usable: false, active: under_way, ..discard_facts() }), Err(Refusal::NoDrive));
+        // That very file receiving or being verified: busy.
+        for state in [State::Receiving, State::Verifying] {
+            let active = Some(Active { state, same: true, have: 5 });
+            assert_eq!(discard_gate(&DiscardFacts { active, ..discard_facts() }), Err(Refusal::Busy(Busy::Receive)), "{state:?}");
+        }
+    }
+
+    #[test]
+    fn what_a_discard_answers() {
+        assert_eq!(discard_json(Some(42)), json!({"deleted": true, "bytes": 42}));
+        assert_eq!(discard_json(None), json!({"deleted": false}));
+        let r = Refusal::DeleteFailed("Permission denied (os error 13)".into());
+        assert_eq!((r.status(), r.code()), (500, "delete_failed"));
+        assert_eq!(r.json()["detail"], "Permission denied (os error 13)");
     }
 
     #[test]
@@ -1203,7 +1371,8 @@ mod tests {
             (Refusal::Off, 403, "receive_off"), (Refusal::BadCode, 401, "bad_code"), (Refusal::Locked(1500), 429, "locked"),
             (Refusal::BadRequest("x".into()), 400, "bad_request"), (Refusal::BadName, 400, "bad_name"),
             (Refusal::BadSize, 400, "bad_size"), (Refusal::NoDrive, 404, "no_drive"), (Refusal::Fat32, 400, "fat32"),
-            (Refusal::Exists, 409, "exists"), (Refusal::Busy(Busy::Install), 409, "busy"), (Refusal::NoSpace(5), 507, "no_space"),
+            (Refusal::Exists, 409, "exists"), (Refusal::Busy(Busy::Install), 409, "busy"),
+            (Refusal::NoSpace { need: 5, have: 0 }, 507, "no_space"), (Refusal::DeleteFailed("x".into()), 500, "delete_failed"),
             (Refusal::UnknownId, 404, "unknown_id"), (Refusal::Offset(7), 409, "offset"), (Refusal::PastSize, 400, "past_size"),
             (Refusal::TooLarge, 413, "too_large"), (Refusal::LengthRequired, 411, "length_required"),
             (Refusal::State(State::Done), 409, "state"), (Refusal::Incomplete(3), 409, "incomplete"),
@@ -1216,7 +1385,7 @@ mod tests {
         }
         assert_eq!(Refusal::Offset(7).json()["have"], 7);
         assert_eq!(Refusal::Incomplete(3).json()["have"], 3);
-        assert_eq!(Refusal::NoSpace(5).json()["missing"], 5);
+        assert_eq!(Refusal::NoSpace { need: 5, have: 0 }.json()["missing"], 5);
         assert_eq!(Refusal::Locked(1500).json()["retry_after"], 2);
         assert!(Refusal::Busy(Busy::Verify).detail().contains("verif"));
         assert!(Refusal::State(State::Verifying).detail().contains("verifying"));

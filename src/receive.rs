@@ -221,12 +221,24 @@ pub fn drives(state: &State) -> Answer {
     ok(200, json!({"drives": list}))
 }
 
+/// What is at a `.maxpack-recv` path, as StartFacts::partial takes it: a file's length, u64::MAX for anything else.
+fn partial_len(p: &Path) -> Option<u64> {
+    match fs::symlink_metadata(p) {
+        Ok(m) if m.is_file() => Some(m.len()),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        _ => Some(u64::MAX),
+    }
+}
+
 /// POST /api/receive/start, body `{"name","size","drive"}` (maxpack_logic::receive::start_gate).
 pub fn start(state: &State, body: &[u8]) -> Answer {
     let req = match logic::parse_start(body) {
         Ok(r) => r,
         Err(r) => return r.into(),
     };
+    // From the first look at the drive: a discard (which holds it too) never deletes the file between this start's
+    // look at it and its use of it.
+    let _gate = crate::jobs::gate();
     let mount = logic::drive_mount(&req.drive);
     let drive = mount.as_ref().and_then(|m| usable_or_not(state, m));
     let homebrew = mount.as_ref().map(|m| PathBuf::from(m).join("homebrew"));
@@ -236,13 +248,8 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
         _ => (None, None),
     };
     let dest_exists = dest.as_ref().is_some_and(|d| !matches!(fs::symlink_metadata(d), Err(e) if e.kind() == ErrorKind::NotFound));
-    let partial_len = partial.as_ref().and_then(|p| match fs::symlink_metadata(p) {
-        Ok(m) if m.is_file() => Some(m.len()),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        _ => Some(u64::MAX),
-    });
+    let partial_len = partial.as_deref().and_then(partial_len);
     let failed_before = partial.as_ref().is_some_and(|p| FAILED.lock().unwrap_or_else(|e| e.into_inner()).contains(p));
-    let _gate = crate::jobs::gate();
     let mut g = swept();
     let active = g.as_ref().map(|r| Active {
         state: r.stage, same: r.name == req.name && r.drive == req.drive && r.size == req.size, have: r.have,
@@ -435,7 +442,7 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
                 Some(libc::ENOSPC) => {
                     let free = crate::storage::free(&mount).unwrap_or(0);
                     let missing = logic::missing(free, size, at).unwrap_or(1);
-                    (Refusal::NoSpace(missing).into(), Some(format!("the drive is full: {missing} more bytes needed")))
+                    (Refusal::NoSpace { need: missing, have: at }.into(), Some(format!("the drive is full: {missing} more bytes needed")))
                 }
                 Some(libc::EFBIG) => {
                     FAT32_SEEN.lock().unwrap_or_else(|e| e.into_inner()).push(mount.clone());
@@ -690,6 +697,62 @@ pub fn cancel(id: Option<&str>) -> Answer {
             None => Refusal::UnknownId.into(),
         },
     }
+}
+
+/// POST /api/receive/discard, body `{"name","drive"}` (the contract's v3; maxpack_logic::receive::discard_gate): the
+/// PC's "Delete what arrived" without a start, so it works on a full drive too. Deletes
+/// `<drive>/homebrew/<name>.maxpack-recv` when a file is there (never anything else), and a receive of it that is
+/// paused, failed or cancelled ends (its token is forgotten); one of it under way is 409 `busy`. One log line per
+/// discard; the code is never logged.
+pub fn discard(state: &State, body: &[u8]) -> Answer {
+    let req = match logic::parse_discard(body) {
+        Ok(r) => r,
+        Err(r) => {
+            log!("receive: a discard from the PC refused: {}", r.detail());
+            return r.into();
+        }
+    };
+    // As a start: neither looks at the file while the other changes it.
+    let _gate = crate::jobs::gate();
+    let mount = logic::drive_mount(&req.drive);
+    let usable = mount.as_ref().is_some_and(|m| usable_drives(state).iter().any(|(_, d)| &d.mount == m));
+    // A path is made of the name only once it is known to be plain (discard_gate refuses it otherwise).
+    let partial = match (&mount, logic::valid_name(&req.name)) {
+        (Some(m), true) => Some(PathBuf::from(m).join("homebrew").join(format!("{}{}", req.name, logic::PARTIAL_SUFFIX))),
+        _ => None,
+    };
+    let mut g = swept();
+    let active = g.as_ref().map(|r| Active { state: r.stage, same: r.name == req.name && r.drive == req.drive, have: r.have });
+    let facts = logic::DiscardFacts { req: req.clone(), usable, partial: partial.as_deref().and_then(partial_len), active };
+    let (d, partial) = match (logic::discard_gate(&facts), partial) {
+        (Ok(d), Some(p)) => (d, p),
+        (Err(r), _) => {
+            log!("receive: discard of {:?} on {:?} from the PC refused: {}", req.name, req.drive, r.detail());
+            return r.into();
+        }
+        (Ok(_), None) => return Refusal::NoDrive.into(),
+    };
+    // A file that went meanwhile was not deleted by this discard: nothing of it was there.
+    let bytes = match d.bytes.map(|_| fs::remove_file(&partial)) {
+        Some(Err(e)) if e.kind() != ErrorKind::NotFound => {
+            log!("receive: discard of {} from the PC: delete {}: {e}; it stays", req.name, partial.display());
+            return Refusal::DeleteFailed(e.to_string()).into();
+        }
+        Some(Ok(())) => d.bytes,
+        _ => None,
+    };
+    if d.forget {
+        *g = None;
+    }
+    drop(g);
+    FAILED.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != &partial);
+    *LEFT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    let ended = if d.forget { "; this run's receive of it ended" } else { "" };
+    match bytes {
+        Some(n) => log!("receive: discard of {} from the PC: deleted {} ({n} bytes){ended}", req.name, partial.display()),
+        None => log!("receive: discard of {} from the PC: nothing of it at {}{ended}", req.name, partial.display()),
+    }
+    ok(200, logic::discard_json(bytes))
 }
 
 /// Waits (up to STOP_WAIT_MS) for receive `seq`'s verify to stop.

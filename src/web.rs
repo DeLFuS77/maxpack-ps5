@@ -514,6 +514,8 @@ fn receive_route(state: &State, head: &str, method: &str, path: &str, query: &st
             Some(id) if maxpack_logic::receive::valid_token(id) => rx::cancel(Some(id)),
             _ => maxpack_logic::receive::Refusal::BadRequest("expected ?id=<token>".into()).into(),
         },
+        // The contract's v3: what a send left of a file, deleted without a start (a full drive too).
+        ("POST", "/api/receive/discard") => rx::discard(state, body),
         _ => return reply(404, "application/json", serde_json::json!({"error": "not_found", "detail": "no such route"}).to_string()),
     };
     receive_reply(a)

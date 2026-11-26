@@ -461,7 +461,8 @@ function instPost(name, body) {
 // tried against the mock: the switch (403 receive_off), the code and its lockout (401 bad_code; 5 wrong in a row from
 // one address, 429 locked for 60 s), the drives "internal" (/data, ufs) and "usb0" (/mnt/usb0, exfatfs), start,
 // data (counted and dropped: nothing is written), status, finish (a verify of 3 s; a name with "damaged" in it fails
-// on a volume and a file) and cancel. --receive demo|failed|paused: a receive that runs by itself (5 % a second), or
+// on a volume and a file), cancel, and discard (the contract's v3: what a send left of a file deleted without a
+// start; a start refused for space says what of that file is there). --receive demo|failed|paused: a receive that runs by itself (5 % a second), or
 // one paused at 40 %, so the banner shows without a PC; at run time /mock?receive=demo. A receive with nothing from the
 // PC for 10 minutes pauses (src/receive.rs, reason idle), as the banner's Stop does (reason stopped): it keeps its
 // token, its status says paused with the reason, data and finish answer 409 paused, and a start of the same file goes
@@ -574,6 +575,11 @@ function recvGate(req) {
   recvLock.set(key, t);
   return recvNo('bad_code', 401, 'missing or wrong pairing code (X-MaxPack-Code)');
 }
+// maxpack_logic::receive::valid_name.
+function recvNameOk(name) {
+  return Buffer.byteLength(name) <= 200 && /^[^/\\:*?"<>|\u0000-\u001f\u007f-\u009f]+\.p5z$/i.test(name) && !/\.\./.test(name) && !name.startsWith('.')
+    && !/[­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]/.test(name);
+}
 // maxpack_logic::receive::valid_name and start_gate, in their order.
 function recvStart(body) {
   let b;
@@ -581,9 +587,7 @@ function recvStart(body) {
   if (!b || typeof b.name !== 'string' || typeof b.size !== 'number' || typeof b.drive !== 'string')
     return recvNo('bad_request', 400, 'expected {"name","size","drive"}');
   const { name, size, drive } = b;
-  if (Buffer.byteLength(name) > 200 || !/^[^/\\:*?"<>|\u0000-\u001f\u007f-\u009f]+\.p5z$/i.test(name) || /\.\./.test(name) || name.startsWith('.')
-    || /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/.test(name))
-    return recvNo('bad_name', 400, 'not a plain .p5z file name');
+  if (!recvNameOk(name)) return recvNo('bad_name', 400, 'not a plain .p5z file name');
   if (size < 96) return recvNo('bad_size', 400, 'a .p5z is at least 96 bytes');
   const d = RECV_DRIVES.find((x) => x.id === drive);
   if (!d) return recvNo('no_drive', 404, 'no such drive on the console');
@@ -600,8 +604,13 @@ function recvStart(body) {
   if (recvUnder()) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
   if (currentJob()) return recvNo('busy', 409, 'the installer is running a job; try again when it ends');
   if (verifyRunning()) return recvNo('busy', 409, 'a .p5z is being verified on the console; try again when it ends');
-  const missing = size + 256 * MB - d.free;
-  if (missing > 0) return recvNo('no_space', 507, 'not enough space on the drive', { missing });
+  // maxpack_logic::receive::start_gate's space check: what is still to come from where a file of that name there
+  // would resume (its length less 64 MiB), and the margin. A refusal says what is there (have) and what is short
+  // (need; missing as before the contract's v3).
+  const there = leftState().find((x) => x.path === `${d.mount}/homebrew/${name}.maxpack-recv`);
+  const have = there ? there.size : 0;
+  const need = size - Math.max(0, have - 64 * MB) + 256 * MB - d.free;
+  if (need > 0) return recvNo('no_space', 507, 'not enough space on the drive', { need, missing: need, have });
   clearInterval(recvTimer);
   const j = recvNewJob(name, size, drive, 0);
   return [200, { id: j.id, have: j.have }];
@@ -613,6 +622,25 @@ function recvById(url) {
   const j = recvJob && recvJob.id === id ? recvJob : null;
   if (j) j.last = Date.now();
   return j;
+}
+// POST /api/receive/discard (the contract's v3, maxpack_logic::receive::discard_gate): what a send left of a file,
+// deleted without a start; a receive of it under way is busy, a paused, failed or cancelled one ends (its token goes).
+function recvDiscard(body) {
+  let b;
+  try { b = JSON.parse(body); } catch (e) { return recvNo('bad_request', 400, 'expected {"name","drive"}'); }
+  if (!b || typeof b.name !== 'string' || (b.drive !== undefined && typeof b.drive !== 'string'))
+    return recvNo('bad_request', 400, 'expected {"name","drive"}');
+  const name = b.name, drive = b.drive === undefined ? 'internal' : b.drive;
+  if (!recvNameOk(name)) return recvNo('bad_name', 400, 'not a plain .p5z file name');
+  const d = RECV_DRIVES.find((x) => x.id === drive);
+  if (!d) return recvNo('no_drive', 404, 'no such drive on the console');
+  const p = `${d.mount}/homebrew/${name}.maxpack-recv`;
+  const same = recvJob && recvJob.partial === p ? recvJob : null;
+  if (same && (same.state === 'receiving' || same.state === 'verifying')) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
+  const there = leftState().find((x) => x.path === p);
+  leftovers = leftovers.filter((x) => x.path !== p);
+  if (same && same.state !== 'done') { clearInterval(recvTimer); recvJob = null; }
+  return [200, there ? { deleted: true, bytes: there.size } : { deleted: false }];
 }
 function recvCancel(j) {
   if (j.state === 'done') return recvNo('state', 409, 'the receive is done');
@@ -629,6 +657,7 @@ function recvRoute(req, url, body, bytes) {
   if (req.method === 'GET' && p === '/api/receive/drives')
     return [200, { drives: RECV_DRIVES.map((d) => ({ id: d.id, free: d.free, total: d.total, fs: d.fs })) }];
   if (req.method === 'POST' && p === '/api/receive/start') return recvStart(body);
+  if (req.method === 'POST' && p === '/api/receive/discard') return recvDiscard(body);
   const j = recvById(url);
   if (!j) return recvNo('unknown_id', 404, 'no receive with that id: start again');
   if (req.method === 'PUT' && p === '/api/receive/data') {
