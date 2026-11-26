@@ -1,12 +1,13 @@
 //! The console's test compression (`POST /api/pack`, a prototype that measures; DESIGN.md "Test compression"):
 //! a plain folder game of the library packed into `<folder>.p5z` beside it by the MaxPack engine (ps5/pack.c:
 //! mp_pack_run with its .p5z output, as `maxpack pack --p5z` on the PC), on a thread of its own. One job at a
-//! time, never beside an installer job: the engine's progress hook and cancel flag are one per process. Before
-//! it, a probe of how much memory the payload gets; during it, the phases' MB/s, the payload's peak memory and
-//! what a game started meanwhile does to the speed, all in the log; after it, the `archive_id` and each
-//! volume's SHA-256 as the `.p5z` records them, for the page (maxpack_logic::pack::lines).
+//! time, never beside an installer job (the engine's progress hook and cancel flag are one per process), never
+//! started while any game runs. Before the first job of a run, a probe of how much memory the payload gets (once
+//! per run, never taking the system's available memory under PROBE_FLOOR); during it, the phases' MB/s, the
+//! payload's peak memory and what a game started meanwhile does to the speed, all in the log; after it, the
+//! `archive_id` and each volume's SHA-256 as the `.p5z` records them, for the page (maxpack_logic::pack::lines).
 use crate::web::State;
-use maxpack_logic::pack::{self as logic, Dest, ProbeStop, Progress, Rate, Refusal, Request};
+use maxpack_logic::pack::{self as logic, Dest, ProbeLook, ProbeStop, Progress, Rate, Refusal, Request};
 use std::collections::HashSet;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::path::Path;
@@ -42,8 +43,10 @@ extern "C" {
 /// The engine commit vendor/maxpack was copied from (tools/sync_maxpack.sh).
 const ENGINE_COMMIT: &str = include_str!("../vendor/maxpack/COMMIT");
 const ERR_LEN: usize = 512;
-/// The monitor's look at memory, the speed and a running game.
+/// The monitor's look at memory, the speed and the games MaxPack started.
 const TICK_MS: u64 = 250;
+/// Every this many ticks (2 s) the monitor also walks the process list for any game.
+const WALK_TICKS: u64 = 8;
 /// A progress line in the log this often, and one while a game runs.
 const EVERY_MS: u64 = 60_000;
 const GAME_EVERY_MS: u64 = 30_000;
@@ -90,9 +93,13 @@ struct Job {
     error: Option<String>,
     lines: Option<String>,
     size: Option<u64>,
+    /// The `.maxpack-pack` file, when a failed or cancelled job left it (the engine normally deletes it).
+    left: Option<String>,
 }
 
 static JOB: Mutex<Option<Job>> = Mutex::new(None);
+/// The memory probe of this run: it runs before the first job only, and the later ones say its result again.
+static PROBED: Mutex<Option<Probe>> = Mutex::new(None);
 /// Held while a job is started (installer idle checked, the job set) and while the web forwards an
 /// installer request that starts a job (hold_off), so neither slips in beside the other.
 static GATE: Mutex<()> = Mutex::new(());
@@ -129,11 +136,19 @@ pub fn start(state: &State, body: &[u8]) -> Result<(), Refusal> {
     let _gate = GATE.lock().unwrap_or_else(|e| e.into_inner());
     // Anything but "not there" counts as there: it is never overwritten.
     let dest_exists = !matches!(std::fs::symlink_metadata(&dest.p5z), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+    // Any game, whoever started it (`paused` only knows MaxPack's); a walk that failed refuses too.
+    let games = crate::launch::games_running();
+    let game_running = maxpack_logic::inst::game_blocks(state.paused(), games.as_ref().ok().map(|g| !g.is_empty()));
     let facts = logic::Facts {
-        entry, pack_running: running(), installer_busy: !crate::installer::idle(), game_running: state.paused(), dest_exists,
+        entry, pack_running: running(), installer_busy: !crate::installer::idle(), game_running, dest_exists,
     };
     if let Err(r) = logic::gate(&facts) {
-        log!("pack: {} refused: {}", req.path, r.detail());
+        let why = match (&r, &games) {
+            (Refusal::GameRunning, Ok(g)) if !g.is_empty() => format!(" ({})", g.join(", ")),
+            (Refusal::GameRunning, Err(e)) => format!(" (the process list could not be read: {e})"),
+            _ => String::new(),
+        };
+        log!("pack: {} refused: {}{why}", req.path, r.detail());
         return Err(r);
     }
     // A file of a job this payload no longer runs (it quit or crashed mid-way): MaxPack's own name for one.
@@ -152,12 +167,16 @@ pub fn start(state: &State, body: &[u8]) -> Result<(), Refusal> {
     let now = crate::sys::uptime_ms();
     *job() = Some(Job {
         req: req.clone(), dest, stage: Stage::Probe, cancel: false, started_ms: now, ended_ms: None,
-        progress: Progress::new(now), error: None, lines: None, size: None,
+        progress: Progress::new(now), error: None, lines: None, size: None, left: None,
     });
     let running = state.running.clone();
     log!("pack: {} ({} in its files, {} free there): zstd level {}, {} threads for the packs, {} for the loose files",
         req.path, logic::mb(need), logic::mb(free), req.level, req.threads, logic::LOOSE_THREADS);
-    std::thread::spawn(move || run(running, need));
+    // A thread the system refuses ends the job as failed, never leaves it running.
+    if let Err(e) = std::thread::Builder::new().name("pack".into()).spawn(move || run(running, need)) {
+        log!("pack: could not start the job's thread: {e}");
+        end(Stage::Failed, Some(format!("could not start the job's thread: {e}")));
+    }
     Ok(())
 }
 
@@ -212,6 +231,7 @@ pub fn json() -> serde_json::Value {
         "error": j.error,
         "lines": j.lines,
         "size": j.size,
+        "left": j.left,
     })
 }
 
@@ -245,20 +265,52 @@ fn end(stage: Stage, error: Option<String>) {
     }
 }
 
-/// The job's thread: the probe, the engine, the rename, the sums.
+/// Ends a job whose thread returns without having ended it (as failed), so it never stays "running".
+struct Unfinished;
+
+impl Drop for Unfinished {
+    fn drop(&mut self) {
+        if running() {
+            end(Stage::Failed, Some("the job's thread ended without a result".into()));
+        }
+    }
+}
+
+/// A game runs now, whoever started it, or the process list cannot be read to tell.
+fn game_now(running: &Mutex<HashSet<String>>) -> bool {
+    !running.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+        || !matches!(crate::launch::games_running(), Ok(g) if g.is_empty())
+}
+
+/// The job's thread: the probe (the first job of a run only), the engine, the rename, the sums.
 fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
+    let _unfinished = Unfinished;
     let Some((req, dest, t0)) = job().as_ref().map(|j| (j.req.clone(), j.dest.clone(), j.started_ms)) else { return };
     let (Some(src), Some(part)) = (cstr(&req.path), cstr(&dest.part)) else {
         end(Stage::Failed, Some("NUL in the path".into()));
         return;
     };
     let before = rss();
-    let probe = probe(&|| job().as_ref().is_some_and(|j| j.cancel));
-    let after = rss();
-    log!("pack: memory probe: {} in steps of {}, each touched, then released, in {} ms; stopped by {}; \
-          the system's free memory {} before, {} at the most taken; the payload's RSS {} before, {} after",
-        logic::mib(probe.got), logic::mib(logic::PROBE_STEP), probe.ms, probe.stop.text(), opt_mib(probe.free_start),
-        opt_mib(probe.free_low), opt_mib(before), opt_mib(after));
+    let earlier = PROBED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let reused = earlier.is_some();
+    let probe = match earlier {
+        Some(p) => {
+            log!("pack: memory probe: not run again (once per MaxPack start); the first one got {}, stopped by {}",
+                logic::mib(p.got), p.stop.text());
+            p
+        }
+        None => {
+            let p = probe(&|| job().as_ref().is_some_and(|j| j.cancel), &|| game_now(&running));
+            let after = rss();
+            log!("pack: memory probe: {} in steps of {}, each touched, then released, in {} ms; stopped by {}; \
+                  the system's available memory ({}) {} before, {} at its lowest; the payload's RSS {} before, {} after",
+                logic::mib(p.got), logic::mib(logic::PROBE_STEP), p.ms, p.stop.text(),
+                if p.inactive { "free + inactive" } else { "free" }, opt_mib(p.available_start), opt_mib(p.available_low),
+                opt_mib(before), opt_mib(after));
+            *PROBED.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+            p
+        }
+    };
     // The engine starts only if no cancel came meanwhile; the flag is cleared first (no job of the engine runs).
     let start_ms = {
         let mut g = job();
@@ -277,9 +329,12 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
         now
     };
     let stop = Arc::new(AtomicBool::new(false));
+    // Without its thread the job goes on, with no peak memory and no game lines.
     let mon = {
         let stop = stop.clone();
-        std::thread::spawn(move || monitor(running, stop))
+        std::thread::Builder::new().name("pack-monitor".into()).spawn(move || monitor(running, stop))
+            .map_err(|e| log!("pack: could not start the monitor's thread: {e}; no peak memory or game lines this job"))
+            .ok()
     };
     let mut counts = Counts::default();
     let mut err = [0 as c_char; ERR_LEN];
@@ -291,7 +346,7 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
     };
     let engine_end = crate::sys::uptime_ms();
     stop.store(true, Ordering::SeqCst);
-    let watch = mon.join().unwrap_or_default();
+    let watch = mon.and_then(|m| m.join().ok()).unwrap_or_default();
     let (cancelled, summary) = {
         let mut g = job();
         // SAFETY: under JOB, so a cancel asked after this finds the job no longer in Engine.
@@ -312,11 +367,16 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
     if rc != 0 {
         let why = err_text(&err);
         let stage = if cancelled && why == "cancelled" { Stage::Cancelled } else { Stage::Failed };
-        // The engine's writer deletes a .p5z it did not finish; this only says whether it is gone.
+        // The engine's writer deletes a .p5z it did not finish; this only says whether it is gone (the page says
+        // "nothing is left" only then).
         let left = Path::new(&dest.part).exists();
-        log!("pack: {} after {} s in the engine: {why}{}", if stage == Stage::Cancelled { "cancelled" } else { "failed" },
-            (engine_end - start_ms) / 1000, if left { format!("; {} is still there", dest.part) } else { String::new() });
-        end(stage, Some(why));
+        let still = if left { format!("; {} is still there (the next job of this folder removes it)", dest.part) } else { String::new() };
+        log!("pack: {} after {} s in the engine: {why}{still}", if stage == Stage::Cancelled { "cancelled" } else { "failed" },
+            (engine_end - start_ms) / 1000);
+        if let Some(j) = job().as_mut() {
+            j.left = left.then(|| dest.part.clone());
+        }
+        end(stage, Some(if stage == Stage::Failed { format!("{why}{still}") } else { why }));
         return;
     }
     log!("pack: {} loose files ({}), {} packed files ({} -> {}) in {} volumes",
@@ -331,11 +391,21 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
         end(Stage::Failed, Some(why));
         return;
     }
+    // On the disk before it gets its game name: the engine closes it without a flush, and a power cut after the
+    // rename must not leave a .p5z whose index is there and some of whose volumes are not.
+    if let Err(e) = std::fs::File::open(&dest.part).and_then(|f| f.sync_all()) {
+        log!("pack: fsync {}: {e} (renamed anyway)", dest.part);
+    }
     if let Err(e) = std::fs::rename(&dest.part, &dest.p5z) {
         let why = format!("rename {} to {}: {e}", dest.part, dest.p5z);
         log!("pack: {why}");
         end(Stage::Failed, Some(why));
         return;
+    }
+    if let Some(dir) = Path::new(&dest.p5z).parent() {
+        if let Err(e) = std::fs::File::open(dir).and_then(|d| d.sync_all()) {
+            log!("pack: fsync {}: {e} (the rename may not be on the disk yet)", dir.display());
+        }
     }
     let size = std::fs::metadata(&dest.p5z).map(|m| m.len()).ok();
     let sums = read_sums(&dest.p5z);
@@ -357,7 +427,8 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
     notes.extend(summary.iter().cloned());
     notes.push(format!("the .p5z {} of the folder's {}, in all {} s with the reading of these lines",
         size.map_or("?".into(), logic::mb), logic::mb(need), (end_ms - t0) / 1000));
-    notes.push(format!("memory probe {} (stopped by {}); {memory}", logic::mib(probe.got), probe.stop.text()));
+    notes.push(format!("memory probe {} (stopped by {}{}); {memory}", logic::mib(probe.got), probe.stop.text(),
+        if reused { ", run once at this MaxPack start's first job" } else { "" }));
     if watch.game_ms > 0 {
         notes.push(format!("a game ran during {} s of the job", watch.game_ms / 1000));
     }
@@ -392,40 +463,48 @@ fn opt_mib(n: Option<u64>) -> String {
 }
 
 /// What the memory probe found.
+#[derive(Clone)]
 struct Probe {
     got: u64,
     stop: ProbeStop,
     ms: u64,
-    free_start: Option<u64>,
-    free_low: Option<u64>,
+    /// The system's available memory before the first step and at its lowest before a step.
+    available_start: Option<u64>,
+    available_low: Option<u64>,
+    /// It counted the inactive pages too (the kernel said them).
+    inactive: bool,
 }
 
 /// How much memory the payload gets, up to logic::PROBE_CAP: anonymous mappings of PROBE_STEP each, every page
-/// written to (so the memory is really there), until the cap, the first mapping that fails, a step that takes
-/// too long, the system's free memory near PROBE_RESERVE (when what the probe holds shows there) or a cancel;
-/// then every mapping is unmapped. mmap, not the allocator: a failure here is a clean ENOMEM, the heap is left
-/// as it was, and the 64 MiB a failed step asked for are still free for the payload's other threads.
-fn probe(cancelled: &dyn Fn() -> bool) -> Probe {
+/// written to (so the memory is really there). Before each step it reads the system's available memory (free
+/// pages, plus inactive ones when readable) and maps the step only when that less the step stays at least
+/// PROBE_FLOOR (maxpack_logic::pack::probe_next): judged on that reading alone, so whatever the kernel takes the
+/// pages from, the probe never takes it under the floor; memory it cannot read means no step at all. It also stops
+/// at the cap, at the first mapping that fails, after a step slower than PROBE_SLOW_MS, at a cancel, and when a
+/// game runs (`game`: MaxPack's launches and the process list, a walk that fails counting as a game); then every
+/// mapping is unmapped at once. mmap, not the allocator: a failure here is a clean ENOMEM and leaves the heap as
+/// it was. The caller runs it once per payload run.
+fn probe(cancelled: &dyn Fn() -> bool, game: &dyn Fn() -> bool) -> Probe {
     let t0 = crate::sys::uptime_ms();
     let step = logic::PROBE_STEP as usize;
-    // Room for every mapping up front: nothing is allocated while the probe holds memory.
+    // Room for every mapping up front.
     let mut maps: Vec<*mut c_void> = Vec::with_capacity((logic::PROBE_CAP / logic::PROBE_STEP) as usize + 1);
     let page = 4096;
-    let free_start = free_memory();
-    let mut free_low = free_start;
+    let first = available_memory();
+    let (available_start, inactive) = (first.map(|a| a.0), first.is_some_and(|a| a.1));
+    let mut available_low = available_start;
     let mut last = None;
     let stop = loop {
-        let got = maps.len() as u64 * logic::PROBE_STEP;
-        let free_now = free_memory();
-        free_low = match (free_low, free_now) {
+        let available = available_memory().map(|a| a.0);
+        available_low = match (available_low, available) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
-        if let Some(stop) = logic::probe_next(got, free_start, free_now, last) {
+        let look = ProbeLook {
+            got: maps.len() as u64 * logic::PROBE_STEP, available, last_step_ms: last, cancelled: cancelled(), game: game(),
+        };
+        if let Some(stop) = logic::probe_next(&look) {
             break stop;
-        }
-        if cancelled() {
-            break ProbeStop::Cancelled;
         }
         let t = crate::sys::uptime_ms();
         // SAFETY: a fresh private anonymous mapping, unmapped below.
@@ -447,13 +526,17 @@ fn probe(cancelled: &dyn Fn() -> bool) -> Probe {
         // SAFETY: each one a mapping of `step` bytes made above.
         unsafe { libc::munmap(p, step) };
     }
-    Probe { got, stop, ms: crate::sys::uptime_ms() - t0, free_start, free_low }
+    Probe { got, stop, ms: crate::sys::uptime_ms() - t0, available_start, available_low, inactive }
 }
 
-/// The system's free memory (`vm.stats.vm.v_free_count` pages), None when it cannot be read.
-fn free_memory() -> Option<u64> {
-    let pages = sysctl_u64(b"vm.stats.vm.v_free_count")?;
-    Some(pages * page_size()?)
+/// The system's available memory: its free pages (`vm.stats.vm.v_free_count`), plus its inactive ones
+/// (`v_inactive_count`, the cache the kernel can hand out) when that can be read (then true). None when the free
+/// pages cannot be read.
+fn available_memory() -> Option<(u64, bool)> {
+    let page = page_size()?;
+    let free = sysctl_u64(b"vm.stats.vm.v_free_count")?;
+    let inactive = sysctl_u64(b"vm.stats.vm.v_inactive_count");
+    Some(((free + inactive.unwrap_or(0)) * page, inactive.is_some()))
 }
 
 fn page_size() -> Option<u64> {
@@ -524,8 +607,9 @@ struct Watch {
 }
 
 /// Beside the engine: the payload's RSS every TICK_MS (its peak), the speed, and a game that starts or exits
-/// (the job goes on: this prototype measures what it does); a progress line every EVERY_MS, and every
-/// GAME_EVERY_MS while a game runs.
+/// (the job goes on: this prototype measures what it does), seen in MaxPack's own launches every tick and in the
+/// process list every WALK_TICKS (any game, whoever started it; a walk that fails keeps the last one, logged once);
+/// a progress line every EVERY_MS, and every GAME_EVERY_MS while a game runs.
 fn monitor(running: Arc<Mutex<HashSet<String>>>, stop: Arc<AtomicBool>) -> Watch {
     let mut w = Watch::default();
     let mut rate = Rate::default();
@@ -533,8 +617,20 @@ fn monitor(running: Arc<Mutex<HashSet<String>>>, stop: Arc<AtomicBool>) -> Watch
     let (mut game_since, mut game_bytes) = (0u64, 0u64);
     let mut next_line = crate::sys::uptime_ms() + EVERY_MS;
     let mut next_game_line = 0;
+    let (mut walked, mut walk_failed, mut tick) = (Vec::<String>::new(), false, 0u64);
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(TICK_MS));
+        if tick % WALK_TICKS == 0 {
+            match crate::launch::games_running() {
+                Ok(g) => (walked, walk_failed) = (g, false),
+                Err(e) if !walk_failed => {
+                    log!("pack: the process list could not be read ({e}); the last one stands until it can");
+                    walk_failed = true;
+                }
+                Err(_) => {}
+            }
+        }
+        tick += 1;
         let now = crate::sys::uptime_ms();
         let rss = rss();
         w.peak = w.peak.max(rss);
@@ -545,7 +641,9 @@ fn monitor(running: Arc<Mutex<HashSet<String>>>, stop: Arc<AtomicBool>) -> Watch
         rate.add(now, bytes);
         let speed = |over: u64| rate.mbps(over).map_or("?".into(), |r| format!("{r:.1}"));
         let mut now_games: Vec<String> = running.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
+        now_games.extend(walked.iter().cloned());
         now_games.sort();
+        now_games.dedup();
         if now_games != games {
             if games.is_empty() {
                 log!("pack: a game started while compressing ({}): {at}, {} MB/s over the 10 s before; the job goes on",

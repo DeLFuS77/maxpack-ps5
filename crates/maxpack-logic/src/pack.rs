@@ -292,12 +292,14 @@ impl Rate {
     }
 }
 
-/// The memory probe takes this much at most.
-pub const PROBE_CAP: u64 = 2 << 30;
+/// The memory probe takes this much at most: the plan's target for the whole job is about 500 MB.
+pub const PROBE_CAP: u64 = 1 << 30;
 /// In steps of this much, each one mapped and touched before the next.
 pub const PROBE_STEP: u64 = 64 << 20;
-/// It stops before the system's free memory goes under this, when what it takes shows there.
-pub const PROBE_RESERVE: u64 = 512 << 20;
+/// The system's available memory (its free pages, plus its inactive ones when the kernel says them) never goes
+/// under this because of the probe: a step is mapped only when what is available just before it, less the step,
+/// is still this much. Judged on that one reading before each step, whatever the probe already holds.
+pub const PROBE_FLOOR: u64 = 1 << 30;
 /// It stops after a step that took longer than this (memory short: the system is making room).
 pub const PROBE_SLOW_MS: u64 = 2000;
 
@@ -308,10 +310,14 @@ pub enum ProbeStop {
     Cap,
     /// The next step's mmap failed (errno).
     MapFailed(i32),
-    /// The system's free memory was down to this many bytes.
-    LowFree(u64),
+    /// One more step would have left the system less than PROBE_FLOOR available: this much was.
+    Floor(u64),
+    /// The system's free memory could not be read: no step is taken without it.
+    Unknown,
     /// The last step took this many ms.
     Slow(u64),
+    /// A game started (or the process list could not be read to tell).
+    Game,
     /// The job was cancelled meanwhile.
     Cancelled,
 }
@@ -321,31 +327,64 @@ impl ProbeStop {
         match self {
             ProbeStop::Cap => format!("its {} cap", mib(PROBE_CAP)),
             ProbeStop::MapFailed(errno) => format!("the next step's mmap failed (errno {errno})"),
-            ProbeStop::LowFree(free) => format!("the system's free memory was down to {}", mib(*free)),
+            ProbeStop::Floor(available) => format!("the system had {} available: one more step would have left it under {}",
+                mib(*available), mib(PROBE_FLOOR)),
+            ProbeStop::Unknown => "the system's free memory could not be read (no step is taken without it)".into(),
             ProbeStop::Slow(ms) => format!("a step took {ms} ms"),
+            ProbeStop::Game => "a game started (or the process list could not be read)".into(),
             ProbeStop::Cancelled => "the job was cancelled".into(),
         }
     }
 }
 
-/// Whether the probe stops before its next step. `got`: bytes it holds now; `free_start`, `free_now`: the
-/// system's free memory before the first step and now (None: unknown); `last_step_ms`: the last step's time.
-/// The free memory counts only once what the probe holds shows in it (it went down by half of that at
-/// least): on a console whose memory is split into budgets, that figure may be another pool's.
-pub fn probe_next(got: u64, free_start: Option<u64>, free_now: Option<u64>, last_step_ms: Option<u64>) -> Option<ProbeStop> {
-    if got >= PROBE_CAP {
+/// What the probe looks at before each step.
+#[derive(Debug, Clone, Copy)]
+pub struct ProbeLook {
+    /// The bytes it holds now.
+    pub got: u64,
+    /// The system's available memory read just now (free, plus inactive when known); None when it cannot be read.
+    pub available: Option<u64>,
+    /// The last step's time.
+    pub last_step_ms: Option<u64>,
+    pub cancelled: bool,
+    /// A game runs, or the process list could not be read to tell.
+    pub game: bool,
+}
+
+/// Whether the probe stops before its next step (then it unmaps everything at once): a cancel, a game, the cap, a
+/// slow last step, unknown memory, or the floor, in that order.
+pub fn probe_next(l: &ProbeLook) -> Option<ProbeStop> {
+    if l.cancelled {
+        return Some(ProbeStop::Cancelled);
+    }
+    if l.game {
+        return Some(ProbeStop::Game);
+    }
+    if l.got >= PROBE_CAP {
         return Some(ProbeStop::Cap);
     }
-    if let Some(ms) = last_step_ms.filter(|&ms| ms > PROBE_SLOW_MS) {
+    if let Some(ms) = l.last_step_ms.filter(|&ms| ms > PROBE_SLOW_MS) {
         return Some(ProbeStop::Slow(ms));
     }
-    if let (Some(start), Some(now)) = (free_start, free_now) {
-        let shows = got > 0 && start.saturating_sub(now) >= got / 2;
-        if shows && now < PROBE_RESERVE + PROBE_STEP {
-            return Some(ProbeStop::LowFree(now));
-        }
+    match l.available {
+        None => Some(ProbeStop::Unknown),
+        Some(a) if a < PROBE_FLOOR + PROBE_STEP => Some(ProbeStop::Floor(a)),
+        Some(_) => None,
     }
-    None
+}
+
+/// MaxPack's own home-screen tile: its page open in the console's browser is not a game.
+pub const TILE_ID: &str = "MXPK00001";
+
+/// The title ids of the processes that count as a running game, for the test compression's gate and its log: a
+/// game's title id (`titles::valid_tid`: 4 capitals and 5 digits, not a system app's `NPXS`), not MaxPack's tile;
+/// sorted, each once.
+pub fn running_games<'a>(titles: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut v: Vec<String> =
+        titles.into_iter().filter(|t| crate::titles::valid_tid(t) && *t != TILE_ID).map(str::to_string).collect();
+    v.sort();
+    v.dedup();
+    v
 }
 
 /// What the `.p5z`'s index records of its packs (ps5/pack.c reads it back from the file written): the
@@ -626,38 +665,57 @@ mod tests {
     }
 
     #[test]
-    fn the_probe_goes_up_to_its_cap() {
-        assert_eq!((PROBE_CAP, PROBE_STEP), (2 << 30, 64 << 20));
-        assert_eq!(probe_next(0, None, None, None), None);
-        assert_eq!(probe_next(PROBE_CAP - PROBE_STEP, None, None, Some(30)), None);
-        assert_eq!(probe_next(PROBE_CAP, None, None, Some(30)), Some(ProbeStop::Cap));
-        assert_eq!(probe_next(128 << 20, None, None, Some(PROBE_SLOW_MS + 1)), Some(ProbeStop::Slow(PROBE_SLOW_MS + 1)));
-        assert_eq!(probe_next(128 << 20, None, None, Some(PROBE_SLOW_MS)), None);
+    fn the_probe_maps_a_step_only_above_the_floor() {
+        assert_eq!((PROBE_CAP, PROBE_STEP, PROBE_FLOOR), (1 << 30, 64 << 20, 1 << 30));
+        let look = |got, available| ProbeLook { got, available, last_step_ms: Some(30), cancelled: false, game: false };
+        assert_eq!(probe_next(&look(0, Some(PROBE_FLOOR + PROBE_STEP))), None);
+        let short = PROBE_FLOOR + PROBE_STEP - 1;
+        assert_eq!(probe_next(&look(0, Some(short))), Some(ProbeStop::Floor(short)));
+        // Each step on its own reading, however much the probe holds: late in the probe as at its start.
+        assert_eq!(probe_next(&look(PROBE_CAP - PROBE_STEP, Some(PROBE_FLOOR + PROBE_STEP))), None);
+        assert_eq!(probe_next(&look(PROBE_CAP - PROBE_STEP, Some(50 << 20))), Some(ProbeStop::Floor(50 << 20)));
+        assert_eq!(probe_next(&look(PROBE_STEP, Some(0))), Some(ProbeStop::Floor(0)));
+        // Memory that cannot be read: no step at all, first or later.
+        assert_eq!(probe_next(&look(0, None)), Some(ProbeStop::Unknown));
+        assert_eq!(probe_next(&look(256 << 20, None)), Some(ProbeStop::Unknown));
     }
 
     #[test]
-    fn the_probe_leaves_free_memory_when_it_shows_there() {
-        let gib = 1u64 << 30;
-        // What it took shows in the free memory: it stops before the next step goes under the reserve.
-        let low = PROBE_RESERVE + PROBE_STEP - 1;
-        assert_eq!(probe_next(gib, Some(low + gib), Some(low), Some(30)), Some(ProbeStop::LowFree(low)));
-        assert_eq!(probe_next(gib, Some(low + 1 + gib), Some(low + 1), Some(30)), None);
-        // It does not show there (another pool, or others freed as much): that figure says nothing.
-        assert_eq!(probe_next(gib, Some(low + gib / 4), Some(low), Some(30)), None);
-        // Before the first step nothing can show.
-        assert_eq!(probe_next(0, Some(64 << 20), Some(64 << 20), None), None);
-        // Unknown free memory: only the cap, a failed step and a slow one stop it.
-        assert_eq!(probe_next(gib, None, Some(1), Some(30)), None);
-        assert_eq!(probe_next(gib, Some(8 * gib), None, Some(30)), None);
+    fn the_probe_stops_at_its_cap_a_slow_step_a_game_or_a_cancel() {
+        let look = |got, last_step_ms, cancelled, game| ProbeLook { got, available: Some(64 << 30), last_step_ms, cancelled, game };
+        assert_eq!(probe_next(&look(0, None, false, false)), None);
+        assert_eq!(probe_next(&look(PROBE_CAP - PROBE_STEP, Some(30), false, false)), None);
+        assert_eq!(probe_next(&look(PROBE_CAP, Some(30), false, false)), Some(ProbeStop::Cap));
+        assert_eq!(probe_next(&look(128 << 20, Some(PROBE_SLOW_MS + 1), false, false)), Some(ProbeStop::Slow(PROBE_SLOW_MS + 1)));
+        assert_eq!(probe_next(&look(128 << 20, Some(PROBE_SLOW_MS), false, false)), None);
+        assert_eq!(probe_next(&look(128 << 20, Some(30), false, true)), Some(ProbeStop::Game));
+        assert_eq!(probe_next(&look(128 << 20, Some(30), true, false)), Some(ProbeStop::Cancelled));
+        // A cancel, then a game, win over everything else, unknown memory included.
+        let all = ProbeLook { got: PROBE_CAP, available: None, last_step_ms: Some(9999), cancelled: true, game: true };
+        assert_eq!(probe_next(&all), Some(ProbeStop::Cancelled));
+        assert_eq!(probe_next(&ProbeLook { cancelled: false, ..all }), Some(ProbeStop::Game));
+        assert_eq!(probe_next(&ProbeLook { cancelled: false, game: false, ..all }), Some(ProbeStop::Cap));
     }
 
     #[test]
     fn probe_stops_say_why() {
-        assert_eq!(ProbeStop::Cap.text(), "its 2048 MiB cap");
+        assert_eq!(ProbeStop::Cap.text(), "its 1024 MiB cap");
         assert_eq!(ProbeStop::MapFailed(12).text(), "the next step's mmap failed (errno 12)");
-        assert_eq!(ProbeStop::LowFree(600 << 20).text(), "the system's free memory was down to 600 MiB");
+        assert_eq!(ProbeStop::Floor(1100 << 20).text(),
+            "the system had 1100 MiB available: one more step would have left it under 1024 MiB");
+        assert_eq!(ProbeStop::Unknown.text(), "the system's free memory could not be read (no step is taken without it)");
         assert_eq!(ProbeStop::Slow(2500).text(), "a step took 2500 ms");
+        assert_eq!(ProbeStop::Game.text(), "a game started (or the process list could not be read)");
         assert_eq!(ProbeStop::Cancelled.text(), "the job was cancelled");
+    }
+
+    #[test]
+    fn which_processes_count_as_a_running_game() {
+        let found = ["NPXS40140", "PPSA01234", "MXPK00001", "CUSA00001", "PPSA01234", "", "ppsa01234", "PPSA0123", "PPSA012345"];
+        assert_eq!(running_games(found), vec!["CUSA00001".to_string(), "PPSA01234".to_string()]);
+        assert!(running_games([]).is_empty());
+        // The system's apps and MaxPack's own page are not games.
+        assert!(running_games(["NPXS20001", "NPXS40028", TILE_ID]).is_empty());
     }
 
     const AID: &str = "2388a49fde20d12c2322289c96ecdc5d";

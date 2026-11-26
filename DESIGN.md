@@ -959,18 +959,28 @@ mode, and the button says it is a test.
   zstd context takes about 120 MB). 204 once the job's thread started, else `{code, detail}`
   (`maxpack_logic::pack::Refusal`, the first that applies): 400 `bad_request`; 404 `not_found` (no library entry at
   that path); 409 `not_folder` (a pkg, a `.p5z` or a packed folder), `pack_running`, `install_running`
-  (`installer::idle` is false: the installer runs or queues a job), `game_running` (`State::paused`), `exists`
+  (`installer::idle` is false: the installer runs or queues a job), `game_running` (any game runs, whoever started
+  it: `State::paused` for MaxPack's launches, and `launch::games_running`, one walk of the process list whose app
+  info title ids `maxpack_logic::pack::running_games` keeps, not a system app's `NPXS`, not MaxPack's tile
+  `MXPK00001`, not this payload; a walk that fails refuses too, `maxpack_logic::inst::game_blocks`; the log names
+  the games or the walk's error), `exists`
   (`<folder>.p5z` is there, or cannot be looked at: it is never overwritten), `no_space` with `missing_bytes` (the
   folder's bytes, `cache::du`, plus `SPACE_MARGIN` must fit in the free space where the `.p5z` goes, since a `.p5z`
   can be as large as the folder). Behind the same Host and Origin checks as every POST. `POST /api/pack/cancel` ->
   204, or 409 when no job runs. Both are only for the page's test button: nothing else calls them.
 - The `.p5z` goes beside the folder, so on the same drive: `<folder>.p5z`. It is written as
   `<folder>.p5z.maxpack-pack` (not a `.p5z` name, so the scan never takes the growing file) and renamed at the end,
-  only if `<folder>.p5z` is still not there (ponytail: checked, then renamed). A `.maxpack-pack` file found when a
+  only if `<folder>.p5z` is still not there (ponytail: checked, then renamed); before the rename the file is flushed
+  (`fsync`: the engine closes it without one, and a power cut after the rename must not leave a `.p5z` whose index
+  reached the disk and some of whose volumes did not), after it its folder (a failure of either is logged, not
+  fatal). A `.maxpack-pack` file found when a
   job starts (left by one this payload no longer runs: it quit or crashed) is removed and logged. Once renamed, the
   `.p5z` is a game of the scan like any other: while the folder is there it is the folder's duplicate (Flow,
   Duplicate title ids).
-- The job (`pack::run`, its own thread): the memory probe, then the engine (`ps5/pack.c` `maxpack_pack_p5z`:
+- The job (`pack::run`, its own thread, started with `thread::Builder`: a thread the system refuses ends the job as
+  failed, and a job thread that returns without a result marks it failed, so `running` never stays true; without
+  the monitor's thread the job goes on, with no peak memory and no game lines): the memory probe (the first job of
+  a run only), then the engine (`ps5/pack.c` `maxpack_pack_p5z`:
   `mp_pack_opts_default` with the level and the threads set and no progress on stderr, `mp_pack_out_p5z` with 1
   thread, `mp_pack_run`, then the writer's destroy, which deletes a `.p5z` it did not finish), the rename, and the
   sums (`maxpack_p5z_sums`: `mp_p5z_open` of the file written, and from its index the header's `archive_id` and
@@ -987,39 +997,46 @@ mode, and the button says it is a test.
   `/api/delete` of that folder and `/api/eject` of its drive answer 409 while the job runs. Quitting (`/api/quit`, or
   another copy taking the port) cancels it and waits up to 3 s for its file to go (`pack::stop`), before
   `installer::stop`. The self-update counts a running job as the installer's (`install_running`, a ponytail).
-- The memory probe (`pack::probe`, `maxpack_logic::pack::probe_next`), before the engine: how much memory the payload
-  gets, up to 2 GiB, in steps of 64 MiB, each an anonymous `mmap` with every 4 KiB of it written (so the memory is
-  really there), until the cap, the first `mmap` that fails (its errno), a step that takes over 2 s (the system is
-  making room), the system's free memory (`vm.stats.vm.v_free_count` times the page size, through
-  `sysctl.name2oid` and `sysctl`) under 512 MiB plus a step, or a cancel; then every mapping is unmapped. The free
-  memory counts only once what the probe holds shows there (it went down by half of that at least): on a console
-  whose memory is split into budgets that figure may be another pool's. `mmap`, not the allocator: a failed step is
-  a clean ENOMEM that leaves the heap as it was, and the up to 64 MiB it could not have are still there for the
-  payload's other threads (a Rust allocation that fails ends the payload); the room for every mapping's address is
-  taken before the first one. One log line: what it got, why it stopped, its time, the free memory before and at
-  its lowest, the payload's RSS before and after.
+- The memory probe (`pack::probe`, `maxpack_logic::pack::probe_next`): how much memory the payload gets, run once
+  per payload run, before the first job's engine (later jobs log its result again and put it in their notes; a
+  new probe needs a restart of MaxPack). Up to 1 GiB (`PROBE_CAP`; the plan's target for the whole job is about
+  500 MB), in steps of 64 MiB, each an anonymous `mmap` with every 4 KiB of it written (so the memory is really
+  there). Before each step it reads the system's available memory: its free pages (`vm.stats.vm.v_free_count`)
+  plus its inactive ones (`v_inactive_count`, the cache the kernel can hand out) when that can be read, times the
+  page size, through `sysctl.name2oid` and `sysctl`. A step is mapped only when that reading less the step is at
+  least 1 GiB (`PROBE_FLOOR`): each step is judged on its own reading, whatever the probe already holds and wherever
+  the kernel takes the pages from, so the probe never takes the system's available memory under 1 GiB; memory that
+  cannot be read means no step at all. It also stops at the cap, at the first `mmap` that fails (its errno), after
+  a step that took over 2 s (the system is making room), at a cancel, and when a game runs (MaxPack's launches and
+  the process list, checked before each step; a walk that fails counts as a game): then every mapping is unmapped
+  at once. `mmap`, not the allocator: a failed step is a clean ENOMEM that leaves the heap as it was (a Rust
+  allocation that fails ends the payload). One log line: what it got, why it stopped (`ProbeStop`), its time, the
+  available memory (and whether it counted the inactive pages) before and at its lowest, the payload's RSS before
+  and after.
 - The log (`pack: ...`): the start (the folder's size, the free space, the level and the threads); the probe; a line
   a minute (phase, percentage, MB/s over the last minute, RSS); then each phase of the engine with its bytes, time
   and MB/s (10^6 bytes a second; `maxpack_logic::pack::Progress`: the first phase from its first report, each next
   one from the last report of the one before), the time before the first phase (the folder's list read and checked)
   and after the last (the indexes), and in all; the payload's RSS at its peak (`kern.proc.pid`'s `ki_rssize`, every
   250 ms) and before the job; the counts of loose and packed files; the `archive_id` and each volume's line. A game
-  started while the job runs does not stop it: its start and exit are logged with the speed before it and while it
-  ran, and one line every 30 s while it runs.
+  started while the job runs does not stop it: the monitor sees MaxPack's launches every 250 ms and any game in the
+  process list every 2 s (`launch::games_running`; a walk that fails keeps the last one, logged once); a game's
+  start and exit are logged with the speed before it and while it ran, and one line every 30 s while it runs.
 - `/api/state` `pack`: null until a job ran in this run, else the last one: `{state: "probe"|"running"|"sums"|
   "done"|"failed"|"cancelled", cancelling, source, dest, level, threads, phase: "loose"|"packs"|"other"|null, done,
-  total (of the current phase), mbps (its average), elapsed_ms, error, lines, size}`. `lines`
+  total (of the current phase), mbps (its average), elapsed_ms, error, lines, size, left}`. `left` is the
+  `.maxpack-pack` file when a failed or cancelled job left it (the engine deletes it normally; a failure's `error`
+  then says so too), else null: the page says that nothing of the `.p5z` is left only when `left` is null. `lines`
   (`maxpack_logic::pack::lines`): notes first, each after `# ` (MaxPack's version and the engine's commit, the level
   and threads, each phase's line, the `.p5z`'s size, the probe and the peak memory), then `level N`,
   `archive_id <32 hex>` and one `ampr_zstd-NNN.pak <size> <sha256>` line per volume, as the `.p5z`'s index records
   them. No path and no name: a folder is often named after its game.
-- The PC's side: the same values are in the PC's `.p5z` index, but no command of the PC prints them yet
-  (`maxpack info --json` gives neither the `archive_id` nor the volumes' SHA-256; `info --play` gives the
-  `archive_id`). Meanwhile `maxpack unpack <game.p5z> --folder -o <dir>`, then
-  `tail -c +65 <dir>/ampr_zstd-NNN.pak | sha256sum` for each volume, gives the same SHA-256. The threads do not
-  change the output: on the PC, the engine at b3b526f with this file's setup (5 threads for the packs, 1 for the
-  loose files) wrote a `.p5z` byte for byte the one `maxpack pack --p5z` wrote with its default threads, from the
-  same folder.
+- The PC's side: `maxpack info --sums <game.p5z>` (MaxPack 1.0.7 for the PC or later) prints the same data lines
+  from the PC's `.p5z` (`level N`, `archive_id <hex>`, `ampr_zstd-NNN.pak <size> <sha256>`), so the console's lines
+  without their `#` notes compare with `diff`; `info --json` has the same as `archive_id`, `level` and
+  `volume_sums`. The threads do not change the output: on the PC, the engine at b3b526f with this file's setup (5
+  threads for the packs, 1 for the loose files) wrote a `.p5z` byte for byte the one `maxpack pack --p5z` wrote with
+  its default threads, from the same folder.
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:

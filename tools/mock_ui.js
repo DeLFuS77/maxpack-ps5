@@ -254,7 +254,7 @@ function packValue() {
   if (!j) return null;
   const ms = Date.now() - j.t0;
   const v = { source: j.source, dest: j.source + '.p5z', level: j.level, threads: j.threads, cancelling: false,
-    phase: null, done: 0, total: 0, mbps: null, elapsed_ms: ms, error: null, lines: null, size: null };
+    phase: null, done: 0, total: 0, mbps: null, elapsed_ms: ms, error: null, lines: null, size: null, left: null };
   const loose = 180e6, packed = 8.2e9;
   if (j.cancelled) return Object.assign(v, { state: 'cancelled', elapsed_ms: j.cancelled - j.t0, error: 'cancelled' });
   if (ms < 2000) return Object.assign(v, { state: 'probe' });

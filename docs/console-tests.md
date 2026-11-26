@@ -890,9 +890,10 @@ each level is, how much memory it takes, whether the console stays usable meanwh
 the same as the PC's. It does not pause when a game starts and does not keep the console awake.
 
 You need: a small game you have as a folder (a few GB, a plain dump: no `ampr_zstd.index` or
-`ampr_assets.index` in it) and, for 12.6, a large one; a MaxPack for the PC of the same engine as this build
-(its branch `pc-ampliar` at b3b526f, or a later build that says it packs the same), and the same folder on the PC,
-byte for byte (copied over FTP in binary mode, or the other way round).
+`ampr_assets.index` in it) and, for 12.6, a large one; MaxPack for the PC 1.0.7 or later (it has
+`maxpack info --sums`) with the same engine as this build (b3b526f: an engine that packs differently gives other
+volumes), and the same folder on the PC, byte for byte (copied over FTP in binary mode, or the other way round).
+Close every game before starting a run: MaxPack refuses to start one while any game runs.
 
 Where to look: the game's sheet (the row "Compress on the console (test)" at the bottom), the log
 (`/data/maxpack/maxpack.log` or the page's log: every line of the job starts with `pack:`), and `/api/state`,
@@ -909,9 +910,14 @@ field `pack`.
   - Expected while it runs: "measuring the memory" for a second or two, then "loose files", then "packs", with
     the percentage, the MB/s and the time; the bar moves. In the log, first
     `pack: memory probe: N MiB in steps of 64 MiB, ...; stopped by ...` (keep that line: it is how much memory the
-    payload gets), a `pack:` line every minute, then one line per phase (`Copying the loose files: ... MB/s`,
-    `Packing (zstd level 3): ... MB/s`), the payload's RSS at its peak, and `pack: done: <folder>.p5z
+    payload gets, up to 1 GiB; the probe never takes the console's available memory under 1 GiB, and it runs only
+    once per MaxPack start), a `pack:` line every minute, then one line per phase (`Copying the loose files: ...
+    MB/s`, `Packing (zstd level 3): ... MB/s`), the payload's RSS at its peak, and `pack: done: <folder>.p5z
     (archive_id ..., N volumes)`.
+  - If the probe misbehaves (while the page says "measuring the memory" the console shows a memory warning, an app
+    or the home screen closes or freezes, or the page stops answering for more than a few seconds): press "Cancel
+    the compression" if you still can, start no other run, and send `/data/maxpack/maxpack.log` (FTP) with what you
+    saw. If the console needed a restart, say so; do not send this build again until the log has been read.
   - Expected at the end: "Done in ...", a box with the lines, and "Copy the lines". Next to the folder there is
     `<folder>.p5z` (and no `.maxpack-pack` file); the library lists it as a duplicate of the folder.
   - Press "Copy the lines" and keep them (paste them into a text file on the PC). They hold no game name.
@@ -922,14 +928,17 @@ field `pack`.
   - Run level 9 with 5 threads, then level 9 with 4 threads, then level 3 with 4 threads. Level 19 with 5 threads
     once (it can take a long time; with 4 threads only if you have the time). Copy the lines of each run.
   - Expected: each run ends with "Done", and each run's lines say its level and threads (the lines that start with
-    `#`). Two runs at the same level give the same `archive_id` and volume lines, whatever the threads.
+    `#`). Two runs at the same level give the same `archive_id` and volume lines, whatever the threads. The
+    memory probe does not run again: the log says `pack: memory probe: not run again (once per MaxPack start)`.
 - [ ] **12.4. The same lines on the PC.**
-  - On the PC, for each level you ran: `maxpack pack "<folder>" -o "<game>-L<level>.p5z" --p5z --level <level>`.
-  - Get its lines. No command of the PC prints them yet; until one does: `maxpack unpack "<game>-L<level>.p5z"
-    --folder -o "<dir>"`, then for each volume `tail -c +65 "<dir>/ampr_zstd-000.pak" | sha256sum` (Git Bash on
-    Windows has both), and `maxpack info --play "<game>-L<level>.p5z"` for the `archive_id`.
-  - Expected: the same `archive_id`, the same volume names and sizes, and the same SHA-256 as the console's lines
-    of that level. Send both sets of lines.
+  - On the PC, for each level you ran: `maxpack pack "<folder>" -o "<game>-L<level>.p5z" --p5z --level <level>`,
+    then `maxpack info --sums "<game>-L<level>.p5z"` (MaxPack for the PC 1.0.7 or later). It prints `level N`,
+    `archive_id <hex>` and one `ampr_zstd-NNN.pak <size> <sha256>` line per volume, as the console's lines do
+    after their `#` notes.
+  - Compare: save the console's lines of that level as `console.txt` and run, in Git Bash,
+    `diff <(grep -v '^#' console.txt) <(maxpack info --sums "<game>-L<level>.p5z" | tr -d '\r')`.
+  - Expected: no output from `diff` (the same `archive_id`, the same volume names and sizes, the same SHA-256).
+    Send both sets of lines.
 - [ ] **12.5. Play the `.p5z` the console made.**
   - Keep the last `.p5z` the console made. In Settings, add the game's folder to "Excluded paths" and save, so the
     `.p5z` is the library's copy (while the folder is listed, the folder wins).
@@ -941,18 +950,22 @@ field `pack`.
     for one more copy of it): level 3, Threads 5.
   - Expected: it ends with "Done". Note the time, the MB/s of the packs (the `pack:` line of each minute shows if
     the speed holds), the peak memory and how loud the fan gets.
-  - Once, while it runs, start another game from the home screen, play 2 minutes and close it. Expected: the job
-    goes on (this test build does not pause); the log says `pack: a game started while compressing (...)` with the
-    speed before it, `pack: a game runs (...)` every 30 s, and `pack: the game exited (...)` with the speed while it
-    ran. Note whether the game stutters or loads slowly.
+  - Once, while it runs, start another game from the home screen (any game: one of MaxPack's library, an installed
+    one or one another mounter started), play 2 minutes and close it. Expected: the job goes on (this test build
+    does not pause); within 2 s the log says `pack: a game started while compressing (...)` with the speed before
+    it, `pack: a game runs (...)` every 30 s, and `pack: the game exited (...)` with the speed while it ran. Note
+    whether the game stutters or loads slowly.
   - Optional: leave the console alone until it goes into rest mode during a run, wake it, and note whether the job
     went on (the time and the `pack:` lines say it) or the page shows it failed.
 - [ ] **12.7. Cancel and refusals.**
-  - Start a run and press "Cancel the compression" during the packs. Expected: "Cancelled: the partial .p5z was
-    deleted.", no `<folder>.p5z` and no `<folder>.p5z.maxpack-pack` next to the folder; in the log
-    `pack: cancelled after ... s in the engine: cancelled`.
+  - Start a run and press "Cancel the compression" during the packs. Expected: "Cancelled: nothing of the .p5z is
+    left.", no `<folder>.p5z` and no `<folder>.p5z.maxpack-pack` next to the folder; in the log
+    `pack: cancelled after ... s in the engine: cancelled`. If the sheet says instead that the `.maxpack-pack` file
+    is still there, check it over FTP and note it.
   - With `<folder>.p5z` there, press "Compress (test)". Expected: the sheet says it is there already; the file is
     not touched.
+  - With a game running (start one from the home screen, also one MaxPack did not start), press "Compress (test)".
+    Expected: "Close the game first." and nothing starts; in the log `pack: ... refused: a game is running (<TID>)`.
   - During a run, press Install or Verify in the Install tab. Expected: "A test compression is running: try again
     when it ends." and nothing starts.
   - During a run, open another folder game's sheet. Expected: it says another test compression is running, with its
