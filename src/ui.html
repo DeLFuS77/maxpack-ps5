@@ -860,8 +860,9 @@ button.inst-item[aria-checked="true"] {
         <span class="hint" data-i18n="overlayHint">Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.</span></span>
         <input type="checkbox" id="m-overlay"></label>
       <div class="row col m-row" id="m-verify-row" hidden><span class="lbl" data-i18n="verifyLbl">Verify on the console</span>
-        <span class="hint" data-i18n="verifyHint">Verify fully unpacks every file of the .p5z and checks it against the SHA-256 it was packed with, as maxpack verify does on the PC. It reads the whole game, so it takes a while, and no game can run meanwhile.</span>
+        <span class="hint" data-i18n="verifyHint">Verify quickly reads the .p5z at the speed of the disk and checks each volume and loose file against the SHA-256 it was written with: it finds a copy cut short or damaged. Verify fully also unpacks every file and checks it, as maxpack verify does on the PC: it takes much longer. No game can run meanwhile.</span>
         <div class="job-ctl">
+          <button type="button" id="m-verify-quick" data-i18n="verifyQuick">Verify quickly</button>
           <button type="button" id="m-verify" data-i18n="verifyFull">Verify fully</button>
           <button type="button" id="m-verify-cancel" data-i18n="verifyCancel" hidden>Cancel the verify</button>
         </div>
@@ -1115,10 +1116,10 @@ var MSG = {
     iStarting: 'The installer is starting...', iNoInstaller: 'The installer could not start.',
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Verify on the console",
-    verifyHint: "Verify fully unpacks every file of the .p5z and checks it against the SHA-256 it was packed with, as maxpack verify does on the PC. It reads the whole game, so it takes a while, and no game can run meanwhile.",
+    verifyHint: "Verify quickly reads the .p5z at the speed of the disk and checks each volume and loose file against the SHA-256 it was written with: it finds a copy cut short or damaged. Verify fully also unpacks every file and checks it, as maxpack verify does on the PC: it takes much longer. No game can run meanwhile.",
     verifyFull: "Verify fully",
     verifyCancel: "Cancel the verify",
-    verifyRunning: "Verifying: {pct} %, {speed} MB/s, {time} so far.",
+    verifyRunning: "Verifying ({phase}): {pct} %, {speed} MB/s, {time} so far.",
     verifyCancelling: "Cancelling...",
     verifyCancelled: "Verify cancelled.",
     verifyFailed: "The verify could not finish: {error}",
@@ -1132,7 +1133,13 @@ var MSG = {
     verifyFail_verify_running: "Another .p5z is being verified: try again when it ends.",
     verifyFail_receive_running: "A game is arriving from the PC: try again when it ends.",
     verifyFail_not_p5z: "Only a .p5z can be verified on the console.",
-    iConsoleBusy: "MaxPack is verifying a .p5z or receiving a game from the PC: try again when it ends."
+    iConsoleBusy: "MaxPack is verifying a .p5z or receiving a game from the PC: try again when it ends.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Verify quickly",
+    verifyPhase_quick: "volumes and loose files",
+    verifyPhase_full: "unpacking every file",
+    verifyQuickOk: "Verified quickly on {date}: its {files} volumes and files match.",
+    verifyQuickBad: "Damaged (verified quickly on {date}): {bad} of {files} volumes and files do not match."
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1393,10 +1400,10 @@ var MSG = {
     iNoInstaller: "Не удалось запустить установщик.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Проверка на консоли",
-    verifyHint: "«Полная проверка» распаковывает каждый файл .p5z и сверяет его с SHA-256, записанной при упаковке, как maxpack verify на ПК. Она читает всю игру, поэтому занимает время, и всё это время нельзя запускать игры.",
+    verifyHint: "«Быстрая проверка» читает .p5z со скоростью диска и сверяет каждый том и каждый отдельный файл с SHA-256, записанной при создании: так находится обрезанная или повреждённая копия. «Полная проверка» вдобавок распаковывает каждый файл и проверяет его, как maxpack verify на ПК: это гораздо дольше. Всё это время нельзя запускать игры.",
     verifyFull: "Полная проверка",
     verifyCancel: "Отменить проверку",
-    verifyRunning: "Проверка: {pct} %, {speed} MB/s, прошло {time}.",
+    verifyRunning: "Проверка ({phase}): {pct} %, {speed} MB/s, прошло {time}.",
     verifyCancelling: "Отмена...",
     verifyCancelled: "Проверка отменена.",
     verifyFailed: "Проверку не удалось завершить: {error}",
@@ -1410,7 +1417,13 @@ var MSG = {
     verifyFail_verify_running: "Идёт проверка другого .p5z: повторите, когда она закончится.",
     verifyFail_receive_running: "С ПК приходит игра: повторите, когда приём закончится.",
     verifyFail_not_p5z: "На консоли проверяются только файлы .p5z.",
-    iConsoleBusy: "MaxPack проверяет .p5z или принимает игру с ПК: повторите, когда это закончится."
+    iConsoleBusy: "MaxPack проверяет .p5z или принимает игру с ПК: повторите, когда это закончится.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Быстрая проверка",
+    verifyPhase_quick: "тома и отдельные файлы",
+    verifyPhase_full: "распаковка каждого файла",
+    verifyQuickOk: "Быстро проверено {date}: все тома и файлы ({files}) совпадают.",
+    verifyQuickBad: "Повреждён (быстрая проверка {date}): не совпадают {bad} из {files} томов и файлов."
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1671,10 +1684,10 @@ var MSG = {
     iNoInstaller: "安装器无法启动。",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "在主机上校验",
-    verifyHint: "“完整校验”会解压 .p5z 中的每个文件，并与打包时记录的 SHA-256 比对，和电脑上的 maxpack verify 一样。它要读取整个游戏，所以需要一些时间，期间不能运行任何游戏。",
+    verifyHint: "“快速校验”以磁盘速度读取 .p5z，并将每个卷和每个散装文件与写入时记录的 SHA-256 比对，可以发现被截断或损坏的副本。“完整校验”还会解压每个文件并逐一检查，和电脑上的 maxpack verify 一样，耗时长得多。期间不能运行任何游戏。",
     verifyFull: "完整校验",
     verifyCancel: "取消校验",
-    verifyRunning: "正在校验：{pct} %，{speed} MB/s，已用 {time}。",
+    verifyRunning: "正在校验（{phase}）：{pct} %，{speed} MB/s，已用 {time}。",
     verifyCancelling: "正在取消...",
     verifyCancelled: "校验已取消。",
     verifyFailed: "校验未能完成：{error}",
@@ -1688,7 +1701,13 @@ var MSG = {
     verifyFail_verify_running: "正在校验另一个 .p5z：请在结束后再试。",
     verifyFail_receive_running: "正在从电脑接收游戏：请在结束后再试。",
     verifyFail_not_p5z: "主机上只能校验 .p5z 文件。",
-    iConsoleBusy: "MaxPack 正在校验 .p5z 或从电脑接收游戏：请在结束后再试。"
+    iConsoleBusy: "MaxPack 正在校验 .p5z 或从电脑接收游戏：请在结束后再试。",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "快速校验",
+    verifyPhase_quick: "卷和散装文件",
+    verifyPhase_full: "逐个解压文件",
+    verifyQuickOk: "已于 {date} 快速校验：全部 {files} 个卷和文件一致。",
+    verifyQuickBad: "已损坏（于 {date} 快速校验）：{files} 个卷和文件中有 {bad} 个不一致。"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -1949,10 +1968,10 @@ var MSG = {
     iNoInstaller: "Der Installer konnte nicht gestartet werden.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Auf der Konsole prüfen",
-    verifyHint: "„Vollständig prüfen“ entpackt jede Datei der .p5z und vergleicht sie mit der SHA-256, mit der sie gepackt wurde, wie maxpack verify am PC. Es liest das ganze Spiel, dauert also eine Weile, und solange startet kein Spiel.",
+    verifyHint: "„Schnell prüfen“ liest die .p5z mit der Geschwindigkeit des Laufwerks und vergleicht jedes Volume und jede lose Datei mit der SHA-256, mit der sie geschrieben wurden: So fällt eine abgeschnittene oder beschädigte Kopie auf. „Vollständig prüfen“ entpackt außerdem jede Datei und prüft sie, wie maxpack verify am PC: das dauert viel länger. Solange startet kein Spiel.",
     verifyFull: "Vollständig prüfen",
     verifyCancel: "Prüfung abbrechen",
-    verifyRunning: "Prüfe: {pct} %, {speed} MB/s, bisher {time}.",
+    verifyRunning: "Prüfe ({phase}): {pct} %, {speed} MB/s, bisher {time}.",
     verifyCancelling: "Wird abgebrochen...",
     verifyCancelled: "Prüfung abgebrochen.",
     verifyFailed: "Die Prüfung konnte nicht beendet werden: {error}",
@@ -1966,7 +1985,13 @@ var MSG = {
     verifyFail_verify_running: "Eine andere .p5z wird gerade geprüft: versuche es erneut, wenn das endet.",
     verifyFail_receive_running: "Gerade kommt ein Spiel vom PC: versuche es erneut, wenn das endet.",
     verifyFail_not_p5z: "Auf der Konsole lassen sich nur .p5z-Dateien prüfen.",
-    iConsoleBusy: "MaxPack prüft gerade eine .p5z oder empfängt ein Spiel vom PC: versuche es erneut, wenn das endet."
+    iConsoleBusy: "MaxPack prüft gerade eine .p5z oder empfängt ein Spiel vom PC: versuche es erneut, wenn das endet.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Schnell prüfen",
+    verifyPhase_quick: "Volumes und lose Dateien",
+    verifyPhase_full: "jede Datei entpacken",
+    verifyQuickOk: "Schnell geprüft am {date}: alle {files} Volumes und Dateien stimmen.",
+    verifyQuickBad: "Beschädigt (schnell geprüft am {date}): {bad} von {files} Volumes und Dateien stimmen nicht."
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2172,10 +2197,10 @@ var MSG = {
     iStarting: 'El instalador se está iniciando...', iNoInstaller: 'El instalador no pudo arrancar.',
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Verificar en la consola",
-    verifyHint: "«Verificar entero» descomprime cada archivo del .p5z y lo compara con el SHA-256 con que se empaquetó, como maxpack verify en el PC. Lee el juego entero, así que tarda un rato, y mientras tanto no se puede abrir ningún juego.",
+    verifyHint: "«Verificar rápido» lee el .p5z a la velocidad del disco y comprueba cada volumen y cada archivo suelto con el SHA-256 con que se escribió: encuentra una copia cortada o dañada. «Verificar entero» además descomprime cada archivo y lo comprueba, como maxpack verify en el PC: tarda mucho más. Mientras tanto no se puede abrir ningún juego.",
     verifyFull: "Verificar entero",
     verifyCancel: "Cancelar la verificación",
-    verifyRunning: "Verificando: {pct} %, {speed} MB/s, {time} hasta ahora.",
+    verifyRunning: "Verificando ({phase}): {pct} %, {speed} MB/s, {time} hasta ahora.",
     verifyCancelling: "Cancelando...",
     verifyCancelled: "Verificación cancelada.",
     verifyFailed: "La verificación no pudo terminar: {error}",
@@ -2189,7 +2214,13 @@ var MSG = {
     verifyFail_verify_running: "Se está verificando otro .p5z: vuelve a intentarlo cuando termine.",
     verifyFail_receive_running: "Está llegando un juego del PC: vuelve a intentarlo cuando termine.",
     verifyFail_not_p5z: "En la consola solo se verifican archivos .p5z.",
-    iConsoleBusy: "MaxPack está verificando un .p5z o recibiendo un juego del PC: vuelve a intentarlo cuando termine."
+    iConsoleBusy: "MaxPack está verificando un .p5z o recibiendo un juego del PC: vuelve a intentarlo cuando termine.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Verificar rápido",
+    verifyPhase_quick: "volúmenes y archivos sueltos",
+    verifyPhase_full: "descomprimiendo cada archivo",
+    verifyQuickOk: "Verificado rápido el {date}: sus {files} volúmenes y archivos cuadran.",
+    verifyQuickBad: "Dañado (verificado rápido el {date}): {bad} de {files} volúmenes y archivos no cuadran."
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2450,10 +2481,10 @@ var MSG = {
     iNoInstaller: "L'installateur n'a pas pu démarrer.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Vérifier sur la console",
-    verifyHint: "« Vérifier entièrement » décompresse chaque fichier du .p5z et le compare au SHA-256 enregistré à l'empaquetage, comme maxpack verify sur le PC. Il lit tout le jeu, donc cela prend un moment, et aucun jeu ne peut tourner pendant ce temps.",
+    verifyHint: "« Vérifier rapidement » lit le .p5z à la vitesse du disque et compare chaque volume et chaque fichier isolé au SHA-256 enregistré à l'écriture : cela révèle une copie tronquée ou endommagée. « Vérifier entièrement » décompresse en plus chaque fichier et le vérifie, comme maxpack verify sur le PC : c'est bien plus long. Aucun jeu ne peut tourner pendant ce temps.",
     verifyFull: "Vérifier entièrement",
     verifyCancel: "Annuler la vérification",
-    verifyRunning: "Vérification : {pct} %, {speed} MB/s, {time} jusqu'ici.",
+    verifyRunning: "Vérification ({phase}) : {pct} %, {speed} MB/s, {time} jusqu'ici.",
     verifyCancelling: "Annulation...",
     verifyCancelled: "Vérification annulée.",
     verifyFailed: "La vérification n'a pas pu aboutir : {error}",
@@ -2467,7 +2498,13 @@ var MSG = {
     verifyFail_verify_running: "Un autre .p5z est en cours de vérification : réessayez quand ce sera fini.",
     verifyFail_receive_running: "Un jeu arrive du PC : réessayez quand ce sera fini.",
     verifyFail_not_p5z: "Sur la console, seuls les fichiers .p5z se vérifient.",
-    iConsoleBusy: "MaxPack vérifie un .p5z ou reçoit un jeu du PC : réessayez quand ce sera fini."
+    iConsoleBusy: "MaxPack vérifie un .p5z ou reçoit un jeu du PC : réessayez quand ce sera fini.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Vérifier rapidement",
+    verifyPhase_quick: "volumes et fichiers isolés",
+    verifyPhase_full: "décompression de chaque fichier",
+    verifyQuickOk: "Vérifié rapidement le {date} : ses {files} volumes et fichiers correspondent.",
+    verifyQuickBad: "Endommagé (vérifié rapidement le {date}) : {bad} volumes et fichiers sur {files} ne correspondent pas."
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2728,10 +2765,10 @@ var MSG = {
     iNoInstaller: "インストーラーを起動できませんでした。",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "本体で検証",
-    verifyHint: "「完全に検証」は .p5z のすべてのファイルを展開し、パック時の SHA-256 と照合します（PC の maxpack verify と同じです）。ゲーム全体を読むので時間がかかり、その間はゲームを起動できません。",
+    verifyHint: "「すばやく検証」はディスクの速度で .p5z を読み、各ボリュームと各個別ファイルを書き込み時の SHA-256 と照合します。途中で切れたコピーや破損したコピーが見つかります。「完全に検証」はさらにすべてのファイルを展開して確認します（PC の maxpack verify と同じ）。はるかに時間がかかります。その間はゲームを起動できません。",
     verifyFull: "完全に検証",
     verifyCancel: "検証を中止",
-    verifyRunning: "検証中: {pct} %、{speed} MB/s、経過 {time}。",
+    verifyRunning: "検証中（{phase}）: {pct} %、{speed} MB/s、経過 {time}。",
     verifyCancelling: "中止しています...",
     verifyCancelled: "検証を中止しました。",
     verifyFailed: "検証を完了できませんでした: {error}",
@@ -2745,7 +2782,13 @@ var MSG = {
     verifyFail_verify_running: "別の .p5z を検証中です。終わってから再試行してください。",
     verifyFail_receive_running: "PC からゲームを受信中です。終わってから再試行してください。",
     verifyFail_not_p5z: "本体で検証できるのは .p5z ファイルだけです。",
-    iConsoleBusy: "MaxPack が .p5z を検証中か、PC からゲームを受信中です。終わってから再試行してください。"
+    iConsoleBusy: "MaxPack が .p5z を検証中か、PC からゲームを受信中です。終わってから再試行してください。",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "すばやく検証",
+    verifyPhase_quick: "ボリュームと個別ファイル",
+    verifyPhase_full: "全ファイルを展開",
+    verifyQuickOk: "{date} にすばやく検証: {files} 個のボリュームとファイルがすべて一致しました。",
+    verifyQuickBad: "破損しています（{date} にすばやく検証）: {files} 個中 {bad} 個のボリュームとファイルが一致しません。"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -3006,10 +3049,10 @@ var MSG = {
     iNoInstaller: "Não foi possível iniciar o instalador.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Verificar no console",
-    verifyHint: "“Verificar por completo” descompacta cada arquivo do .p5z e o compara com o SHA-256 com que foi empacotado, como o maxpack verify no PC. Ele lê o jogo inteiro, então demora um pouco, e nenhum jogo pode rodar enquanto isso.",
+    verifyHint: "“Verificar rápido” lê o .p5z na velocidade do disco e confere cada volume e cada arquivo solto com o SHA-256 com que foi gravado: encontra uma cópia cortada ou danificada. “Verificar por completo” também descompacta cada arquivo e o confere, como o maxpack verify no PC: demora muito mais. Nenhum jogo pode rodar enquanto isso.",
     verifyFull: "Verificar por completo",
     verifyCancel: "Cancelar a verificação",
-    verifyRunning: "Verificando: {pct} %, {speed} MB/s, {time} até agora.",
+    verifyRunning: "Verificando ({phase}): {pct} %, {speed} MB/s, {time} até agora.",
     verifyCancelling: "Cancelando...",
     verifyCancelled: "Verificação cancelada.",
     verifyFailed: "A verificação não pôde terminar: {error}",
@@ -3023,7 +3066,13 @@ var MSG = {
     verifyFail_verify_running: "Outro .p5z está sendo verificado: tente de novo quando terminar.",
     verifyFail_receive_running: "Um jogo está chegando do PC: tente de novo quando terminar.",
     verifyFail_not_p5z: "No console só é possível verificar arquivos .p5z.",
-    iConsoleBusy: "O MaxPack está verificando um .p5z ou recebendo um jogo do PC: tente de novo quando terminar."
+    iConsoleBusy: "O MaxPack está verificando um .p5z ou recebendo um jogo do PC: tente de novo quando terminar.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Verificar rápido",
+    verifyPhase_quick: "volumes e arquivos soltos",
+    verifyPhase_full: "descompactando cada arquivo",
+    verifyQuickOk: "Verificado rápido em {date}: seus {files} volumes e arquivos conferem.",
+    verifyQuickBad: "Danificado (verificado rápido em {date}): {bad} de {files} volumes e arquivos não conferem."
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3284,10 +3333,10 @@ var MSG = {
     iNoInstaller: "Impossibile avviare l'installatore.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "Verifica sulla console",
-    verifyHint: "«Verifica completa» decomprime ogni file del .p5z e lo confronta con lo SHA-256 con cui è stato impacchettato, come maxpack verify sul PC. Legge tutto il gioco, quindi richiede un po' di tempo, e nel frattempo nessun gioco può essere avviato.",
+    verifyHint: "«Verifica rapida» legge il .p5z alla velocità del disco e confronta ogni volume e ogni file sciolto con lo SHA-256 con cui è stato scritto: trova una copia tagliata o danneggiata. «Verifica completa» in più decomprime ogni file e lo controlla, come maxpack verify sul PC: richiede molto più tempo. Nel frattempo nessun gioco può essere avviato.",
     verifyFull: "Verifica completa",
     verifyCancel: "Annulla la verifica",
-    verifyRunning: "Verifica: {pct} %, {speed} MB/s, finora {time}.",
+    verifyRunning: "Verifica ({phase}): {pct} %, {speed} MB/s, finora {time}.",
     verifyCancelling: "Annullamento...",
     verifyCancelled: "Verifica annullata.",
     verifyFailed: "La verifica non è riuscita a finire: {error}",
@@ -3301,7 +3350,13 @@ var MSG = {
     verifyFail_verify_running: "È in corso la verifica di un altro .p5z: riprova quando finisce.",
     verifyFail_receive_running: "Sta arrivando un gioco dal PC: riprova quando finisce.",
     verifyFail_not_p5z: "Sulla console si possono verificare solo i file .p5z.",
-    iConsoleBusy: "MaxPack sta verificando un .p5z o ricevendo un gioco dal PC: riprova quando finisce."
+    iConsoleBusy: "MaxPack sta verificando un .p5z o ricevendo un gioco dal PC: riprova quando finisce.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "Verifica rapida",
+    verifyPhase_quick: "volumi e file sciolti",
+    verifyPhase_full: "decompressione di ogni file",
+    verifyQuickOk: "Verificato rapidamente il {date}: tutti i {files} volumi e file corrispondono.",
+    verifyQuickBad: "Danneggiato (verifica rapida del {date}): {bad} volumi e file su {files} non corrispondono."
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3562,10 +3617,10 @@ var MSG = {
     iNoInstaller: "설치 프로그램을 시작할 수 없습니다.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "콘솔에서 검증",
-    verifyHint: "“전체 검증”은 .p5z의 모든 파일을 풀어서 패킹할 때 기록된 SHA-256과 비교합니다(PC의 maxpack verify와 같음). 게임 전체를 읽으므로 시간이 걸리며, 그동안 게임을 실행할 수 없습니다.",
+    verifyHint: "“빠른 검증”은 디스크 속도로 .p5z를 읽고 각 볼륨과 개별 파일을 기록 당시의 SHA-256과 비교합니다. 잘렸거나 손상된 사본을 찾아냅니다. “전체 검증”은 모든 파일을 풀어서 확인까지 합니다(PC의 maxpack verify와 같음). 훨씬 오래 걸립니다. 그동안 게임을 실행할 수 없습니다.",
     verifyFull: "전체 검증",
     verifyCancel: "검증 취소",
-    verifyRunning: "검증 중: {pct} %, {speed} MB/s, 경과 {time}.",
+    verifyRunning: "검증 중({phase}): {pct} %, {speed} MB/s, 경과 {time}.",
     verifyCancelling: "취소 중...",
     verifyCancelled: "검증을 취소했습니다.",
     verifyFailed: "검증을 마치지 못했습니다: {error}",
@@ -3579,7 +3634,13 @@ var MSG = {
     verifyFail_verify_running: "다른 .p5z를 검증하는 중입니다. 끝나면 다시 시도하세요.",
     verifyFail_receive_running: "PC에서 게임을 받는 중입니다. 끝나면 다시 시도하세요.",
     verifyFail_not_p5z: "콘솔에서는 .p5z 파일만 검증할 수 있습니다.",
-    iConsoleBusy: "MaxPack이 .p5z를 검증하거나 PC에서 게임을 받는 중입니다. 끝나면 다시 시도하세요."
+    iConsoleBusy: "MaxPack이 .p5z를 검증하거나 PC에서 게임을 받는 중입니다. 끝나면 다시 시도하세요.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "빠른 검증",
+    verifyPhase_quick: "볼륨과 개별 파일",
+    verifyPhase_full: "모든 파일 풀기",
+    verifyQuickOk: "{date}에 빠른 검증: 볼륨과 파일 {files}개가 모두 일치합니다.",
+    verifyQuickBad: "손상됨({date}에 빠른 검증): 볼륨과 파일 {files}개 중 {bad}개가 일치하지 않습니다."
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -3840,10 +3901,10 @@ var MSG = {
     iNoInstaller: "تعذّر بدء المُثبِّت.",
     // "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs)
     verifyLbl: "التحقق على الجهاز",
-    verifyHint: "«تحقق كامل» يفك ضغط كل ملف في .p5z ويقارنه بقيمة SHA-256 التي حُزم بها، كما يفعل maxpack verify على الحاسوب. يقرأ اللعبة كلها، لذا يستغرق وقتًا، ولا يمكن تشغيل أي لعبة أثناءه.",
+    verifyHint: "«تحقق سريع» يقرأ ملف .p5z بسرعة القرص ويقارن كل جزء وكل ملف منفصل بقيمة SHA-256 التي كُتب بها، فيكشف نسخة مقطوعة أو تالفة. «تحقق كامل» يفك أيضًا ضغط كل ملف ويتحقق منه، كما يفعل maxpack verify على الحاسوب، ويستغرق وقتًا أطول بكثير. لا يمكن تشغيل أي لعبة أثناء ذلك.",
     verifyFull: "تحقق كامل",
     verifyCancel: "إلغاء التحقق",
-    verifyRunning: "جارٍ التحقق: {pct} %، {speed} MB/s، مضى {time}.",
+    verifyRunning: "جارٍ التحقق ({phase}): {pct} %، {speed} MB/s، مضى {time}.",
     verifyCancelling: "جارٍ الإلغاء...",
     verifyCancelled: "أُلغي التحقق.",
     verifyFailed: "تعذّر إكمال التحقق: {error}",
@@ -3857,7 +3918,13 @@ var MSG = {
     verifyFail_verify_running: "يجري التحقق من ملف .p5z آخر: أعد المحاولة عند انتهائه.",
     verifyFail_receive_running: "تصل لعبة من الحاسوب: أعد المحاولة عند انتهاء ذلك.",
     verifyFail_not_p5z: "لا يمكن التحقق على الجهاز إلا من ملفات .p5z.",
-    iConsoleBusy: "يتحقق MaxPack من ملف .p5z أو يستقبل لعبة من الحاسوب: أعد المحاولة عند انتهاء ذلك."
+    iConsoleBusy: "يتحقق MaxPack من ملف .p5z أو يستقبل لعبة من الحاسوب: أعد المحاولة عند انتهاء ذلك.",
+    // "Verify quickly" (the engine's quick verify) and the two phases of "Verify fully"
+    verifyQuick: "تحقق سريع",
+    verifyPhase_quick: "الأجزاء والملفات المنفصلة",
+    verifyPhase_full: "فك ضغط كل ملف",
+    verifyQuickOk: "تم التحقق السريع في {date}: جميع الأجزاء والملفات ({files}) مطابقة.",
+    verifyQuickBad: "تالف (تحقق سريع في {date}): {bad} من {files} أجزاء وملفات غير مطابقة."
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -4595,17 +4662,17 @@ function renderModal() {
   renderVerify(g);
 }
 function overlayOptional(g) { return g.kind === 'folder' && g.packing === 'plain'; }
-// "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, src/verify.rs): the verify of this run
-// (state.verify) shows on the sheet of the .p5z it reads; the last result (g.verified) stays while the file is the
-// one verified.
+// "Verify quickly" and "Verify fully" on a .p5z game's sheet (POST /api/verify/<TID>, body quick or full,
+// src/verify.rs): the verify of this run (state.verify) shows on the sheet of the .p5z it reads, with its phase (a
+// full one runs the quick one first); the last result (g.verified) stays while the file is the one verified.
 var VERIFY_FAILS = { install_running: 'verifyFail_install_running', verify_running: 'verifyFail_verify_running',
   receive_running: 'verifyFail_receive_running', not_p5z: 'verifyFail_not_p5z', game_running: 'iGameRunning' };
 function verifyRunning() { var v = state && state.verify; return !!v && v.state === 'running'; }
-// What a verify found: OK with its date, or what is damaged and what to do.
+// What a verify found: OK with its date, or what is damaged and what to do. The quick one counts volumes and files.
 function verifyResult(r) {
-  var files = (Number(r.files_ok) || 0) + (Number(r.files_bad) || 0);
-  if (r.ok) return t('verifyOk', { date: fmtTime(r.at), files: files });
-  var text = t('verifyBad', { date: fmtTime(r.at), bad: Number(r.files_bad) || 0, files: files });
+  var files = (Number(r.files_ok) || 0) + (Number(r.files_bad) || 0), quick = r.kind === 'quick';
+  if (r.ok) return t(quick ? 'verifyQuickOk' : 'verifyOk', { date: fmtTime(r.at), files: files });
+  var text = t(quick ? 'verifyQuickBad' : 'verifyBad', { date: fmtTime(r.at), bad: Number(r.files_bad) || 0, files: files });
   var names = (Array.isArray(r.bad) ? r.bad : []).map(function (b) { return b && b.name; }).filter(Boolean);
   if (names.length) text += ' ' + t('verifyBadList', { list: names.slice(0, 12).join(', ') + (names.length > 12 ? ', …' : '') });
   return text + ' ' + t('verifyRepair');
@@ -4613,7 +4680,8 @@ function verifyResult(r) {
 function verifyStatus(v) {
   if (v.state === 'running') {
     if (v.cancelling) return t('verifyCancelling');
-    return t('verifyRunning', { pct: v.total ? Math.floor(v.done / v.total * 100) : 0,
+    return t('verifyRunning', { phase: t(v.phase === 'full' ? 'verifyPhase_full' : 'verifyPhase_quick'),
+      pct: v.total ? Math.floor(v.done / v.total * 100) : 0,
       speed: v.mbps != null ? Number(v.mbps).toFixed(1) : '?', time: instDuration((Number(v.elapsed_ms) || 0) / 1000) || '0 s' });
   }
   if (v.state === 'cancelled') return t('verifyCancelled');
@@ -4625,9 +4693,10 @@ function renderVerify(g) {
   row.hidden = g.kind !== 'p5z' || g.status === 'duplicate';
   if (row.hidden) return;
   var all = state && state.verify, v = all && all.path === g.path ? all : null, busy = verifyRunning(), mine = !!v && busy;
-  var start = $('m-verify');
-  start.hidden = mine;
-  start.disabled = busy || !!start._busy || !!state.paused;
+  [$('m-verify-quick'), $('m-verify')].forEach(function (start) {
+    start.hidden = mine;
+    start.disabled = busy || !!start._busy || !!state.paused;
+  });
   $('m-verify-cancel').hidden = !mine;
   $('m-verify-cancel').disabled = !!(v && v.cancelling);
   var lines = [];
@@ -4642,14 +4711,16 @@ function renderVerify(g) {
   $('m-verify-bar').style.webkitTransform = share;
   $('m-verify-bar').style.transform = share;
 }
-$('m-verify').onclick = async function () {
-  var btn = this, g = openTid && findGame(openTid);
+$('m-verify-quick').onclick = function () { startVerify(this, 'quick'); };
+$('m-verify').onclick = function () { startVerify(this, 'full'); };
+async function startVerify(btn, kind) {
+  var g = openTid && findGame(openTid);
   if (!g) return;
   var id = gameId(g);
   btn._busy = true;
   btn.disabled = true;
   try {
-    var r = await fetch('/api/verify/' + encodeURIComponent(g.title_id), { method: 'POST', body: 'full' });
+    var r = await fetch('/api/verify/' + encodeURIComponent(g.title_id), { method: 'POST', body: kind });
     if (!r.ok) {
       var e = null;
       try { e = await r.json(); } catch (x) { /* plain text */ }
@@ -4659,7 +4730,7 @@ $('m-verify').onclick = async function () {
     modalActionError = '';
     modalNote = null;
     // Until the next state: drawn as started, so the button cannot be pressed twice.
-    state.verify = { state: 'running', path: g.path, title_id: g.title_id, kind: 'full', done: 0, total: 0, elapsed_ms: 0 };
+    state.verify = { state: 'running', path: g.path, title_id: g.title_id, kind: kind, phase: 'quick', done: 0, total: 0, elapsed_ms: 0 };
   } catch (e) {
     if (modalOpen() && openTid === id) modalActionError = e.message;
   }
@@ -4669,7 +4740,7 @@ $('m-verify').onclick = async function () {
     if (!$('m-verify-cancel').hidden) $('m-verify-cancel').focus();
   }
   schedule(300);
-};
+}
 $('m-verify-cancel').onclick = async function () {
   var btn = this;
   btn.disabled = true;

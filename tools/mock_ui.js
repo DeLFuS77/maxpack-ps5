@@ -51,8 +51,9 @@
 // console gets one that does not play it: the bundled one does, and no update installs an older release), so
 // Settings shows it as hand-placed and the game's error says its version is not known. Once "Update ampr-emu-ng
 // now" has installed a newer release, the game is ready, as the console's next pass would make it.
-// "Verify fully" on a .p5z's sheet (POST /api/verify/<TID>, src/verify.rs): "Packed Example" shows an earlier OK, "Roomless
-// Example" an earlier damaged result; a verify runs 5 % a second (its Cancel works) and refuses as the payload does, so
+// "Verify quickly" and "Verify fully" on a .p5z's sheet (POST /api/verify/<TID>, src/verify.rs): "Packed Example" shows an
+// earlier OK, "Roomless Example" an earlier damaged result, and a quick verify of it names a volume and a file; a verify
+// runs its quick phase, then (full) its full one (its Cancel works), and refuses as the payload does, so
 // with the default --job on (an install running) it answers install_running: use --job off to watch one run. While it
 // runs, the installer's install, verify and uninstall answer 409 console_busy.
 // Every request passes the payload's checks (maxpack_logic::http, src/web.rs `refused`): Host must be
@@ -183,9 +184,9 @@ function waitingValue() {
   return null;
 }
 
-// ---- "Verify fully" on a .p5z's sheet (src/verify.rs) ----
+// ---- "Verify quickly" and "Verify fully" on a .p5z's sheet (src/verify.rs) ----
 // The kept results by path (verified.json): "Packed Example" was verified OK a day ago, "Roomless Example" found
-// damaged. A verify of this run (state.verify) runs 5 % a second; one of "Roomless Example" finds it damaged again.
+// damaged. A verify of this run (state.verify) runs as verifyStart says; "Roomless Example" is found damaged again.
 const verified = new Map([
   ['/mnt/usb0/homebrew/Packed Example.p5z', { kind: 'full', at: BUILT - 82800, ok: true, files_ok: 1532, files_bad: 0, bad: [] }],
   ['/mnt/usb0/homebrew/Roomless Example.p5z', { kind: 'full', at: BUILT - 7200, ok: false, files_ok: 2101, files_bad: 3, bad: [] }],
@@ -201,33 +202,45 @@ function verifyEnd(state, error) {
 }
 // maxpack_logic::verify::gate: in the library, a .p5z, no other job of the engine, no game running.
 function verifyStart(tid, body) {
-  if (body !== 'full') return [400, 'bad_request', 'expected the body full'];
+  if (body !== 'quick' && body !== 'full') return [400, 'bad_request', 'expected the body quick or full'];
   const g = games().find((x) => x.title_id === tid);
   if (!g) return [404, 'not_found', 'not a game of the library'];
   if (g.kind !== 'p5z') return [409, 'not_p5z', 'only a .p5z is verified on the console'];
   if (currentJob()) return [409, 'install_running', 'the installer is running a job; try again when it ends'];
   if (verifyRunning()) return [409, 'verify_running', 'a .p5z is being verified on the console; try again when it ends'];
   if (runningNow().length) return [409, 'game_running', 'a game is running: close it first'];
-  const total = Math.round(g.size * 1.6), start = Date.now();
-  verifyJob = { state: 'running', cancelling: false, title_id: tid, path: g.path, kind: 'full', done: 0, total, mbps: null, elapsed_ms: 0, error: null };
+  // The quick phase reads the .p5z (10 % a second), the full one unpacks more (5 % a second); a damaged copy stops
+  // after the quick one, as the payload does.
+  const start = Date.now(), damaged = /Roomless/.test(g.path), at = () => Math.floor(Date.now() / 1000);
+  verifyJob = { state: 'running', cancelling: false, title_id: tid, path: g.path, kind: body, phase: 'quick', done: 0,
+    total: g.size, mbps: null, elapsed_ms: 0, error: null };
   verifyTimer = setInterval(() => {
-    verifyJob.elapsed_ms = Date.now() - start;
-    verifyJob.done = Math.min(total, verifyJob.done + Math.round(total * 0.05));
-    verifyJob.mbps = total * 0.05 / 1e6;
-    if (verifyJob.cancelling) return verifyEnd('cancelled');
-    if (verifyJob.done < total) return;
-    const damaged = /Roomless/.test(g.path);
-    verified.set(g.path, { kind: 'full', at: Math.floor(Date.now() / 1000), ok: !damaged, files_ok: damaged ? 2101 : 1532,
-      files_bad: damaged ? 3 : 0, bad: [] });
+    const j = verifyJob, step = j.phase === 'quick' ? 0.1 : 0.05;
+    j.elapsed_ms = Date.now() - start;
+    if (j.cancelling) return verifyEnd('cancelled');
+    j.done = Math.min(j.total, j.done + Math.round(j.total * step));
+    j.mbps = j.total * step / 1e6;
+    if (j.done < j.total) return;
+    if (j.phase === 'quick' && (body === 'quick' || damaged)) {
+      verified.set(g.path, { kind: 'quick', at: at(), ok: !damaged, files_ok: damaged ? 36 : 38, files_bad: damaged ? 2 : 0,
+        bad: damaged ? [{ what: 'volume', name: 'ampr_zstd-002.pak' }, { what: 'file', name: 'sce_sys/param.json' }] : [] });
+      return verifyEnd('done');
+    }
+    if (j.phase === 'quick') return Object.assign(j, { phase: 'full', done: 0, total: Math.round(g.size * 1.6), mbps: null });
+    verified.set(g.path, { kind: 'full', at: at(), ok: true, files_ok: 1532, files_bad: 0, bad: [] });
     verifyEnd('done');
   }, 1000);
   return null;
 }
-// maxpack_logic::verify::report_line: the report's line, which names no file of the game.
+// maxpack_logic::verify::report_line: the report's line, which names no file of the game (volume names only).
 function verifiedLine(r) {
   if (!r) return 'never';
-  const at = new Date(r.at * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z'), files = r.files_ok + r.files_bad;
-  return r.ok ? `${r.kind}, OK on ${at} (${files} files)` : `${r.kind}, damaged on ${at}: ${r.files_bad} of ${files} files fail`;
+  const at = new Date(r.at * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z'), all = r.files_ok + r.files_bad;
+  const unit = r.kind === 'quick' ? 'volumes and files' : 'files';
+  if (r.ok) return `${r.kind}, OK on ${at} (${all} ${unit})`;
+  const vols = r.bad.filter((b) => b.what === 'volume').map((b) => b.name), files = r.bad.length - vols.length;
+  return `${r.kind}, damaged on ${at}: ${r.files_bad} of ${all} ${unit} fail` + (vols.length ? '; volumes: ' + vols.join(', ') : '') +
+    (files ? '; files: ' + files : '');
 }
 
 // ---- the payload's own API (src/web.rs) ----

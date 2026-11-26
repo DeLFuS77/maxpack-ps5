@@ -5,26 +5,165 @@ use crate::job::Busy;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// How a `.p5z` is verified: `full` is the engine's own verify (`maxpack verify` on the PC), which unpacks
-/// every packed file and checks each one's SHA-256.
+/// How a `.p5z` is verified. `quick` is the engine's quick verify (`maxpack verify --quick`): each volume's and
+/// stored file's SHA-256 and each volume's header, read at the speed of the disk without decompressing the packs.
+/// `full` is the engine's own verify (`maxpack verify`), which unpacks every packed file and checks each one's
+/// SHA-256; on the console it runs the quick one first (src/verify.rs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
+    Quick,
     Full,
 }
 
 impl Kind {
     pub fn name(self) -> &'static str {
         match self {
+            Kind::Quick => "quick",
             Kind::Full => "full",
         }
     }
 }
 
-/// The body of `POST /api/verify/<TID>`: exactly `full`.
+/// The body of `POST /api/verify/<TID>`: exactly `quick` or `full`.
 pub fn kind(body: &[u8]) -> Option<Kind> {
     match body {
+        b"quick" => Some(Kind::Quick),
         b"full" => Some(Kind::Full),
         _ => None,
+    }
+}
+
+/// What the engine's quick verify did (ps5/verify.c's JSON, `parse_quick`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuickOutcome {
+    /// It ran to its end: the report says whether everything matched.
+    Checked(Quick),
+    /// It could not check: not a .p5z, its header, footer or index damaged, cut short, an I/O error.
+    Error(String),
+    Cancelled,
+}
+
+/// The quick verify's report (the engine's mp_qv_report).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Quick {
+    pub ok: bool,
+    /// Bytes of the records' regions read, of all of them.
+    pub bytes: u64,
+    pub total: u64,
+    /// How many records did not match; `bad` lists the first of them (the engine's MP_QV_MAX_LISTED).
+    pub nbad: u64,
+    /// The index version: 1 as packed, 2 grown.
+    pub version: u32,
+    /// The records checked: volumes, and files stored in the .p5z.
+    pub volumes: u32,
+    pub files: u32,
+    pub bad: Vec<QuickBad>,
+}
+
+/// A record that did not match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuickBad {
+    /// "volume" (ampr_zstd-NNN.pak) or "file" (stored in the .p5z: a loose file of the game, an index...).
+    pub what: &'static str,
+    /// A volume's number (the NNN).
+    pub volume: Option<u32>,
+    /// The volume's name or the file's path in the .p5z (lossy UTF-8).
+    pub name: String,
+    /// The SHA-256 the index records, and the one of what is there (None when nothing whole could be hashed),
+    /// in lowercase hex.
+    pub expected: String,
+    pub found: Option<String>,
+    /// How it failed: "sha256", "header", "data" or "read".
+    pub why: String,
+}
+
+#[derive(Deserialize)]
+struct QuickRaw {
+    ok: bool,
+    bytes: u64,
+    total: u64,
+    nbad: u64,
+    version: u32,
+    volumes: u32,
+    files: u32,
+    bad: Vec<QuickBadRaw>,
+}
+
+#[derive(Deserialize)]
+struct QuickBadRaw {
+    kind: u32,
+    volume: u32,
+    path_hex: String,
+    expected: String,
+    found: String,
+    why: String,
+}
+
+/// Bytes from lowercase or uppercase hex; None for an odd length or another character.
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    let b = s.as_bytes();
+    if b.len() % 2 != 0 {
+        return None;
+    }
+    let digit = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    b.chunks(2).map(|p| Some(digit(p[0])? << 4 | digit(p[1])?)).collect()
+}
+
+/// A SHA-256 in hex: 64 hex digits, as lowercase.
+fn sha_hex(s: &str) -> Option<String> {
+    (s.len() == 64 && s.bytes().all(|c| c.is_ascii_hexdigit())).then(|| s.to_ascii_lowercase())
+}
+
+/// ps5/verify.c's JSON of a quick verify: `{"result":0, ok, bytes, total, nbad, nlisted, version, volumes, files,
+/// bad:[{kind, volume, path_hex, expected, found, why}]}`, `{"result":-1,"error_hex":...}` or `{"result":-2}`.
+/// Paths and the engine's message come hex-encoded, so any bytes survive. Err for anything else.
+pub fn parse_quick(json: &str) -> Result<QuickOutcome, String> {
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("quick verify: bad report: {e}"))?;
+    match v.get("result").and_then(|r| r.as_i64()) {
+        Some(0) => {}
+        Some(-1) => {
+            let hex = v.get("error_hex").and_then(|e| e.as_str()).unwrap_or("");
+            let msg = unhex(hex).ok_or("quick verify: bad report: error_hex")?;
+            let msg = String::from_utf8_lossy(&msg).into_owned();
+            return Ok(QuickOutcome::Error(if msg.is_empty() { "no reason given".into() } else { msg }));
+        }
+        Some(-2) => return Ok(QuickOutcome::Cancelled),
+        r => return Err(format!("quick verify: bad report: result {r:?}")),
+    }
+    let raw: QuickRaw = serde_json::from_value(v).map_err(|e| format!("quick verify: bad report: {e}"))?;
+    let mut bad = Vec::with_capacity(raw.bad.len());
+    for b in raw.bad {
+        let what = match b.kind {
+            1 => "volume",
+            2 => "file",
+            k => return Err(format!("quick verify: bad report: kind {k}")),
+        };
+        let path = unhex(&b.path_hex).ok_or("quick verify: bad report: path_hex")?;
+        let name = match (what, path.is_empty()) {
+            ("volume", true) => format!("ampr_zstd-{:03}.pak", b.volume),
+            _ => String::from_utf8_lossy(&path).into_owned(),
+        };
+        let expected = sha_hex(&b.expected).ok_or("quick verify: bad report: expected")?;
+        let found = match b.found.as_str() {
+            "" => None,
+            f => Some(sha_hex(f).ok_or("quick verify: bad report: found")?),
+        };
+        let why: String = b.why.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(16).collect();
+        bad.push(QuickBad { what, volume: (what == "volume").then_some(b.volume), name, expected, found, why });
+    }
+    Ok(QuickOutcome::Checked(Quick {
+        ok: raw.ok, bytes: raw.bytes, total: raw.total, nbad: raw.nbad, version: raw.version, volumes: raw.volumes,
+        files: raw.files, bad,
+    }))
+}
+
+/// What a quick verify found, as the store keeps it: its records (volumes and stored files) counted as the full
+/// verify counts files, and what failed by name.
+pub fn quick_record(q: &Quick, size: u64, mtime: i64, at: u64) -> Record {
+    let all = u64::from(q.volumes) + u64::from(q.files);
+    Record {
+        size, mtime, kind: Kind::Quick.name().into(), at, ok: q.ok && q.nbad == 0, files_ok: all.saturating_sub(q.nbad),
+        files_bad: q.nbad, bad: q.bad.iter().map(|b| Bad { what: b.what.into(), name: b.name.clone() }).collect(),
     }
 }
 
@@ -71,7 +210,7 @@ impl Refusal {
 
     pub fn detail(self) -> &'static str {
         match self {
-            Refusal::BadRequest => "expected the body full",
+            Refusal::BadRequest => "expected the body quick or full",
             Refusal::NotFound => "not a game of the library",
             Refusal::NotP5z => "only a .p5z is verified on the console",
             Refusal::Busy(b) => b.detail(),
@@ -162,10 +301,12 @@ pub fn report_line(rec: Option<&Record>) -> String {
     let Some(r) = rec else { return "never".into() };
     let when = crate::report::utc(r.at);
     let total = r.files_ok + r.files_bad;
+    // The quick verify counts the .p5z's records: its volumes and the files stored in it.
+    let unit = if r.kind == Kind::Quick.name() { "volumes and files" } else { "files" };
     if r.ok {
-        return format!("{}, OK on {when} ({total} files)", r.kind);
+        return format!("{}, OK on {when} ({total} {unit})", r.kind);
     }
-    let mut line = format!("{}, damaged on {when}: {} of {total} files fail", r.kind, r.files_bad);
+    let mut line = format!("{}, damaged on {when}: {} of {total} {unit} fail", r.kind, r.files_bad);
     let volumes: Vec<&Bad> = r.bad.iter().filter(|b| b.what == "volume").collect();
     let named: Vec<&str> = volumes.iter().map(|b| b.name.as_str()).filter(|n| plain_volume(n)).collect();
     let mut parts = Vec::new();
@@ -200,10 +341,77 @@ mod tests {
     #[test]
     fn the_body_names_the_kind() {
         assert_eq!(kind(b"full"), Some(Kind::Full));
+        assert_eq!(kind(b"quick"), Some(Kind::Quick));
         assert_eq!(Kind::Full.name(), "full");
+        assert_eq!(Kind::Quick.name(), "quick");
         for b in [&b""[..], b"FULL", b"full\n", b"quick ", b"{}", b"fast"] {
             assert_eq!(kind(b), None, "{b:?}");
         }
+    }
+
+    const SHA_A: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    const SHA_B: &str = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
+
+    /// ps5/verify.c's JSON for one report, `bad` as given.
+    fn quick_json(ok: bool, nbad: u64, bad: &str) -> String {
+        format!(r#"{{"result":0,"ok":{ok},"bytes":900,"total":900,"nbad":{nbad},"nlisted":{nbad},"version":2,"volumes":3,"files":9,"bad":[{bad}]}}"#)
+    }
+
+    #[test]
+    fn a_quick_report_reads() {
+        assert_eq!(parse_quick(&quick_json(true, 0, "")), Ok(QuickOutcome::Checked(Quick {
+            ok: true, bytes: 900, total: 900, nbad: 0, version: 2, volumes: 3, files: 9, bad: vec![],
+        })));
+        // A volume (its name from the engine), a loose file whose path is not UTF-8, a file that did not
+        // decompress (no sum found) and a volume without a path (named from its id).
+        let bad = format!(concat!(
+            r#"{{"kind":1,"volume":3,"path_hex":"{}","expected":"{a}","found":"{b}","why":"sha256"}},"#,
+            r#"{{"kind":2,"volume":0,"path_hex":"7361ff2f6562","expected":"{a}","found":"{b}","why":"sha256"}},"#,
+            r#"{{"kind":2,"volume":0,"path_hex":"782e62696e","expected":"{a}","found":"","why":"data"}},"#,
+            r#"{{"kind":1,"volume":12,"path_hex":"","expected":"{a}","found":"","why":"read"}}"#),
+            "616d70725f7a7374642d3030332e70616b", a = SHA_A, b = SHA_B);
+        let Ok(QuickOutcome::Checked(q)) = parse_quick(&quick_json(false, 4, &bad)) else { panic!("not read") };
+        assert!(!q.ok);
+        assert_eq!(q.bad, vec![
+            QuickBad { what: "volume", volume: Some(3), name: "ampr_zstd-003.pak".into(), expected: SHA_A.into(), found: Some(SHA_B.into()), why: "sha256".into() },
+            QuickBad { what: "file", volume: None, name: "sa\u{fffd}/eb".into(), expected: SHA_A.into(), found: Some(SHA_B.into()), why: "sha256".into() },
+            QuickBad { what: "file", volume: None, name: "x.bin".into(), expected: SHA_A.into(), found: None, why: "data".into() },
+            QuickBad { what: "volume", volume: Some(12), name: "ampr_zstd-012.pak".into(), expected: SHA_A.into(), found: None, why: "read".into() },
+        ]);
+    }
+
+    #[test]
+    fn a_quick_error_or_cancel_reads() {
+        // The engine's message comes hex-encoded: any bytes of a path in it survive.
+        assert_eq!(parse_quick(r#"{"result":-1,"error_hex":"6e6f742061202e70357a3a20c3a9"}"#),
+            Ok(QuickOutcome::Error("not a .p5z: \u{e9}".into())));
+        assert_eq!(parse_quick(r#"{"result":-1,"error_hex":""}"#), Ok(QuickOutcome::Error("no reason given".into())));
+        assert_eq!(parse_quick(r#"{"result":-2}"#), Ok(QuickOutcome::Cancelled));
+        for junk in ["", "{}", "not json", r#"{"result":7}"#, r#"{"result":-1,"error_hex":"zz"}"#,
+            &quick_json(true, 0, r#"{"kind":3,"volume":0,"path_hex":"","expected":"","found":"","why":"x"}"#),
+            &quick_json(true, 0, r#"{"kind":2,"volume":0,"path_hex":"0","expected":"","found":"","why":"x"}"#),
+            &quick_json(true, 0, r#"{"kind":2,"volume":0,"path_hex":"","expected":"xyz","found":"","why":"x"}"#)] {
+            assert!(parse_quick(junk).is_err(), "{junk}");
+        }
+        // A why the engine never gives is kept to letters, digits and _.
+        let q = quick_json(false, 1, &format!(r#"{{"kind":2,"volume":0,"path_hex":"61","expected":"{SHA_A}","found":"","why":"r<e>ad"}}"#));
+        let Ok(QuickOutcome::Checked(q)) = parse_quick(&q) else { panic!() };
+        assert_eq!(q.bad[0].why, "read");
+    }
+
+    #[test]
+    fn a_quick_verify_is_recorded() {
+        let bad = format!(r#"{{"kind":1,"volume":3,"path_hex":"616d70725f7a7374642d3030332e70616b","expected":"{SHA_A}","found":"{SHA_B}","why":"sha256"}}"#);
+        let Ok(QuickOutcome::Checked(q)) = parse_quick(&quick_json(false, 2, &bad)) else { panic!() };
+        let r = quick_record(&q, 1000, 7, 1_795_166_239);
+        assert_eq!(r, Record { size: 1000, mtime: 7, kind: "quick".into(), at: 1_795_166_239, ok: false, files_ok: 10, files_bad: 2,
+            bad: vec![Bad { what: "volume".into(), name: "ampr_zstd-003.pak".into() }] });
+        assert_eq!(report_line(Some(&r)),
+            "quick, damaged on 2026-11-20 09:17:19Z: 2 of 12 volumes and files fail; volumes: ampr_zstd-003.pak");
+        let Ok(QuickOutcome::Checked(q)) = parse_quick(&quick_json(true, 0, "")) else { panic!() };
+        let r = quick_record(&q, 1000, 7, 1_795_166_239);
+        assert!(r.ok && r.files_ok == 12 && r.files_bad == 0 && r.bad.is_empty());
+        assert_eq!(report_line(Some(&r)), "quick, OK on 2026-11-20 09:17:19Z (12 volumes and files)");
     }
 
     #[test]

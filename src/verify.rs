@@ -1,13 +1,16 @@
-//! "Verify fully" on the game sheet of a library `.p5z` (`POST /api/verify/<TID>`; DESIGN.md "Verify on the
-//! console"): the MaxPack engine's own full verify (ps5/verify.c: mp_verify_p5z, what `maxpack verify` runs on the
-//! PC), on a thread of its own with THREADS threads, its progress, speed and cancel in `/api/state` `verify`. One
-//! job of the engine at a time (src/jobs.rs), never started while any game runs. What it found goes to
-//! `/data/maxpack/verified.json` (maxpack_logic::verify::Store, by path): the sheet and the report show it while
-//! the file is the one verified.
+//! "Verify quickly" and "Verify fully" on the game sheet of a library `.p5z` (`POST /api/verify/<TID>`; DESIGN.md
+//! "Verify on the console"), on a thread of their own, their progress, speed and cancel in `/api/state` `verify`.
+//! Quick is the MaxPack engine's quick verify (ps5/verify.c: mp_p5z_verify_quick, `maxpack verify --quick`): each
+//! volume's and stored file's SHA-256 and each volume's header, at the speed of the disk. Full runs the quick one
+//! first, which names what a damaged copy has wrong and stops there; if it passes, the engine's own full verify
+//! (mp_verify_p5z, what `maxpack verify` runs on the PC) with THREADS threads. One console job at a time
+//! (src/jobs.rs), never started while any game runs. What it found goes to `/data/maxpack/verified.json`
+//! (maxpack_logic::verify::Store, by path): the sheet and the report show it while the file is the one verified.
+//! The receive from the PC (src/receive.rs) runs the same quick verify through `engine_quick`.
 use crate::web::State;
 use maxpack_logic::job::Rate;
-use maxpack_logic::verify::{self as logic, Facts, Kind, Record, Refusal, Store};
-use std::ffi::{c_char, c_int, c_uint, c_void, CString};
+use maxpack_logic::verify::{self as logic, Facts, Kind, QuickOutcome, Record, Refusal, Store};
+use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -17,24 +20,31 @@ use std::time::Duration;
 /// ps5/verify.c's counts (its own struct, not the engine's).
 #[repr(C)]
 #[derive(Default)]
-pub struct Counts {
-    pub files_ok: u64,
-    pub files_bad: u64,
-    pub bytes_checked: u64,
+struct Counts {
+    files_ok: u64,
+    files_bad: u64,
+    bytes_checked: u64,
 }
 
-pub type ProgressFn = extern "C" fn(*mut c_void, *const c_char, u64, u64);
+type HookFn = extern "C" fn(*mut c_void, *const c_char, u64, u64);
+/// The quick verify's progress (bytes read of all) and cancel (non-zero stops it), from its own thread.
+pub type QuickProgressFn = extern "C" fn(*mut c_void, u64, u64);
+pub type QuickCancelFn = extern "C" fn(*mut c_void) -> c_int;
 
 extern "C" {
     // ps5/verify.c: 0 (counts filled), or -1 with the reason in err ("cancelled" after maxpack_verify_cancel).
-    fn maxpack_verify_full(p5z: *const c_char, threads: c_uint, progress: Option<ProgressFn>, ctx: *mut c_void,
+    fn maxpack_verify_full(p5z: *const c_char, threads: c_uint, progress: Option<HookFn>, ctx: *mut c_void,
         counts: *mut Counts, err: *mut c_char, errlen: usize) -> c_int;
     fn maxpack_verify_cancel();
     fn maxpack_verify_cancel_reset();
+    // ps5/verify.c: malloc'd JSON of the quick verify (maxpack_verify_free), NULL when out of memory.
+    fn maxpack_verify_quick(p5z: *const c_char, progress: Option<QuickProgressFn>, cancel: Option<QuickCancelFn>,
+        ctx: *mut c_void) -> *mut c_char;
+    fn maxpack_verify_free(p: *mut c_char);
 }
 
-/// The engine's threads for a verify: as the test compression found, 5 is what the payload gets of the console.
-pub const THREADS: u32 = 5;
+/// The engine's threads for a full verify: as the test compression found, 5 is what the payload gets of the console.
+const THREADS: u32 = 5;
 const STORE_PATH: &str = "/data/maxpack/verified.json";
 const ERR_LEN: usize = 512;
 /// The longest a quit waits for a cancelled verify to end (web::take_port retries for 5 s).
@@ -64,13 +74,15 @@ struct Job {
     tid: String,
     path: PathBuf,
     kind: Kind,
+    /// What runs: the quick verify (also the first part of a full one), or the engine's full verify.
+    phase: Kind,
     stage: Stage,
     cancel: bool,
-    /// The engine's call runs: a cancel sets its flag only then.
+    /// The engine's full verify runs: a cancel sets the engine's flag only then.
     engine: bool,
     started_ms: u64,
     ended_ms: Option<u64>,
-    /// Fed by the engine's progress hook: bytes of the files checked so far, of all.
+    /// The phase's progress: bytes read (quick) or bytes of the files checked (full), of all.
     done: u64,
     total: u64,
     rate: Rate,
@@ -132,8 +144,8 @@ pub fn remember(path: &Path, rec: Record) {
     }
 }
 
-/// POST /api/verify/<TID>, body `full`: checks the request (maxpack_logic::verify::gate) and starts the verify on
-/// its own thread. Err with why it does not start.
+/// POST /api/verify/<TID>, body `quick` or `full`: checks the request (maxpack_logic::verify::gate) and starts the
+/// verify on its own thread. Err with why it does not start.
 pub fn start(state: &State, tid: &str, body: &[u8]) -> Result<(), Refusal> {
     let kind = logic::kind(body).ok_or(Refusal::BadRequest)?;
     let src = crate::scan::valid_tid(tid).then(|| state.source(tid)).flatten();
@@ -154,10 +166,10 @@ pub fn start(state: &State, tid: &str, body: &[u8]) -> Result<(), Refusal> {
     let Some(src) = src else { return Err(Refusal::NotFound) };
     let now = crate::sys::uptime_ms();
     *job() = Some(Job {
-        tid: tid.to_string(), path: src.path.clone(), kind, stage: Stage::Running, cancel: false, engine: false, started_ms: now,
-        ended_ms: None, done: 0, total: 0, rate: Rate::default(), error: None,
+        tid: tid.to_string(), path: src.path.clone(), kind, phase: Kind::Quick, stage: Stage::Running, cancel: false,
+        engine: false, started_ms: now, ended_ms: None, done: 0, total: 0, rate: Rate::default(), error: None,
     });
-    log!("{tid}: verify ({}) of {} with {THREADS} threads", kind.name(), src.path.display());
+    log!("{tid}: verify ({}) of {}", kind.name(), src.path.display());
     // A thread the system refuses ends the job as failed, never leaves it running.
     if let Err(e) = std::thread::Builder::new().name("verify".into()).spawn(run) {
         log!("{tid}: verify: could not start its thread: {e}");
@@ -166,7 +178,8 @@ pub fn start(state: &State, tid: &str, body: &[u8]) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// POST /api/verify/cancel: false when no verify runs. The engine stops at its next check.
+/// POST /api/verify/cancel: false when no verify runs. The quick verify stops before its next piece, the full one
+/// at the engine's next check.
 pub fn cancel() -> bool {
     let mut g = job();
     let Some(j) = g.as_mut().filter(|j| j.stage == Stage::Running) else { return false };
@@ -175,7 +188,8 @@ pub fn cancel() -> bool {
         log!("{}: verify: cancel requested", j.tid);
         // Under JOB and only while the engine runs, so the flag is never set after the job's reset (run).
         if j.engine {
-            engine_cancel();
+            // SAFETY: sets the engine's atomic flag.
+            unsafe { maxpack_verify_cancel() };
         }
     }
     true
@@ -203,6 +217,7 @@ pub fn json() -> serde_json::Value {
         "title_id": j.tid,
         "path": j.path.to_string_lossy(),
         "kind": j.kind.name(),
+        "phase": j.phase.name(),
         "done": j.done,
         "total": j.total,
         "mbps": j.rate.mbps(10_000),
@@ -219,15 +234,27 @@ pub fn record_json(r: &Record) -> serde_json::Value {
     })
 }
 
-/// The engine's progress hook (from its threads, with its phase lock held): into the job.
-extern "C" fn on_progress(_ctx: *mut c_void, _phase: *const c_char, done: u64, total: u64) {
+fn see(done: u64, total: u64) {
     if let Some(j) = job().as_mut() {
         (j.done, j.total) = (done, total);
         j.rate.add(crate::sys::uptime_ms(), done);
     }
 }
 
-pub fn err_text(buf: &[c_char]) -> String {
+/// The engine's progress hook (from its threads, with its phase lock held): into the job.
+extern "C" fn on_hook(_ctx: *mut c_void, _phase: *const c_char, done: u64, total: u64) {
+    see(done, total);
+}
+
+extern "C" fn on_quick(_ctx: *mut c_void, done: u64, total: u64) {
+    see(done, total);
+}
+
+extern "C" fn quick_cancelled(_ctx: *mut c_void) -> c_int {
+    c_int::from(job().as_ref().is_none_or(|j| j.cancel))
+}
+
+fn err_text(buf: &[c_char]) -> String {
     let bytes: Vec<u8> = buf.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
     let s = String::from_utf8_lossy(&bytes).into_owned();
     if s.is_empty() { "no reason given".into() } else { s }
@@ -259,18 +286,33 @@ pub fn now_secs() -> u64 {
     u64::try_from(t).unwrap_or(0)
 }
 
-/// The engine's full verify of `path` (ps5/verify.c), its progress to `progress`. Ok(counts) when it could check,
-/// Err(reason) when not ("cancelled" after `engine_cancel`). The caller holds the console's job (src/jobs.rs), and
-/// clears the engine's cancel flag after it (`reset_cancel`, under the lock its cancel takes), so a cancel that
-/// comes after the call is not left set for the installer.
-pub fn engine_full(path: &Path, progress: ProgressFn) -> Result<Counts, String> {
+/// The engine's quick verify of `path` (ps5/verify.c): Err only when its report could not be had (out of
+/// memory, a NUL in the path, a report that does not read). `progress` gets the bytes read, `cancel` is asked
+/// before each piece; both get `ctx`. It touches no global of the engine, so it needs no reset.
+pub fn engine_quick(path: &Path, progress: QuickProgressFn, cancel: QuickCancelFn, ctx: *mut c_void) -> Result<QuickOutcome, String> {
+    let c = CString::new(path.as_os_str().as_bytes()).map_err(|_| "NUL in the path".to_string())?;
+    // SAFETY: a NUL-terminated path that outlives the call; the callbacks are thread-safe and only called during it.
+    let json = unsafe { maxpack_verify_quick(c.as_ptr(), Some(progress), Some(cancel), ctx) };
+    if json.is_null() {
+        return Err("the quick verify ran out of memory".into());
+    }
+    // SAFETY: NUL-terminated JSON the engine's wrapper allocated; freed right after the copy.
+    let text = unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned();
+    unsafe { maxpack_verify_free(json) };
+    logic::parse_quick(&text)
+}
+
+/// The engine's full verify of `path` (ps5/verify.c). Ok(counts) when it could check, Err(reason) when not
+/// ("cancelled" after a cancel). The caller clears the engine's cancel flag after it (under JOB), so a cancel
+/// that comes after the call is not left set for the installer.
+fn engine_full(path: &Path) -> Result<Counts, String> {
     let c = CString::new(path.as_os_str().as_bytes()).map_err(|_| "NUL in the path".to_string())?;
     let mut counts = Counts::default();
     let mut err = [0 as c_char; ERR_LEN];
     // SAFETY: a NUL-terminated path, our counts and err buffer, all outliving the call; the hook is thread-safe
     // and the engine drops it before it returns.
     let rc = unsafe {
-        maxpack_verify_full(c.as_ptr(), THREADS, Some(progress), std::ptr::null_mut(), &mut counts, err.as_mut_ptr(), err.len())
+        maxpack_verify_full(c.as_ptr(), THREADS, Some(on_hook), std::ptr::null_mut(), &mut counts, err.as_mut_ptr(), err.len())
     };
     if rc != 0 {
         return Err(err_text(&err));
@@ -278,37 +320,64 @@ pub fn engine_full(path: &Path, progress: ProgressFn) -> Result<Counts, String> 
     Ok(counts)
 }
 
-/// Clears the engine's cancel flag: before an engine call (none runs then) and after it.
-pub fn reset_cancel() {
-    // SAFETY: clears the engine's atomic flag; nothing of the engine runs a job now (src/jobs.rs).
+/// Clears the engine's cancel flag: nothing of the engine runs a job now (src/jobs.rs).
+fn reset_cancel() {
+    // SAFETY: clears the engine's atomic flag.
     unsafe { maxpack_verify_cancel_reset() };
 }
 
-/// Asks the running engine call to stop (its next check).
-pub fn engine_cancel() {
-    // SAFETY: sets the engine's atomic flag.
-    unsafe { maxpack_verify_cancel() };
+/// Records `rec` against the file as it was when the verify started: one that changed meanwhile keeps none.
+fn keep(tid: &str, path: &Path, before: Option<(u64, i64)>, rec: impl FnOnce(u64, i64) -> Record) {
+    match (before, identity(path)) {
+        (Some((size, mtime)), Some(now)) if now == (size, mtime) => remember(path, rec(size, mtime)),
+        _ => log!("{tid}: {} changed or went during the verify: its result is not kept", path.display()),
+    }
 }
 
-/// The job's thread: the engine, then the record.
+/// The job's thread: the quick verify, then (full, when it passed) the engine's full verify, then the record.
 fn run() {
     let _unfinished = Unfinished;
     let Some((tid, path, kind, t0)) = job().as_ref().map(|j| (j.tid.clone(), j.path.clone(), j.kind, j.started_ms)) else { return };
-    // The engine starts only if no cancel came meanwhile; the flag is cleared first.
+    let before = identity(&path);
+    let secs = || (crate::sys::uptime_ms() - t0) / 1000;
+    let quick = engine_quick(&path, on_quick, quick_cancelled, std::ptr::null_mut());
+    let q = match quick {
+        Ok(QuickOutcome::Checked(q)) => q,
+        Ok(QuickOutcome::Cancelled) => {
+            log!("{tid}: verify cancelled after {} s", secs());
+            end(Stage::Cancelled, None);
+            return;
+        }
+        Ok(QuickOutcome::Error(why)) | Err(why) => {
+            log!("{tid}: verify failed after {} s: {why}", secs());
+            end(Stage::Failed, Some(why));
+            return;
+        }
+    };
+    let what: Vec<String> = q.bad.iter().map(|b| format!("{} {} ({})", b.what, b.name, b.why)).collect();
+    log!("{tid}: quick verify of {}: {} in {} s: {} volumes and {} files, {} bad{}{} ({} MB read)", path.display(),
+        if q.ok { "OK" } else { "damaged" }, secs(), q.volumes, q.files, q.nbad, if what.is_empty() { "" } else { ": " },
+        what.join(", "), q.bytes / 1_000_000);
+    // A quick verify, or a damaged copy that a full one need not read on: recorded as the quick one.
+    if kind == Kind::Quick || !q.ok {
+        keep(&tid, &path, before, |size, mtime| logic::quick_record(&q, size, mtime, now_secs()));
+        end(Stage::Done, None);
+        return;
+    }
+    // The engine's full verify starts only if no cancel came meanwhile; its flag is cleared first.
     {
         let mut g = job();
         let Some(j) = g.as_mut() else { return };
         if j.cancel {
             drop(g);
+            log!("{tid}: verify cancelled after {} s", secs());
             end(Stage::Cancelled, None);
-            log!("{tid}: verify cancelled before it started");
             return;
         }
         reset_cancel();
-        j.engine = true;
+        (j.engine, j.phase, j.done, j.total, j.rate) = (true, Kind::Full, 0, 0, Rate::default());
     }
-    let before = identity(&path);
-    let r = engine_full(&path, on_progress);
+    let r = engine_full(&path);
     let cancelled = {
         // Under JOB: a cancel asked after this finds the engine done, so the flag is never left set.
         let mut g = job();
@@ -318,28 +387,21 @@ fn run() {
             j.cancel
         })
     };
-    let secs = (crate::sys::uptime_ms() - t0) / 1000;
     let counts = match r {
         Ok(c) => c,
         Err(why) => {
             let stage = if cancelled && why == "cancelled" { Stage::Cancelled } else { Stage::Failed };
-            log!("{tid}: verify {} after {secs} s: {why}", if stage == Stage::Cancelled { "cancelled" } else { "failed" });
+            log!("{tid}: verify {} after {} s: {why}", if stage == Stage::Cancelled { "cancelled" } else { "failed" }, secs());
             end(stage, (stage == Stage::Failed).then_some(why));
             return;
         }
     };
     let ok = counts.files_bad == 0;
-    log!("{tid}: verify ({}) of {}: {} in {secs} s: {} files OK, {} failed ({} MB checked)", kind.name(), path.display(),
-        if ok { "OK" } else { "damaged" }, counts.files_ok, counts.files_bad, counts.bytes_checked / 1_000_000);
-    // Recorded against the file as it was when the verify started: one that changed meanwhile shows none.
-    match (before, identity(&path)) {
-        (Some((size, mtime)), Some(now)) if now == (size, mtime) => {
-            remember(&path, Record {
-                size, mtime, kind: kind.name().into(), at: now_secs(), ok, files_ok: counts.files_ok,
-                files_bad: counts.files_bad, bad: Vec::new(),
-            });
-        }
-        _ => log!("{tid}: {} changed or went during the verify: its result is not kept", path.display()),
-    }
+    log!("{tid}: full verify of {}: {} in {} s: {} files OK, {} failed ({} MB checked)", path.display(),
+        if ok { "OK" } else { "damaged" }, secs(), counts.files_ok, counts.files_bad, counts.bytes_checked / 1_000_000);
+    keep(&tid, &path, before, |size, mtime| Record {
+        size, mtime, kind: Kind::Full.name().into(), at: now_secs(), ok, files_ok: counts.files_ok, files_bad: counts.files_bad,
+        bad: Vec::new(),
+    });
     end(Stage::Done, None);
 }
