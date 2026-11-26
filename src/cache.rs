@@ -433,7 +433,8 @@ pub fn stamp(src: &Source, _s: &Settings) -> serde_json::Value {
 }
 
 /// Existing paths whose size and mtime `.done` records at the build's start (`record_inputs`): any
-/// change, an input added or one removed rebuilds (`check`). The ampr dir is not one: launch mounts it.
+/// change, an input added or one removed rebuilds (`check`). The ampr dir is not one: its files are copied
+/// into fakelib/ and tracked by `ampr_state` (`.ampr`), so a change of them refreshes fakelib/ only.
 pub fn inputs(src: &Source, _s: &Settings) -> Vec<PathBuf> {
     let mut v = Vec::new();
     match src.kind {
