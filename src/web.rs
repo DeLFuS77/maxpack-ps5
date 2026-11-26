@@ -502,7 +502,7 @@ fn receive_reply(a: crate::receive::Answer) -> Reply {
 /// the pairing code and its lockout. The data PUT never comes here: `handle` streams it.
 fn receive_route(state: &State, head: &str, method: &str, path: &str, query: &str, body: &[u8], peer: std::net::IpAddr) -> Reply {
     use crate::receive as rx;
-    if let Err(r) = rx::gate(state, head, peer) {
+    if let Err(r) = rx::gate(state, head, query, peer) {
         return receive_reply(r.into());
     }
     let a = match (method, path) {

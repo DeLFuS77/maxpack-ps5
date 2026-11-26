@@ -195,7 +195,15 @@ pub fn pairing_allowed(p: Pairing, loopback: bool) -> bool {
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= MAX_NAME && crate::p5z::is_p5z_name(name) && !name.starts_with('.')
         && !name.contains("..")
-        && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | '"' | '*' | ':' | '<' | '>' | '?' | '|'))
+        && !name.chars().any(|c| c.is_control() || format_char(c) || matches!(c, '/' | '\\' | '"' | '*' | ':' | '<' | '>' | '?' | '|'))
+}
+
+/// A Unicode format character (category Cf): bidi overrides and isolates, zero-width ones, the soft hyphen, tags.
+/// In a name they would make the banner or the library show a name that is not the file's.
+fn format_char(c: char) -> bool {
+    matches!(c as u32, 0xad | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x890..=0x891 | 0x8e2 | 0x180e | 0x200b..=0x200f
+        | 0x202a..=0x202e | 0x2060..=0x2064 | 0x2066..=0x206f | 0xfeff | 0xfff9..=0xfffb | 0x110bd | 0x110cd
+        | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f)
 }
 
 /// The mount of a drive id: `internal` is `/data`, `usb0`..`usb7` and `ext0`..`ext1` are `/mnt/<id>`.
@@ -464,6 +472,15 @@ pub fn addr_key(ip: IpAddr) -> String {
     }
 }
 
+/// A lockout to tell the log about, once when it starts (Lockout::take_events): wrong codes alone are not logged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LockEvent {
+    /// This address was locked out after MAX_WRONG wrong codes in a row.
+    Address(String),
+    /// Every address was locked out: `wrong` codes from `addresses` addresses within LOCK_MS, or too many addresses.
+    All { wrong: usize, addresses: usize },
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct Tries {
     wrong: u32,
@@ -477,15 +494,24 @@ struct Tries {
 #[derive(Debug, Default)]
 pub struct Lockout {
     per: HashMap<String, Tries>,
-    recent: VecDeque<u64>,
+    /// The wrong codes within LOCK_MS: when, and from which address.
+    recent: VecDeque<(u64, String)>,
     all_until_ms: u64,
+    events: Vec<LockEvent>,
 }
 
 impl Lockout {
     /// `presented`: the `X-MaxPack-Code` header (None: absent, which is refused but not counted). `code`: the
     /// console's code. While locked out the code is not even compared.
     pub fn check(&mut self, key: &str, now_ms: u64, presented: Option<&str>, code: &str) -> Result<(), Refusal> {
-        if self.all_until_ms > now_ms {
+        self.check_as(key, now_ms, presented, code, false)
+    }
+
+    /// `check`, for a request that carries the token of the receive under way (`carries_token`): the lock of
+    /// every address does not stop it (128 random bits and the code: a stranger's flood must not stall a send), its
+    /// own address's lock does.
+    pub fn check_as(&mut self, key: &str, now_ms: u64, presented: Option<&str>, code: &str, carries_token: bool) -> Result<(), Refusal> {
+        if self.all_until_ms > now_ms && !carries_token {
             return Err(Refusal::Locked(self.all_until_ms - now_ms));
         }
         if let Some(t) = self.per.get_mut(key) {
@@ -502,14 +528,14 @@ impl Lockout {
             self.per.remove(key);
             return Ok(());
         }
-        self.recent.push_back(now_ms);
-        while self.recent.front().is_some_and(|&t| now_ms.saturating_sub(t) >= LOCK_MS) {
+        self.recent.push_back((now_ms, key.to_string()));
+        while self.recent.front().is_some_and(|(t, _)| now_ms.saturating_sub(*t) >= LOCK_MS) {
             self.recent.pop_front();
         }
         if !self.per.contains_key(key) && self.per.len() >= MAX_ADDRESSES {
             self.per.retain(|_, t| t.until_ms > now_ms || now_ms.saturating_sub(t.last_ms) < FORGET_MS);
             if self.per.len() >= MAX_ADDRESSES {
-                self.all_until_ms = now_ms + LOCK_MS;
+                self.lock_all(now_ms, self.per.len());
                 return Err(Refusal::Locked(LOCK_MS));
             }
         }
@@ -518,21 +544,40 @@ impl Lockout {
         t.last_ms = now_ms;
         if t.wrong >= MAX_WRONG {
             (t.wrong, t.until_ms) = (0, now_ms + LOCK_MS);
+            self.events.push(LockEvent::Address(key.to_string()));
         }
         if self.recent.len() >= GLOBAL_WRONG {
-            self.all_until_ms = now_ms + LOCK_MS;
-            self.recent.clear();
+            let mut keys: Vec<&str> = self.recent.iter().map(|(_, k)| k.as_str()).collect();
+            keys.sort_unstable();
+            keys.dedup();
+            let addresses = keys.len();
+            self.lock_all(now_ms, addresses);
         }
         Err(Refusal::BadCode)
     }
+
+    /// Every address locked out for LOCK_MS, told once (when it was not already).
+    fn lock_all(&mut self, now_ms: u64, addresses: usize) {
+        if self.all_until_ms <= now_ms {
+            self.events.push(LockEvent::All { wrong: self.recent.len(), addresses });
+        }
+        self.all_until_ms = now_ms + LOCK_MS;
+        self.recent.clear();
+    }
+
+    /// The lockouts that started since the last call, to log once each.
+    pub fn take_events(&mut self) -> Vec<LockEvent> {
+        std::mem::take(&mut self.events)
+    }
 }
 
-/// The gate of every `/api/receive/*` route: the switch, then the lockout and the code.
-pub fn gate(on: bool, lock: &mut Lockout, key: &str, now_ms: u64, presented: Option<&str>, code: &str) -> Result<(), Refusal> {
+/// The gate of every `/api/receive/*` route: the switch, then the lockout and the code. `carries_token`: the
+/// request names the token of the receive under way (Lockout::check_as).
+pub fn gate(on: bool, lock: &mut Lockout, key: &str, now_ms: u64, presented: Option<&str>, code: &str, carries_token: bool) -> Result<(), Refusal> {
     if !on {
         return Err(Refusal::Off);
     }
-    lock.check(key, now_ms, presented, code)
+    lock.check_as(key, now_ms, presented, code, carries_token)
 }
 
 /// One item the quick verify found wrong, as the status lists it.
@@ -581,10 +626,20 @@ pub fn failed_text(q: &crate::verify::Quick) -> String {
 
 /// `GET /api/receive/status`'s answer: `{"have","size","state","verify":{bytes,total,nbad,bad:[...]}|null,"error"}`.
 pub fn status_json(have: u64, size: u64, state: State, verify: Option<&VerifyProgress>, error: Option<&str>) -> Value {
+    // Each item as the PC's `maxpack verify --quick --json` gives it: a volume by its number, a file by its path, and
+    // `found` only when something whole could be hashed.
     let verify = verify.map(|v| {
-        let bad: Vec<Value> = v.bad.iter().map(|b| json!({
-            "kind": b.kind, "volume": b.volume, "name": b.name, "expected": b.expected, "found": b.found, "why": b.why,
-        })).collect();
+        let bad: Vec<Value> = v.bad.iter().map(|b| {
+            let mut o = json!({"why": b.why, "expected": b.expected});
+            match b.volume {
+                Some(n) if b.kind == "volume" => o["volume"] = n.into(),
+                _ => o["path"] = b.name.clone().into(),
+            }
+            if let Some(found) = &b.found {
+                o["found"] = found.clone().into();
+            }
+            o
+        }).collect();
         json!({"bytes": v.bytes, "total": v.total, "nbad": v.nbad, "bad": bad})
     });
     json!({"have": have, "size": size, "state": state.name(), "verify": verify, "error": error})
@@ -664,7 +719,10 @@ mod tests {
         let too_long = format!("{}.p5z", "a".repeat(MAX_NAME - 3));
         for bad in ["", ".p5z", "game.pkg", "game.p5z.txt", "game", "../game.p5z", "..\\game.p5z", "a/b.p5z", "a\\b.p5z",
             "a..b.p5z", "..p5z", ".hidden.p5z", "a\u{0}.p5z", "a\n.p5z", "a\u{7f}.p5z", "a\u{85}.p5z", "a:b.p5z", "a*.p5z",
-            "a?.p5z", "a<b>.p5z", "a\"b.p5z", "a|b.p5z", "/data/x.p5z", too_long.as_str()] {
+            "a?.p5z", "a<b>.p5z", "a\"b.p5z", "a|b.p5z", "/data/x.p5z", too_long.as_str(),
+            // Format characters: a bidi override or a zero-width one would show a name that is not the file's.
+            "a\u{202e}zp5.p5z", "a\u{200b}.p5z", "a\u{200f}.p5z", "a\u{2066}.p5z", "a\u{feff}.p5z", "a\u{ad}.p5z",
+            "a\u{61c}.p5z", "a\u{180e}.p5z", "a\u{2060}.p5z", "a\u{e0041}.p5z"] {
             assert!(!valid_name(bad), "{bad:?}");
         }
     }
@@ -972,17 +1030,58 @@ mod tests {
     #[test]
     fn the_gate() {
         let mut l = Lockout::default();
-        assert_eq!(gate(false, &mut l, "a", 0, Some(CODE), CODE), Err(Refusal::Off));
-        assert_eq!(gate(true, &mut l, "a", 0, Some(CODE), CODE), Ok(()));
-        assert_eq!(gate(true, &mut l, "a", 0, None, CODE), Err(Refusal::BadCode));
+        assert_eq!(gate(false, &mut l, "a", 0, Some(CODE), CODE, false), Err(Refusal::Off));
+        assert_eq!(gate(true, &mut l, "a", 0, Some(CODE), CODE, false), Ok(()));
+        assert_eq!(gate(true, &mut l, "a", 0, None, CODE, false), Err(Refusal::BadCode));
         // No code on the console (not made yet): nothing passes.
-        assert_eq!(gate(true, &mut l, "a", 0, Some(""), ""), Err(Refusal::BadCode));
+        assert_eq!(gate(true, &mut l, "a", 0, Some(""), "", false), Err(Refusal::BadCode));
         // Off answers before the lockout looks.
         for i in 0..MAX_WRONG as u64 {
-            let _ = gate(true, &mut l, "z", i, Some("000001"), CODE);
+            let _ = gate(true, &mut l, "z", i, Some("000001"), CODE, false);
         }
-        assert_eq!(gate(false, &mut l, "z", 10, Some(CODE), CODE), Err(Refusal::Off));
-        assert!(matches!(gate(true, &mut l, "z", 10, Some(CODE), CODE), Err(Refusal::Locked(_))));
+        assert_eq!(gate(false, &mut l, "z", 10, Some(CODE), CODE, false), Err(Refusal::Off));
+        assert!(matches!(gate(true, &mut l, "z", 10, Some(CODE), CODE, false), Err(Refusal::Locked(_))));
+        // Its own lock holds even with the receive's token.
+        assert!(matches!(gate(true, &mut l, "z", 11, Some(CODE), CODE, true), Err(Refusal::Locked(_))));
+    }
+
+    #[test]
+    fn the_receive_under_way_passes_the_lock_of_every_address() {
+        let mut l = Lockout::default();
+        // Twenty wrong codes from five addresses lock every address...
+        for i in 0..GLOBAL_WRONG as u64 {
+            let _ = l.check(&format!("10.0.0.{}", i % 5), i, Some("999999"), CODE);
+        }
+        assert!(matches!(gate(true, &mut l, "192.168.1.2", 100, Some(CODE), CODE, false), Err(Refusal::Locked(_))));
+        // ...but a request with the token of the receive under way and the right code goes on; a wrong one does not.
+        assert_eq!(gate(true, &mut l, "192.168.1.2", 101, Some(CODE), CODE, true), Ok(()));
+        assert_eq!(gate(true, &mut l, "192.168.1.3", 102, Some("000000"), CODE, true), Err(Refusal::BadCode));
+        assert_eq!(gate(true, &mut l, "192.168.1.3", 103, None, CODE, true), Err(Refusal::BadCode));
+    }
+
+    #[test]
+    fn a_lockout_is_told_once() {
+        let mut l = Lockout::default();
+        for i in 0..MAX_WRONG as u64 - 1 {
+            let _ = l.check("a", i, Some("000000"), CODE);
+        }
+        // Wrong codes alone are not told; the lock that comes of them is, once.
+        assert!(l.take_events().is_empty());
+        let _ = l.check("a", 10, Some("000000"), CODE);
+        assert_eq!(l.take_events(), vec![LockEvent::Address("a".into())]);
+        for i in 0..10 {
+            let _ = l.check("a", 11 + i, Some("000000"), CODE);
+        }
+        assert!(l.take_events().is_empty());
+        // Every address: told once, with how many wrong codes and from how many addresses.
+        let mut l = Lockout::default();
+        for i in 0..GLOBAL_WRONG as u64 {
+            // Four from each of five addresses: no address reaches five in a row.
+            let _ = l.check(&format!("10.0.0.{}", i % 5), i, Some("999999"), CODE);
+        }
+        assert_eq!(l.take_events(), vec![LockEvent::All { wrong: GLOBAL_WRONG, addresses: 5 }]);
+        let _ = l.check("10.0.0.9", 50, Some("999999"), CODE);
+        assert!(l.take_events().is_empty());
     }
 
     #[test]
@@ -1037,8 +1136,16 @@ mod tests {
             bad: vec![BadItem { kind: "volume", volume: Some(3), name: "ampr_zstd-003.pak".into(), expected: "aa".into(), found: Some("bb".into()), why: "sha256".into() }],
         };
         let s = status_json(10, 10, State::Failed, Some(&v), Some("1 of 12 volumes and files do not match"));
+        // The shape of the PC's maxpack verify --quick --json: a volume by its number, a file by its path, no found
+        // when nothing whole could be hashed.
         assert_eq!(s["verify"], json!({"bytes": 10, "total": 10, "nbad": 1, "bad": [
-            {"kind": "volume", "volume": 3, "name": "ampr_zstd-003.pak", "expected": "aa", "found": "bb", "why": "sha256"}]}));
+            {"volume": 3, "expected": "aa", "found": "bb", "why": "sha256"}]}));
+        let v = VerifyProgress {
+            bytes: 10, total: 10, nbad: 1,
+            bad: vec![BadItem { kind: "file", volume: None, name: "sce_sys/param.json".into(), expected: "aa".into(), found: None, why: "data".into() }],
+        };
+        assert_eq!(status_json(10, 10, State::Failed, Some(&v), None)["verify"]["bad"],
+            json!([{"path": "sce_sys/param.json", "expected": "aa", "why": "data"}]));
         assert_eq!(s["error"], "1 of 12 volumes and files do not match");
         assert_eq!(s["state"], "failed");
     }

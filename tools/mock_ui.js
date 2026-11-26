@@ -492,10 +492,11 @@ function recvState() {
     from: j.from, mbps: recvUnder() ? j.mbps : null, cancelling: false, verify: j.verify, error: j.error, elapsed_ms: Date.now() - j.started };
 }
 // The status the PC polls (maxpack_logic::receive::status_json).
+// Each bad item as the PC's maxpack verify --quick --json gives it: a volume by number, a file by path.
 function recvStatus(j) {
   return { have: j.have, size: j.size, state: j.state, error: j.error, verify: j.verify && { bytes: j.verify.bytes, total: j.verify.total,
-    nbad: j.verify.nbad, bad: j.verify.bad.map((b) => ({ kind: b.what, volume: b.volume, name: b.name, expected: 'aa'.repeat(32),
-      found: 'bb'.repeat(32), why: 'sha256' })) } };
+    nbad: j.verify.nbad, bad: j.verify.bad.map((b) => Object.assign(b.what === 'volume' ? { volume: b.volume } : { path: b.name },
+      { why: 'sha256', expected: 'aa'.repeat(32), found: 'bb'.repeat(32) })) } };
 }
 const recvNo = (code, status, detail, extra) => [status, Object.assign({ error: code, detail }, extra || {})];
 function recvNewJob(name, size, drive, have) {
@@ -570,7 +571,8 @@ function recvStart(body) {
   if (!b || typeof b.name !== 'string' || typeof b.size !== 'number' || typeof b.drive !== 'string')
     return recvNo('bad_request', 400, 'expected {"name","size","drive"}');
   const { name, size, drive } = b;
-  if (Buffer.byteLength(name) > 200 || !/^[^/\\:*?"<>|\u0000-\u001f\u007f-\u009f]+\.p5z$/i.test(name) || /\.\./.test(name) || name.startsWith('.'))
+  if (Buffer.byteLength(name) > 200 || !/^[^/\\:*?"<>|\u0000-\u001f\u007f-\u009f]+\.p5z$/i.test(name) || /\.\./.test(name) || name.startsWith('.')
+    || /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/.test(name))
     return recvNo('bad_name', 400, 'not a plain .p5z file name');
   if (size < 96) return recvNo('bad_size', 400, 'a .p5z is at least 96 bytes');
   const d = RECV_DRIVES.find((x) => x.id === drive);

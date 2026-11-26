@@ -159,21 +159,30 @@ pub fn new_code() -> String {
 
 /// The gate of every `/api/receive/*` route: the switch, then the lockout and the code (maxpack_logic::receive::gate).
 /// A wrong code is logged with its address, never with what was sent.
-pub fn gate(state: &State, head: &str, peer: IpAddr) -> Result<(), Refusal> {
+/// A request whose query names the token of the receive under way passes the lock of every address (its own
+/// address's lock still holds): a stranger's flood of wrong codes must not stall a send. Lockouts are logged once
+/// each when they start, with the address only; single wrong codes are not logged.
+pub fn gate(state: &State, head: &str, query: &str, peer: IpAddr) -> Result<(), Refusal> {
     let (on, code) = {
         let s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
         (s.receive_from_pc, s.receive_code.clone())
     };
     let presented = header(head, "x-maxpack-code");
     let key = logic::addr_key(peer);
-    let r = {
+    let carries_token = logic::query_param(query, "id")
+        .is_some_and(|id| recv().as_ref().is_some_and(|r| r.id == id && r.stage.active()));
+    let (r, events) = {
         let mut l = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        logic::gate(on, l.get_or_insert_with(logic::Lockout::default), &key, crate::sys::uptime_ms(), presented, &code)
+        let l = l.get_or_insert_with(logic::Lockout::default);
+        (logic::gate(on, l, &key, crate::sys::uptime_ms(), presented, &code, carries_token), l.take_events())
     };
-    match &r {
-        Err(Refusal::BadCode) if presented.is_some() => log!("receive: wrong pairing code from {key}"),
-        Err(Refusal::Locked(ms)) => log!("receive: {key} refused for {} s more: too many wrong codes", ms.div_ceil(1000)),
-        _ => {}
+    for e in events {
+        match e {
+            logic::LockEvent::Address(k) => log!("receive: {k} locked out for {} s after {} wrong pairing codes in a row",
+                logic::LOCK_MS / 1000, logic::MAX_WRONG),
+            logic::LockEvent::All { wrong, addresses } => log!("receive: {wrong} wrong pairing codes from {addresses} \
+                address(es) within a minute: every address locked out for {} s (a send under way goes on)", logic::LOCK_MS / 1000),
+        }
     }
     r
 }
@@ -351,7 +360,7 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         }
         r.into()
     };
-    if let Err(r) = gate(state, head, peer) {
+    if let Err(r) = gate(state, head, query, peer) {
         return refuse(conn, r);
     }
     let Some(len) = len else { return Refusal::LengthRequired.into() };
