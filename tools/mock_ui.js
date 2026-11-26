@@ -460,8 +460,10 @@ function instPost(name, body) {
 // tried against the mock: the switch (403 receive_off), the code and its lockout (401 bad_code; 5 wrong in a row from
 // one address, 429 locked for 60 s), the drives "internal" (/data, ufs) and "usb0" (/mnt/usb0, exfatfs), start,
 // data (counted and dropped: nothing is written), status, finish (a verify of 3 s; a name with "damaged" in it fails
-// on a volume and a file) and cancel. --receive demo|failed: a receive that runs by itself (5 % a second) so the
-// banner shows without a PC; at run time /mock?receive=demo.
+// on a volume and a file) and cancel. --receive demo|failed|paused: a receive that runs by itself (5 % a second), or
+// one paused at 40 %, so the banner shows without a PC; at run time /mock?receive=demo. A receive with nothing from the
+// PC for 10 minutes pauses (src/receive.rs): its token is then unknown and a start of the same file goes on where it
+// was; the banner's Stop pauses it, Delete deletes what arrived.
 const pairing = { on: mock.receive !== 'none', code: '' };
 let recvJob = null, recvSeq = 0, recvTimer = null;
 const recvLock = new Map();
@@ -473,9 +475,17 @@ const received = new Set();
 function mockCode() { return String(Math.floor(Math.random() * 1e6)).padStart(6, '0'); }
 if (pairing.on) pairing.code = mockCode();
 function isLoopback(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress); }
-function recvUnder() { return !!recvJob && (recvJob.state === 'receiving' || recvJob.state === 'verifying'); }
+// maxpack_logic::receive::idle: 10 minutes with nothing from the PC pauses a receive.
+function recvSweep() {
+  if (recvJob && recvJob.state === 'receiving' && !recvJob.demo && Date.now() - (recvJob.last || recvJob.started) >= 600000) {
+    recvJob.state = 'paused';
+    recvJob.mbps = null;
+  }
+}
+function recvUnder() { recvSweep(); return !!recvJob && (recvJob.state === 'receiving' || recvJob.state === 'verifying'); }
 // state.receive (src/receive.rs `json`): never the token.
 function recvState() {
+  recvSweep();
   if (!recvJob) return null;
   const j = recvJob;
   return { seq: j.seq, state: j.state, name: j.name, drive: j.mount, path: j.partial, dest: j.dest, size: j.size, have: j.have,
@@ -521,11 +531,18 @@ function recvVerify(j) {
 // --receive demo|failed (and /mock?receive=): a receive of 18 GB that arrives 5 % a second by itself.
 function recvDemo(kind) {
   clearInterval(recvTimer);
+  if (kind === 'paused') {
+    pairing.on = true;
+    if (!pairing.code) pairing.code = mockCode();
+    Object.assign(recvNewJob('Demo Paused [PPSA09876].p5z', 18 * GB, 'usb0', Math.round(18 * GB * 0.4)), { state: 'paused', demo: true });
+    return;
+  }
   if (kind !== 'demo' && kind !== 'failed') { recvJob = null; return; }
   pairing.on = true;
   if (!pairing.code) pairing.code = mockCode();
   const j = recvNewJob(kind === 'failed' ? 'Demo Damaged [PPSA09876].p5z' : 'Demo Game [PPSA09876].p5z', 18 * GB, 'usb0', 0);
   j.demoFail = kind === 'failed';
+  j.demo = true;
   recvTimer = setInterval(() => {
     if (j.state !== 'receiving') return clearInterval(recvTimer);
     j.have = Math.min(j.size, j.have + Math.round(j.size * 0.05));
@@ -562,18 +579,25 @@ function recvStart(body) {
   if (received.has(dest) || games().some((g) => g.path === dest)) return recvNo('exists', 409, 'that .p5z is already there');
   if (recvJob && recvJob.state === 'receiving' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size)
     return [200, { id: recvJob.id, have: recvJob.have }];
+  // Paused in this run: a new token, from where it was.
+  const paused = recvJob && recvJob.state === 'paused' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size
+    ? recvJob.have : 0;
   if (recvUnder()) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
   if (currentJob()) return recvNo('busy', 409, 'the installer is running a job; try again when it ends');
   if (verifyRunning()) return recvNo('busy', 409, 'a .p5z is being verified on the console; try again when it ends');
   const missing = size + 256 * MB - d.free;
   if (missing > 0) return recvNo('no_space', 507, 'not enough space on the drive', { missing });
   clearInterval(recvTimer);
-  const j = recvNewJob(name, size, drive, 0);
+  const j = recvNewJob(name, size, drive, paused);
   return [200, { id: j.id, have: j.have }];
 }
+// A paused receive's token is over (404, as after a restart); a request with the token counts as the PC being there.
 function recvById(url) {
+  recvSweep();
   const id = url.searchParams.get('id');
-  return recvJob && recvJob.id === id ? recvJob : null;
+  const j = recvJob && recvJob.id === id && recvJob.state !== 'paused' ? recvJob : null;
+  if (j) j.last = Date.now();
+  return j;
 }
 function recvCancel(j) {
   if (j.state === 'done') return recvNo('state', 409, 'the receive is done');
@@ -598,10 +622,10 @@ function recvRoute(req, url, body, bytes) {
     if (bytes > 64 * MB) return recvNo('too_large', 413, 'at most 64 MiB per request');
     if (offset !== j.have) return recvNo('offset', 409, `the data must go on at byte ${j.have}`, { have: j.have });
     if (offset + bytes > j.size) return recvNo('past_size', 400, 'past the size given at start');
-    const t = (Date.now() - (j.last || j.started)) / 1000;
+    const t = (Date.now() - (j.lastPut || j.started)) / 1000;
     j.have += bytes;
     j.mbps = t > 0 ? bytes / t / 1e6 : null;
-    j.last = Date.now();
+    j.lastPut = Date.now();
     return [200, { have: j.have }];
   }
   if (req.method === 'GET' && p === '/api/receive/status') return [200, recvStatus(j)];
@@ -698,6 +722,12 @@ http.createServer((req, res) => {
       if (!isLoopback(req)) return json(res, 403, { code: 'console_only', detail: "only from MaxPack's page on the console itself" });
       pairing.code = mockCode();
       return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p === '/api/pairing/stop') {
+      if (!recvUnder()) return json(res, 409, { error: 'state', detail: 'no receive is under way' });
+      clearInterval(recvTimer);
+      Object.assign(recvJob, { state: 'paused', mbps: null });
+      return json(res, 200, recvStatus(recvJob));
     }
     if (req.method === 'POST' && p === '/api/pairing/cancel') {
       if (!recvJob) return json(res, 404, { error: 'unknown_id', detail: 'no receive' });

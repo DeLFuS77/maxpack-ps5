@@ -58,9 +58,12 @@ struct Recv {
     stage: Stage,
     verify: Option<VerifyProgress>,
     error: Option<String>,
-    /// A cancel of its verify: Some(true) deletes the file (a cancel), Some(false) keeps it (the payload quits).
+    /// A stop of its verify: Some(true) deletes the file (a cancel), Some(false) keeps it (Stop, or the payload
+    /// quits: the receive pauses).
     stop: Option<bool>,
     started_ms: u64,
+    /// The last request that carried its token (or its start): idle for IDLE_MS, it pauses (`sweep`).
+    last_ms: u64,
     ended_ms: Option<u64>,
     rate: Rate,
 }
@@ -72,6 +75,8 @@ static LOCK: Mutex<Option<logic::Lockout>> = Mutex::new(None);
 /// The `.maxpack-recv` files whose verify failed in this run: a start of one again begins from 0.
 static FAILED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 static SEQ: AtomicU64 = AtomicU64::new(0);
+/// Mounts where a write failed with EFBIG in this run: FAT32 that the type check did not tell (start refuses it).
+static FAT32_SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// To wake the scan loop once a `.p5z` is in place.
 static STATE: OnceLock<Arc<State>> = OnceLock::new();
 /// How long a PUT, a finish or a cancel waits for a PUT whose connection is going (its reads time out in 5 s).
@@ -88,14 +93,40 @@ pub fn init(state: Arc<State>) {
     let _ = STATE.set(state);
 }
 
+/// RECV, with a receive that has been idle for IDLE_MS paused first (maxpack_logic::receive::idle): a PC that went
+/// away never holds the other jobs for long, and its file stays for a send to go on with.
+fn swept() -> MutexGuard<'static, Option<Recv>> {
+    let mut g = recv();
+    if let Some(r) = g.as_mut().filter(|r| logic::idle(r.stage, r.last_ms, crate::sys::uptime_ms())) {
+        pause(r, None, &format!("nothing from the PC for {} min", logic::IDLE_MS / 60_000));
+    }
+    g
+}
+
+/// Ends a receive as paused: its file stays, its token is over (as after a restart), and a start of the same file
+/// goes on where it was. `error`: what stopped it, for the page (a full drive...); None for idle or Stop.
+fn pause(r: &mut Recv, error: Option<String>, why: &str) {
+    (r.stage, r.error, r.ended_ms) = (Stage::Paused, error, Some(crate::sys::uptime_ms()));
+    log!("receive: {}: paused at {} of {} bytes ({why}); {} stays: a send of it again goes on where it was", r.name, r.have,
+        r.size, r.partial.display());
+}
+
+/// The receive whose token is `id`, while it is not paused (a paused receive's token is over, as after a restart:
+/// 404 `unknown_id`, and the PC starts again); the request counts as the PC being there.
+fn by_id<'a>(g: &'a mut Option<Recv>, id: &str) -> Option<&'a mut Recv> {
+    let r = g.as_mut().filter(|r| r.id == id && r.stage != Stage::Paused)?;
+    r.last_ms = crate::sys::uptime_ms();
+    Some(r)
+}
+
 /// A receive is under way (receiving or verifying): every other job of the engine waits (src/jobs.rs).
 pub fn active() -> bool {
-    recv().as_ref().is_some_and(|r| r.stage.active())
+    swept().as_ref().is_some_and(|r| r.stage.active())
 }
 
 /// A receive under way writes at or under `path` (a drive's mount): eject waits.
 pub fn uses(path: &Path) -> bool {
-    recv().as_ref().is_some_and(|r| r.stage.active() && r.partial.starts_with(path))
+    swept().as_ref().is_some_and(|r| r.stage.active() && r.partial.starts_with(path))
 }
 
 /// `n` random bytes: the system's /dev/urandom, else std's keyed SipHash (a secret per run) over a counter and
@@ -202,7 +233,7 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     });
     let failed_before = partial.as_ref().is_some_and(|p| FAILED.lock().unwrap_or_else(|e| e.into_inner()).contains(p));
     let _gate = crate::jobs::gate();
-    let mut g = recv();
+    let mut g = swept();
     let active = g.as_ref().map(|r| Active {
         state: r.stage, same: r.name == req.name && r.drive == req.drive && r.size == req.size, have: r.have,
     });
@@ -214,7 +245,10 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     let facts = StartFacts { req: req.clone(), drive, dest_exists, partial: partial_len, failed_before, active, busy };
     let have = match logic::start_gate(&facts) {
         Ok(Start::Resume { have }) => {
-            let id = g.as_ref().map(|r| r.id.clone()).unwrap_or_default();
+            let id = g.as_mut().map(|r| {
+                r.last_ms = crate::sys::uptime_ms();
+                r.id.clone()
+            }).unwrap_or_default();
             log!("receive: {} to {}: the PC goes on at {have} of {} bytes", req.name, req.drive, req.size);
             return ok(200, json!({"id": id, "have": have}));
         }
@@ -241,7 +275,7 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     *g = Some(Recv {
         id: id.clone(), seq: SEQ.fetch_add(1, Ordering::Relaxed) + 1, name: req.name, drive: req.drive, mount, partial, dest,
         size: req.size, have, from: have, stage: Stage::Receiving, verify: None, error: None, stop: None, started_ms: now,
-        ended_ms: None, rate: Rate::default(),
+        last_ms: now, ended_ms: None, rate: Rate::default(),
     });
     ok(200, json!({"id": id, "have": have}))
 }
@@ -250,7 +284,8 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
 fn usable_or_not(state: &State, mount: &str) -> Option<DriveFacts> {
     let d = crate::storage::drives().into_iter().find(|d| d.mount == mount)?;
     let usable = usable_drives(state).iter().any(|(_, u)| u.mount == mount);
-    Some(DriveFacts { free: d.free, fat32: logic::is_fat32(&d.fs), usable })
+    let seen = FAT32_SEEN.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|m| m == mount);
+    Some(DriveFacts { free: d.free, fat32: logic::is_fat32(&d.fs) || seen, usable })
 }
 
 /// The homebrew folder made when missing, and the `.maxpack-recv` file there at `have` bytes (created, never
@@ -288,10 +323,10 @@ fn writer() -> Option<MutexGuard<'static, ()>> {
     }
 }
 
-/// Reads and drops what is left of a refused body (up to `len`, at most MAX_PUT), so the client reads the answer
-/// rather than a reset connection.
+/// Reads and drops what is left of a refused body, `len` bytes of it at most (maxpack_logic::receive::drain_len),
+/// so the client reads the answer rather than a reset connection. Never with WRITER held.
 fn drain(conn: &mut TcpStream, pre: usize, len: u64) {
-    let mut left = len.min(logic::MAX_PUT).saturating_sub(pre as u64);
+    let mut left = len.saturating_sub(pre as u64);
     let mut buf = vec![0u8; 64 << 10];
     while left > 0 {
         let want = buf.len().min(left as usize);
@@ -304,12 +339,15 @@ fn drain(conn: &mut TcpStream, pre: usize, len: u64) {
 
 /// PUT /api/receive/data?id=<token>&offset=<n>: the body (Content-Length `len`, of which `pre` came with the head)
 /// written at `offset` of the `.maxpack-recv` file and flushed before the answer. `Expect: 100-continue` is
-/// answered once the request passes; a refused body is read and dropped first unless the client waits for that.
+/// answered once the request passes. A refused body is read and dropped first only up to MAX_DRAIN and never for
+/// the gate's refusals (maxpack_logic::receive::drain_len), with WRITER let go. A write that fails pauses the
+/// receive (its file stays): a full drive answers 507 with what is missing, a file FAT32 cannot grow 400 `fat32`.
 pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>, conn: &mut TcpStream, peer: IpAddr) -> Answer {
     let expect = header(head, "expect").is_some_and(|v| v.eq_ignore_ascii_case("100-continue"));
     let refuse = |conn: &mut TcpStream, r: Refusal| -> Answer {
-        if let (false, Some(len)) = (expect, len) {
-            drain(conn, pre.len(), len);
+        let n = logic::drain_len(&r, len.unwrap_or(0), expect);
+        if n > 0 {
+            drain(conn, pre.len(), n);
         }
         r.into()
     };
@@ -321,21 +359,23 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         (Ok(id), Some(o)) => (id.to_string(), o),
         _ => return refuse(conn, Refusal::BadRequest("expected ?id=<token>&offset=<n>".into())),
     };
-    let Some(_w) = writer() else {
+    let Some(w) = writer() else {
         let have = recv().as_ref().filter(|r| r.id == id).map_or(0, |r| r.have);
         return refuse(conn, Refusal::Offset(have));
     };
-    let path = {
-        let g = recv();
-        match g.as_ref().filter(|r| r.id == id) {
-            None => return refuse(conn, Refusal::UnknownId),
-            Some(r) => match logic::data_check(r.stage, r.have, r.size, offset, len) {
-                Ok(()) => r.partial.clone(),
-                Err(e) => {
-                    drop(g);
-                    return refuse(conn, e);
-                }
-            },
+    let checked = {
+        let mut g = swept();
+        match by_id(&mut g, &id) {
+            None => Err(Refusal::UnknownId),
+            Some(r) => logic::data_check(r.stage, r.have, r.size, offset, len)
+                .map(|()| (r.partial.clone(), r.mount.clone(), r.size)),
+        }
+    };
+    let (path, mount, size) = match checked {
+        Ok(c) => c,
+        Err(e) => {
+            drop(w);
+            return refuse(conn, e);
         }
     };
     if expect && conn.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err() {
@@ -345,13 +385,14 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         Ok(f) => f,
         Err(e) => {
             log!("receive: open {}: {e}", path.display());
-            return ok(500, json!({"error": "write", "detail": e.to_string()}));
+            return paused_by(&id, format!("open {}: {e}", path.display()), ok(500, json!({"error": "write", "detail": e.to_string()})));
         }
     };
     let mut buf = vec![0u8; PIECE];
     let mut written = 0u64;
     let mut pre = &pre[..pre.len().min(len as usize)];
-    let mut failure: Option<Answer> = None;
+    // (the answer, and the error that pauses the receive when there is one)
+    let mut failure: Option<(Answer, Option<String>)> = None;
     while written < len {
         let n = if !pre.is_empty() {
             let n = pre.len().min(PIECE);
@@ -367,10 +408,18 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         };
         if let Err(e) = f.write_all_at(&buf[..n], offset + written) {
             log!("receive: write {} at {}: {e}", path.display(), offset + written);
-            failure = Some(if e.raw_os_error() == Some(libc::ENOSPC) {
-                Refusal::NoSpace(len - written).into()
-            } else {
-                ok(500, json!({"error": "write", "detail": e.to_string()}))
+            let at = offset + written;
+            failure = Some(match e.raw_os_error() {
+                Some(libc::ENOSPC) => {
+                    let free = crate::storage::free(&mount).unwrap_or(0);
+                    let missing = logic::missing(free, size, at).unwrap_or(1);
+                    (Refusal::NoSpace(missing).into(), Some(format!("the drive is full: {missing} more bytes needed")))
+                }
+                Some(libc::EFBIG) => {
+                    FAT32_SEEN.lock().unwrap_or_else(|e| e.into_inner()).push(mount.clone());
+                    (Refusal::Fat32.into(), Some("the drive keeps no file of 4 GiB or more (FAT32)".into()))
+                }
+                _ => (ok(500, json!({"error": "write", "detail": e.to_string()})), Some(format!("write: {e}"))),
             });
             break;
         }
@@ -379,15 +428,16 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
         match g.as_mut().filter(|r| r.id == id) {
             Some(r) if r.stage == Stage::Receiving => {
                 r.have = offset + written;
-                r.rate.add(crate::sys::uptime_ms(), r.have - r.from);
+                r.last_ms = crate::sys::uptime_ms();
+                r.rate.add(r.last_ms, r.have - r.from);
             }
-            // Cancelled meanwhile: the cancel deletes the file once this lets WRITER go.
+            // Cancelled or stopped meanwhile: a cancel deletes the file once this lets WRITER go.
             Some(r) => {
-                failure = Some(Refusal::State(r.stage).into());
+                failure = Some((Refusal::State(r.stage).into(), None));
                 break;
             }
             None => {
-                failure = Some(Refusal::UnknownId.into());
+                failure = Some((Refusal::UnknownId.into(), None));
                 break;
             }
         }
@@ -395,16 +445,26 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
     // What arrived is on the disk before the answer (or before the PC asks again after a cut).
     if let Err(e) = f.sync_data() {
         log!("receive: flush {}: {e}", path.display());
-        return ok(500, json!({"error": "write", "detail": format!("flush: {e}")}));
+        return paused_by(&id, format!("flush: {e}"), ok(500, json!({"error": "write", "detail": format!("flush: {e}")})));
     }
-    if let Some(a) = failure {
-        return a;
+    match failure {
+        Some((a, Some(why))) => return paused_by(&id, why, a),
+        Some((a, None)) => return a,
+        None => {}
     }
     if written < len {
         // The connection was cut: the bytes that came stay, and the PC goes on from `have`.
         return Refusal::BadRequest(format!("the body ended after {written} of {len} bytes")).into();
     }
     ok(200, json!({"have": offset + len}))
+}
+
+/// The receive `id` paused by a failed write (`why`, shown on the page), answered with `a`.
+fn paused_by(id: &str, why: String, a: Answer) -> Answer {
+    if let Some(r) = recv().as_mut().filter(|r| r.id == id && r.stage == Stage::Receiving) {
+        pause(r, Some(why.clone()), &why);
+    }
+    a
 }
 
 fn status_of(r: &Recv) -> Value {
@@ -417,7 +477,7 @@ pub fn status(query: &str) -> Answer {
         Ok(i) => i,
         Err(r) => return r.into(),
     };
-    match recv().as_ref().filter(|r| r.id == id) {
+    match by_id(&mut swept(), id) {
         Some(r) => ok(200, status_of(r)),
         None => Refusal::UnknownId.into(),
     }
@@ -430,8 +490,8 @@ pub fn finish(query: &str) -> Answer {
         Err(r) => return r.into(),
     };
     let Some(_w) = writer() else { return Refusal::State(Stage::Receiving).into() };
-    let mut g = recv();
-    let Some(r) = g.as_mut().filter(|r| r.id == id) else { return Refusal::UnknownId.into() };
+    let mut g = swept();
+    let Some(r) = by_id(&mut g, &id) else { return Refusal::UnknownId.into() };
     if let Err(e) = logic::finish_check(r.stage, r.have, r.size) {
         return e.into();
     }
@@ -533,31 +593,36 @@ fn verify_received(id: &str) {
             FAILED.lock().unwrap_or_else(|e| e.into_inner()).push(partial.clone());
             log!("receive: {name}: could not be verified: {}; it stays as {}", r.error.as_deref().unwrap_or(""), partial.display());
         }
-        // Stopped: a cancel deletes what arrived, a quit keeps it for the next start.
-        _ => {
+        // Stopped: Delete removes what arrived; Stop or a quit keeps it (paused: a send again verifies it again).
+        _ if r.stop == Some(true) => {
             r.stage = Stage::Cancelled;
-            if r.stop == Some(true) {
-                if let Err(e) = delete(&partial) {
-                    log!("receive: {name}: {e}");
-                    r.error = Some(e);
-                }
-                log!("receive: {name}: cancelled while verifying; deleted {}", partial.display());
+            if let Err(e) = delete(&partial) {
+                log!("receive: {name}: {e}");
+                r.error = Some(e);
             }
+            log!("receive: {name}: cancelled while verifying; deleted {}", partial.display());
         }
+        _ => pause(r, None, "stopped while verifying"),
     }
 }
 
-/// POST /api/receive/cancel?id=<token> (the PC) and POST /api/pairing/cancel (the page, `id` None: the receive of
-/// this run): the file deleted, state `cancelled` (maxpack_logic::receive::cancel_check: never a receive that is done).
+/// POST /api/receive/cancel?id=<token> (the PC) and POST /api/pairing/cancel (the page's "Delete what arrived", `id`
+/// None: the receive of this run, a paused or failed one too): the file deleted, state `cancelled`
+/// (maxpack_logic::receive::cancel_check: never a receive that is done). Only that receive's file: the receive is
+/// told by its `seq`, so a start that comes while the cancel waits for a PUT to end keeps its file.
 pub fn cancel(id: Option<&str>) -> Answer {
-    let stage = {
-        let mut g = recv();
-        let Some(r) = g.as_mut().filter(|r| id.is_none_or(|i| r.id == i)) else { return Refusal::UnknownId.into() };
+    let (stage, seq) = {
+        let mut g = swept();
+        let found = match id {
+            Some(i) => by_id(&mut g, i),
+            None => g.as_mut(),
+        };
+        let Some(r) = found else { return Refusal::UnknownId.into() };
         if let Err(e) = logic::cancel_check(r.stage) {
             return e.into();
         }
-        match r.stage {
-            Stage::Receiving | Stage::Failed => {
+        let stage = match r.stage {
+            Stage::Receiving | Stage::Failed | Stage::Paused => {
                 // A PUT under way stops at its next piece (it sees the stage); the file goes below, once it has.
                 (r.stage, r.ended_ms) = (Stage::Cancelled, Some(crate::sys::uptime_ms()));
                 Stage::Receiving
@@ -567,13 +632,18 @@ pub fn cancel(id: Option<&str>) -> Answer {
                 Stage::Verifying
             }
             s => s,
-        }
+        };
+        (stage, r.seq)
     };
     match stage {
         Stage::Receiving => {
             let _w = writer();
             let mut g = recv();
-            let Some(r) = g.as_mut().filter(|r| id.is_none_or(|i| r.id == i)) else { return Refusal::UnknownId.into() };
+            let Some(r) = g.as_mut().filter(|r| r.seq == seq) else {
+                // Another receive started meanwhile (of the same file, from the PC): its file is not touched.
+                log!("receive: a cancel found another receive in place: its file stays");
+                return ok(200, json!({"state": Stage::Cancelled.name()}));
+            };
             FAILED.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != &r.partial);
             if let Err(e) = delete(&r.partial) {
                 log!("receive: {}: {e}", r.name);
@@ -583,41 +653,69 @@ pub fn cancel(id: Option<&str>) -> Answer {
             ok(200, status_of(r))
         }
         Stage::Verifying => {
-            let deadline = crate::sys::uptime_ms() + STOP_WAIT_MS;
-            while recv().as_ref().is_some_and(|r| r.stage == Stage::Verifying) && crate::sys::uptime_ms() < deadline {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            match recv().as_ref().filter(|r| id.is_none_or(|i| r.id == i)) {
+            wait_verify(seq);
+            match recv().as_ref().filter(|r| r.seq == seq) {
                 Some(r) => ok(200, status_of(r)),
                 None => Refusal::UnknownId.into(),
             }
         }
-        _ => match recv().as_ref() {
+        _ => match recv().as_ref().filter(|r| r.seq == seq) {
             Some(r) => ok(200, status_of(r)),
             None => Refusal::UnknownId.into(),
         },
     }
 }
 
-/// Before the payload quits: a verify under way stops and keeps the file (a start after the next one resumes it,
-/// whole, and verifies it again); a PUT under way ends with the process, and its bytes stay.
-pub fn stop() {
-    {
-        let mut g = recv();
-        match g.as_mut() {
-            Some(r) if r.stage == Stage::Verifying && r.stop.is_none() => r.stop = Some(false),
-            _ => return,
-        }
-    }
+/// Waits (up to STOP_WAIT_MS) for receive `seq`'s verify to stop.
+fn wait_verify(seq: u64) {
     let deadline = crate::sys::uptime_ms() + STOP_WAIT_MS;
-    while recv().as_ref().is_some_and(|r| r.stage == Stage::Verifying) && crate::sys::uptime_ms() < deadline {
+    while recv().as_ref().is_some_and(|r| r.seq == seq && r.stage == Stage::Verifying) && crate::sys::uptime_ms() < deadline {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
 
+/// POST /api/pairing/stop, the page's "Stop (keep what arrived)": the receive under way pauses (a verify under way
+/// stops first); its file stays and a send of it again goes on where it was (maxpack_logic::receive::stop_check).
+pub fn stop_receive() -> Answer {
+    let seq = {
+        let mut g = swept();
+        let Some(r) = g.as_mut() else { return Refusal::UnknownId.into() };
+        if let Err(e) = logic::stop_check(r.stage) {
+            return e.into();
+        }
+        if r.stage == Stage::Verifying {
+            r.stop = Some(false);
+        } else {
+            pause(r, None, "stopped from the page");
+        }
+        r.seq
+    };
+    wait_verify(seq);
+    match recv().as_ref().filter(|r| r.seq == seq) {
+        Some(r) => ok(200, status_of(r)),
+        None => Refusal::UnknownId.into(),
+    }
+}
+
+/// Before the payload quits: a verify under way stops and keeps the file (a start after the next one resumes it,
+/// whole, and verifies it again); a PUT under way ends with the process, and its bytes stay.
+pub fn stop() {
+    let seq = {
+        let mut g = recv();
+        match g.as_mut() {
+            Some(r) if r.stage == Stage::Verifying && r.stop.is_none() => {
+                r.stop = Some(false);
+                r.seq
+            }
+            _ => return,
+        }
+    };
+    wait_verify(seq);
+}
+
 /// `/api/state` `receive`: the receive of this run for the page (never its token), or null.
 pub fn json() -> Value {
-    let g = recv();
+    let g = swept();
     let Some(r) = g.as_ref() else { return Value::Null };
     let now = crate::sys::uptime_ms();
     let verify = r.verify.as_ref().map(|v| json!({

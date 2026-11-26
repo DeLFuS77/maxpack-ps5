@@ -533,8 +533,7 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool, peer: std::net:
         ("GET", "/maxpack.appcache") => cached("text/cache-manifest", appcache()),
         ("GET", "/app-icon.png") => cached("image/png", APP_ICON),
         ("GET", "/api/state") => reply(200, "application/json", api_state(state, loopback)),
-        // Settings > "Receive games from the PC" (src/receive.rs): the switch, a new pairing code, and the page's
-        // cancel of the receive under way.
+        // Settings > "Receive games from the PC" (src/receive.rs): the switch and a new pairing code.
         ("POST", "/api/pairing") => match maxpack_logic::titles::switch_body(body) {
             None => reply(400, "text/plain", "expected on or off"),
             Some(on) => {
@@ -545,6 +544,8 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool, peer: std::net:
         ("POST", "/api/pairing/new") => {
             pairing(maxpack_logic::receive::Pairing::NewCode, loopback, || crate::receive::renew(state))
         }
+        // The page's "Stop (keep what arrived)" and "Delete what arrived" for the receive of this run.
+        ("POST", "/api/pairing/stop") => receive_reply(crate::receive::stop_receive()),
         ("POST", "/api/pairing/cancel") => receive_reply(crate::receive::cancel(None)),
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
         ("GET", p) if p.starts_with("/api/report/") => report(state, &p["/api/report/".len()..]),

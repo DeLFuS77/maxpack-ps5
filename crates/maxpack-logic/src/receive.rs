@@ -28,6 +28,10 @@ pub const GLOBAL_WRONG: usize = 20;
 pub const MAX_ADDRESSES: usize = 256;
 /// An address whose last wrong code is older than this (and that is not locked out) is forgotten.
 pub const FORGET_MS: u64 = 30 * 60_000;
+/// A receive with nothing from the PC this long pauses: it keeps its file and no longer holds the other jobs.
+pub const IDLE_MS: u64 = 10 * 60_000;
+/// The most of a refused body read and dropped, so the PC reads the answer rather than a reset.
+pub const MAX_DRAIN: u64 = 4 << 20;
 
 /// Where a receive is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +41,9 @@ pub enum State {
     Done,
     Failed,
     Cancelled,
+    /// Stopped with its file kept: idle for IDLE_MS, stopped from the page, the drive full or failing. Its token
+    /// is over (as after a restart); a start of the same file goes on where it was.
+    Paused,
 }
 
 impl State {
@@ -47,6 +54,7 @@ impl State {
             State::Done => "done",
             State::Failed => "failed",
             State::Cancelled => "cancelled",
+            State::Paused => "paused",
         }
     }
 
@@ -293,13 +301,28 @@ pub enum Start {
     New { have: u64 },
 }
 
-/// Where a new receive starts: the partial file's length when it is no longer than the size and did not fail
-/// its verify in this run (then it is whole and damaged: sent again from the start), else 0.
+/// Where a new receive starts from a file left on the disk: its length less the last MAX_PUT (a power cut during
+/// a PUT may have left a length whose tail never reached the disk; at most that much is sent again), when it is no
+/// longer than the size and did not fail its verify in this run (then it is whole and damaged: sent again from the
+/// start); else 0.
 pub fn resume_have(partial: Option<u64>, size: u64, failed_before: bool) -> u64 {
     match partial {
-        Some(n) if n <= size && !failed_before => n,
+        Some(n) if n <= size && !failed_before => n.saturating_sub(MAX_PUT),
         _ => 0,
     }
+}
+
+/// A receive in `stage` whose last request came at `last_ms` pauses at `now_ms`: receiving, idle for IDLE_MS.
+pub fn idle(stage: State, last_ms: u64, now_ms: u64) -> bool {
+    stage == State::Receiving && now_ms.checked_sub(last_ms).is_some_and(|d| d >= IDLE_MS)
+}
+
+/// How much of a refused PUT body to read and drop: none for the gate's refusals and the size's (closing at once
+/// costs a stranger nothing; the PC can send `Expect: 100-continue`) or when the PC waits for 100 Continue; else
+/// the body, up to MAX_DRAIN.
+pub fn drain_len(r: &Refusal, len: u64, expect_continue: bool) -> u64 {
+    let closes = matches!(r, Refusal::Off | Refusal::BadCode | Refusal::Locked(_) | Refusal::TooLarge | Refusal::LengthRequired);
+    if closes || expect_continue { 0 } else { len.min(MAX_DRAIN) }
 }
 
 /// Bytes short to receive the rest (size - have) and keep MARGIN; None when it fits.
@@ -331,13 +354,15 @@ pub fn start_gate(f: &StartFacts) -> Result<Start, Refusal> {
         Some(a) if a.state.active() => return Err(Refusal::Busy(Busy::Receive)),
         _ => {}
     }
+    // Paused in this run, its file as it left it (flushed): exactly from there.
+    let paused = f.active.as_ref().filter(|a| a.state == State::Paused && a.same && f.partial == Some(a.have)).map(|a| a.have);
     if let Some(b) = f.busy {
         return Err(Refusal::Busy(b));
     }
     if f.partial == Some(u64::MAX) {
         return Err(Refusal::Exists);
     }
-    let have = resume_have(f.partial, r.size, f.failed_before);
+    let have = paused.unwrap_or_else(|| resume_have(f.partial, r.size, f.failed_before));
     if let Some(m) = missing(d.free, r.size, have) {
         return Err(Refusal::NoSpace(m));
     }
@@ -370,6 +395,11 @@ pub fn finish_check(state: State, have: u64, size: u64) -> Result<(), Refusal> {
         return Err(Refusal::Incomplete(have));
     }
     Ok(())
+}
+
+/// Stop, keeping what arrived (the page's "Stop"): only a receive under way.
+pub fn stop_check(state: State) -> Result<(), Refusal> {
+    if state.active() { Ok(()) } else { Err(Refusal::State(state)) }
 }
 
 /// `POST /api/receive/cancel`: anything but a receive that is done (its `.p5z` is the library's now).
@@ -578,11 +608,50 @@ mod tests {
 
     #[test]
     fn states() {
-        let all = [State::Receiving, State::Verifying, State::Done, State::Failed, State::Cancelled];
+        let all = [State::Receiving, State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused];
         let names: Vec<&str> = all.iter().map(|s| s.name()).collect();
-        assert_eq!(names, ["receiving", "verifying", "done", "failed", "cancelled"]);
+        assert_eq!(names, ["receiving", "verifying", "done", "failed", "cancelled", "paused"]);
         let active: Vec<bool> = all.iter().map(|s| s.active()).collect();
-        assert_eq!(active, [true, true, false, false, false]);
+        assert_eq!(active, [true, true, false, false, false, false]);
+    }
+
+    #[test]
+    fn a_stalled_receive_pauses() {
+        // Receiving with nothing from the PC for IDLE_MS: paused (no longer under way); a verify never pauses.
+        assert!(!idle(State::Receiving, 1000, 1000 + IDLE_MS - 1));
+        assert!(idle(State::Receiving, 1000, 1000 + IDLE_MS));
+        assert!(!idle(State::Verifying, 0, 10 * IDLE_MS));
+        for s in [State::Done, State::Failed, State::Cancelled, State::Paused] {
+            assert!(!idle(s, 0, 10 * IDLE_MS), "{s:?}");
+        }
+        // A clock that went back never pauses.
+        assert!(!idle(State::Receiving, 5000, 1000));
+    }
+
+    #[test]
+    fn a_paused_receive_goes_on_where_it_was() {
+        // The same file, paused in this run, its file as long as it had: from there exactly, a new token.
+        let paused = Some(Active { state: State::Paused, same: true, have: 3 << 30 });
+        assert_eq!(start_gate(&StartFacts { active: paused.clone(), partial: Some(3 << 30), ..facts() }), Ok(Start::New { have: 3 << 30 }));
+        // Its file changed meanwhile: as any file left on the disk.
+        assert_eq!(start_gate(&StartFacts { active: paused, partial: Some(2 << 30), ..facts() }),
+            Ok(Start::New { have: (2 << 30) - MAX_PUT }));
+        // Another file paused: nothing under way, the start goes on as usual.
+        let other = Some(Active { state: State::Paused, same: false, have: 5 });
+        assert_eq!(start_gate(&StartFacts { active: other, ..facts() }), Ok(Start::New { have: 0 }));
+    }
+
+    #[test]
+    fn what_a_refused_body_drains() {
+        // The gate's refusals close at once (the PC can send Expect: 100-continue); the others read at most
+        // MAX_DRAIN of the body, and nothing when the PC waits for 100 Continue.
+        for r in [Refusal::Off, Refusal::BadCode, Refusal::Locked(5), Refusal::TooLarge, Refusal::LengthRequired] {
+            assert_eq!(drain_len(&r, 10, false), 0, "{r:?}");
+        }
+        assert_eq!(drain_len(&Refusal::Offset(5), 10, false), 10);
+        assert_eq!(drain_len(&Refusal::Offset(5), MAX_PUT, false), MAX_DRAIN);
+        assert_eq!(drain_len(&Refusal::UnknownId, MAX_PUT, true), 0);
+        assert_eq!(drain_len(&Refusal::State(State::Paused), 7, false), 7);
     }
 
     #[test]
@@ -667,13 +736,14 @@ mod tests {
     #[test]
     fn a_new_receive_starts() {
         assert_eq!(start_gate(&facts()), Ok(Start::New { have: 0 }));
-        // A .maxpack-recv of an earlier receive (a restart, a broken connection) resumes where it is.
-        assert_eq!(start_gate(&StartFacts { partial: Some(3 << 30), ..facts() }), Ok(Start::New { have: 3 << 30 }));
+        // A .maxpack-recv of an earlier receive (a restart, a broken connection) resumes where it is, less the last
+        // MAX_PUT: a power cut may have left a tail that never reached the disk.
+        assert_eq!(start_gate(&StartFacts { partial: Some(3 << 30), ..facts() }), Ok(Start::New { have: (3 << 30) - MAX_PUT }));
         // A finished one whose verify failed in this run, or one longer than the size, starts over.
         assert_eq!(start_gate(&StartFacts { partial: Some(10 << 30), failed_before: true, ..facts() }), Ok(Start::New { have: 0 }));
         assert_eq!(start_gate(&StartFacts { partial: Some((10 << 30) + 1), ..facts() }), Ok(Start::New { have: 0 }));
         // An ended receive of this run is no longer under way.
-        for state in [State::Done, State::Failed, State::Cancelled] {
+        for state in [State::Done, State::Failed, State::Cancelled, State::Paused] {
             let active = Some(Active { state, same: false, have: 5 });
             assert_eq!(start_gate(&StartFacts { active, ..facts() }), Ok(Start::New { have: 0 }));
         }
@@ -722,7 +792,7 @@ mod tests {
         // The space: what is still to come and the margin.
         let tight = Some(DriveFacts { free: (10 << 30) + MARGIN - 1, fat32: false, usable: true });
         assert_eq!(start_gate(&StartFacts { drive: tight.clone(), ..f() }), Err(Refusal::NoSpace(1)));
-        assert_eq!(start_gate(&StartFacts { drive: tight, partial: Some(1), ..f() }), Ok(Start::New { have: 1 }));
+        assert_eq!(start_gate(&StartFacts { drive: tight, partial: Some(MAX_PUT + 1), ..f() }), Ok(Start::New { have: 1 }));
         let full = Some(DriveFacts { free: 0, fat32: false, usable: true });
         assert_eq!(start_gate(&StartFacts { drive: full, busy: Some(Busy::Install), ..f() }), Err(Refusal::Busy(Busy::Install)));
     }
@@ -730,8 +800,10 @@ mod tests {
     #[test]
     fn resume_and_space() {
         assert_eq!(resume_have(None, 100, false), 0);
-        assert_eq!(resume_have(Some(40), 100, false), 40);
-        assert_eq!(resume_have(Some(100), 100, false), 100);
+        // Less the last MAX_PUT, never under 0.
+        assert_eq!(resume_have(Some(40), 100, false), 0);
+        assert_eq!(resume_have(Some(MAX_PUT + 40), MAX_PUT + 100, false), 40);
+        assert_eq!(resume_have(Some(MAX_PUT + 100), MAX_PUT + 100, false), 100);
         assert_eq!(resume_have(Some(101), 100, false), 0);
         assert_eq!(resume_have(Some(40), 100, true), 0);
         assert_eq!(resume_have(Some(u64::MAX), 100, false), 0);
@@ -751,7 +823,7 @@ mod tests {
         assert_eq!(data_check(State::Receiving, 40, 100, 40, 61), Err(Refusal::PastSize));
         assert_eq!(data_check(State::Receiving, 0, u64::MAX, 0, MAX_PUT + 1), Err(Refusal::TooLarge));
         assert_eq!(data_check(State::Receiving, u64::MAX - 1, u64::MAX, u64::MAX - 1, 5), Err(Refusal::PastSize));
-        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled] {
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused] {
             assert_eq!(data_check(s, 0, 100, 0, 10), Err(Refusal::State(s)));
         }
     }
@@ -760,13 +832,19 @@ mod tests {
     fn finish_and_cancel_rules() {
         assert_eq!(finish_check(State::Receiving, 100, 100), Ok(()));
         assert_eq!(finish_check(State::Receiving, 99, 100), Err(Refusal::Incomplete(99)));
-        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled] {
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused] {
             assert_eq!(finish_check(s, 100, 100), Err(Refusal::State(s)));
         }
-        for s in [State::Receiving, State::Verifying, State::Failed, State::Cancelled] {
+        for s in [State::Receiving, State::Verifying, State::Failed, State::Cancelled, State::Paused] {
             assert_eq!(cancel_check(s), Ok(()));
         }
         assert_eq!(cancel_check(State::Done), Err(Refusal::State(State::Done)));
+        // Stop (keep what arrived): only a receive under way.
+        assert_eq!(stop_check(State::Receiving), Ok(()));
+        assert_eq!(stop_check(State::Verifying), Ok(()));
+        for s in [State::Done, State::Failed, State::Cancelled, State::Paused] {
+            assert_eq!(stop_check(s), Err(Refusal::State(s)));
+        }
     }
 
     #[test]

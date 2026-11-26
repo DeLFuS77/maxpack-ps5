@@ -690,7 +690,7 @@ button.inst-item[aria-checked="true"] {
   <div class="banner ok" id="update"><span id="update-msg" role="status"></span>
     <span class="banner-btns"><button class="small primary" type="button" id="update-go">Update</button><button class="small" type="button" id="update-later">Later</button></span></div>
   <div class="banner" id="recv"><span id="recv-msg" role="status"></span>
-    <span class="banner-btns"><button class="small" type="button" id="recv-cancel" data-i18n="recvCancel">Cancel the receive</button><button class="small" type="button" id="recv-close" data-i18n="close">Close</button></span></div>
+    <span class="banner-btns"><button class="small" type="button" id="recv-stop" data-i18n="recvStop">Stop (keep what arrived)</button><button class="small" type="button" id="recv-close" data-i18n="close">Close</button><button class="small" type="button" id="recv-delete" data-i18n="recvDelete">Delete what arrived</button></span></div>
 </div>
 
 <main>
@@ -1154,15 +1154,20 @@ var MSG = {
     recvCodeHint: "Type it in MaxPack on the PC. New code makes the old one stop working.",
     recvCodeElsewhere: "For safety, the code shows only on the console's own screen: open MaxPack there to see it.",
     recvNew: "New code",
-    recvOffBusy: "A game is arriving from the PC: cancel it first.",
+    recvOffBusy: "A game is arriving from the PC: stop it first.",
     recvReceiving: "Receiving {name} from the PC on {drive}: {pct} % ({have} of {size}), {speed} MB/s.",
     recvVerifying: "Checking {name} as it arrived: {pct} %, {speed} MB/s.",
     recvDone: "{name} arrived and checks out: the library shows it on its next pass.",
-    recvFailed: "{name} arrived damaged: {what} do not match. It stays as {path}: send it again from the PC, or cancel to delete it.",
-    recvFailedError: "{name} arrived but could not be checked: {error}. It stays as {path}: send it again from the PC, or cancel to delete it.",
+    recvFailed: "{name} arrived damaged: {what} do not match. It stays as {path}: send it again from the PC, or delete what arrived.",
+    recvFailedError: "{name} arrived but could not be checked: {error}. It stays as {path}: send it again from the PC, or delete what arrived.",
     recvCancelled: "The receive of {name} was cancelled: what had arrived is deleted.",
-    recvCancel: "Cancel the receive",
-    recvOnHere: "To turn it on, open MaxPack in the console's own browser (its tile): from another device it can only be turned off."
+    recvOnHere: "To turn it on, open MaxPack in the console's own browser (its tile): from another device it can only be turned off.",
+    recvStop: "Stop (keep what arrived)",
+    recvDelete: "Delete what arrived",
+    recvDeleteTitle: "Delete what arrived of {name}?",
+    recvDeleteText: "{path} ({size}) will be deleted. This cannot be undone: a send of it again starts from the beginning.",
+    recvPaused: "The receive of {name} is paused: {have} of {size} arrived and stays as {path}. Send it again from the PC to go on where it was.",
+    recvPausedWhy: "The receive of {name} stopped ({error}): {have} of {size} arrived and stays as {path}. Send it again from the PC to go on where it was."
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1454,15 +1459,20 @@ var MSG = {
     recvCodeHint: "Введите его в MaxPack на ПК. «Новый код» отменяет старый.",
     recvCodeElsewhere: "В целях безопасности код показывается только на экране самой консоли: откройте MaxPack там, чтобы его увидеть.",
     recvNew: "Новый код",
-    recvOffBusy: "С ПК приходит игра: сначала отмените приём.",
+    recvOffBusy: "С ПК приходит игра: сначала остановите приём.",
     recvReceiving: "Приём {name} с ПК на {drive}: {pct} % ({have} из {size}), {speed} MB/s.",
     recvVerifying: "Проверка {name} в том виде, в каком он пришёл: {pct} %, {speed} MB/s.",
     recvDone: "{name} получен и прошёл проверку: библиотека покажет его при следующем проходе.",
-    recvFailed: "{name} пришёл повреждённым: не совпадают {what}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
-    recvFailedError: "{name} пришёл, но его не удалось проверить: {error}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
+    recvFailed: "{name} пришёл повреждённым: не совпадают {what}. Он остаётся как {path}: отправьте его с ПК ещё раз или удалите полученное.",
+    recvFailedError: "{name} пришёл, но его не удалось проверить: {error}. Он остаётся как {path}: отправьте его с ПК ещё раз или удалите полученное.",
     recvCancelled: "Приём {name} отменён: полученное удалено.",
-    recvCancel: "Отменить приём",
-    recvOnHere: "Чтобы включить, откройте MaxPack в браузере самой консоли (её плитка): с другого устройства можно только выключить."
+    recvOnHere: "Чтобы включить, откройте MaxPack в браузере самой консоли (её плитка): с другого устройства можно только выключить.",
+    recvStop: "Остановить (сохранить полученное)",
+    recvDelete: "Удалить полученное",
+    recvDeleteTitle: "Удалить полученное для {name}?",
+    recvDeleteText: "{path} ({size}) будет удалён. Это нельзя отменить: следующая отправка начнётся с начала.",
+    recvPaused: "Приём {name} приостановлен: получено {have} из {size}, это остаётся как {path}. Отправьте его с ПК ещё раз, чтобы продолжить с того же места.",
+    recvPausedWhy: "Приём {name} остановлен ({error}): получено {have} из {size}, это остаётся как {path}. Отправьте его с ПК ещё раз, чтобы продолжить с того же места."
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1754,15 +1764,20 @@ var MSG = {
     recvCodeHint: "请在电脑上的 MaxPack 中输入。“新配对码”会让旧的失效。",
     recvCodeElsewhere: "为了安全，配对码只显示在主机自己的屏幕上：请在主机上打开 MaxPack 查看。",
     recvNew: "新配对码",
-    recvOffBusy: "正在从电脑接收游戏：请先取消。",
+    recvOffBusy: "正在从电脑接收游戏：请先停止。",
     recvReceiving: "正在从电脑接收 {name} 到 {drive}：{pct} %（{have} / {size}），{speed} MB/s。",
     recvVerifying: "正在校验收到的 {name}：{pct} %，{speed} MB/s。",
     recvDone: "{name} 已收到并通过校验：游戏库会在下一轮扫描中显示它。",
-    recvFailed: "{name} 收到时已损坏：{what} 不一致。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
-    recvFailedError: "{name} 已收到但无法校验：{error}。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
+    recvFailed: "{name} 收到时已损坏：{what} 不一致。它保留为 {path}：请从电脑重新发送，或删除已收到的部分。",
+    recvFailedError: "{name} 已收到但无法校验：{error}。它保留为 {path}：请从电脑重新发送，或删除已收到的部分。",
     recvCancelled: "已取消接收 {name}：已收到的部分已删除。",
-    recvCancel: "取消接收",
-    recvOnHere: "要开启，请在主机自己的浏览器中打开 MaxPack（它的图标）：在其他设备上只能关闭。"
+    recvOnHere: "要开启，请在主机自己的浏览器中打开 MaxPack（它的图标）：在其他设备上只能关闭。",
+    recvStop: "停止（保留已收到的部分）",
+    recvDelete: "删除已收到的部分",
+    recvDeleteTitle: "删除 {name} 已收到的部分？",
+    recvDeleteText: "将删除 {path}（{size}）。此操作无法撤销：再次发送时会从头开始。",
+    recvPaused: "{name} 的接收已暂停：已收到 {size} 中的 {have}，保留为 {path}。从电脑再次发送即可从中断处继续。",
+    recvPausedWhy: "{name} 的接收已停止（{error}）：已收到 {size} 中的 {have}，保留为 {path}。从电脑再次发送即可从中断处继续。"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -2054,15 +2069,20 @@ var MSG = {
     recvCodeHint: "Gib ihn in MaxPack am PC ein. „Neuer Code“ macht den alten ungültig.",
     recvCodeElsewhere: "Aus Sicherheitsgründen erscheint der Code nur auf dem Bildschirm der Konsole selbst: Öffne MaxPack dort, um ihn zu sehen.",
     recvNew: "Neuer Code",
-    recvOffBusy: "Gerade kommt ein Spiel vom PC: brich es zuerst ab.",
+    recvOffBusy: "Gerade kommt ein Spiel vom PC: halte es zuerst an.",
     recvReceiving: "Empfange {name} vom PC auf {drive}: {pct} % ({have} von {size}), {speed} MB/s.",
     recvVerifying: "Prüfe {name}, wie es angekommen ist: {pct} %, {speed} MB/s.",
     recvDone: "{name} ist angekommen und stimmt: Die Bibliothek zeigt es beim nächsten Durchlauf.",
-    recvFailed: "{name} ist beschädigt angekommen: {what} stimmen nicht. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
-    recvFailedError: "{name} ist angekommen, ließ sich aber nicht prüfen: {error}. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
+    recvFailed: "{name} ist beschädigt angekommen: {what} stimmen nicht. Es bleibt als {path}: sende es vom PC erneut oder lösche, was angekommen ist.",
+    recvFailedError: "{name} ist angekommen, ließ sich aber nicht prüfen: {error}. Es bleibt als {path}: sende es vom PC erneut oder lösche, was angekommen ist.",
     recvCancelled: "Der Empfang von {name} wurde abgebrochen: Was angekommen war, ist gelöscht.",
-    recvCancel: "Empfang abbrechen",
-    recvOnHere: "Zum Einschalten öffne MaxPack im Browser der Konsole selbst (seine Kachel): von einem anderen Gerät lässt es sich nur ausschalten."
+    recvOnHere: "Zum Einschalten öffne MaxPack im Browser der Konsole selbst (seine Kachel): von einem anderen Gerät lässt es sich nur ausschalten.",
+    recvStop: "Anhalten (Angekommenes behalten)",
+    recvDelete: "Angekommenes löschen",
+    recvDeleteTitle: "Das Angekommene von {name} löschen?",
+    recvDeleteText: "{path} ({size}) wird gelöscht. Das lässt sich nicht rückgängig machen: ein erneutes Senden beginnt von vorn.",
+    recvPaused: "Der Empfang von {name} ist angehalten: {have} von {size} sind angekommen und bleiben als {path}. Sende es vom PC erneut, um dort weiterzumachen.",
+    recvPausedWhy: "Der Empfang von {name} wurde gestoppt ({error}): {have} von {size} sind angekommen und bleiben als {path}. Sende es vom PC erneut, um dort weiterzumachen."
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2299,15 +2319,20 @@ var MSG = {
     recvCodeHint: "Escríbelo en MaxPack del PC. «Código nuevo» hace que el anterior deje de valer.",
     recvCodeElsewhere: "Por seguridad, el código solo sale en la pantalla de la propia consola: abre MaxPack allí para verlo.",
     recvNew: "Código nuevo",
-    recvOffBusy: "Está llegando un juego del PC: cancélalo antes.",
+    recvOffBusy: "Está llegando un juego del PC: páralo antes.",
     recvReceiving: "Recibiendo {name} del PC en {drive}: {pct} % ({have} de {size}), {speed} MB/s.",
     recvVerifying: "Comprobando {name} tal como llegó: {pct} %, {speed} MB/s.",
     recvDone: "{name} ha llegado y cuadra: la biblioteca lo muestra en su próxima pasada.",
-    recvFailed: "{name} ha llegado dañado: no cuadran {what}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
-    recvFailedError: "{name} ha llegado pero no se pudo comprobar: {error}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
+    recvFailed: "{name} ha llegado dañado: no cuadran {what}. Se queda como {path}: envíalo otra vez desde el PC, o borra lo que llegó.",
+    recvFailedError: "{name} ha llegado pero no se pudo comprobar: {error}. Se queda como {path}: envíalo otra vez desde el PC, o borra lo que llegó.",
     recvCancelled: "Se canceló la recepción de {name}: lo que había llegado se ha borrado.",
-    recvCancel: "Cancelar la recepción",
-    recvOnHere: "Para encenderlo, abre MaxPack en el navegador de la propia consola (su icono): desde otro aparato solo se puede apagar."
+    recvOnHere: "Para encenderlo, abre MaxPack en el navegador de la propia consola (su icono): desde otro aparato solo se puede apagar.",
+    recvStop: "Parar (guardar lo que llegó)",
+    recvDelete: "Borrar lo que llegó",
+    recvDeleteTitle: "¿Borrar lo que llegó de {name}?",
+    recvDeleteText: "Se borrará {path} ({size}). No se puede deshacer: si lo envías otra vez, empieza desde el principio.",
+    recvPaused: "La recepción de {name} está en pausa: han llegado {have} de {size} y se quedan como {path}. Envíalo otra vez desde el PC para seguir donde iba.",
+    recvPausedWhy: "La recepción de {name} se ha parado ({error}): han llegado {have} de {size} y se quedan como {path}. Envíalo otra vez desde el PC para seguir donde iba."
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2599,15 +2624,20 @@ var MSG = {
     recvCodeHint: "Saisissez-le dans MaxPack sur le PC. « Nouveau code » rend l'ancien inutilisable.",
     recvCodeElsewhere: "Par sécurité, le code ne s'affiche que sur l'écran de la console elle-même : ouvrez MaxPack sur la console pour le voir.",
     recvNew: "Nouveau code",
-    recvOffBusy: "Un jeu arrive du PC : annulez-le d'abord.",
+    recvOffBusy: "Un jeu arrive du PC : arrêtez-le d'abord.",
     recvReceiving: "Réception de {name} depuis le PC sur {drive} : {pct} % ({have} sur {size}), {speed} MB/s.",
     recvVerifying: "Vérification de {name} tel qu'il est arrivé : {pct} %, {speed} MB/s.",
     recvDone: "{name} est arrivé et il est correct : la bibliothèque l'affiche à son prochain passage.",
-    recvFailed: "{name} est arrivé endommagé : {what} ne correspondent pas. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
-    recvFailedError: "{name} est arrivé mais n'a pas pu être vérifié : {error}. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
+    recvFailed: "{name} est arrivé endommagé : {what} ne correspondent pas. Il reste sous {path} : renvoyez-le depuis le PC, ou supprimez ce qui est arrivé.",
+    recvFailedError: "{name} est arrivé mais n'a pas pu être vérifié : {error}. Il reste sous {path} : renvoyez-le depuis le PC, ou supprimez ce qui est arrivé.",
     recvCancelled: "La réception de {name} a été annulée : ce qui était arrivé est supprimé.",
-    recvCancel: "Annuler la réception",
-    recvOnHere: "Pour l'activer, ouvrez MaxPack dans le navigateur de la console elle-même (sa tuile) : depuis un autre appareil, on peut seulement le désactiver."
+    recvOnHere: "Pour l'activer, ouvrez MaxPack dans le navigateur de la console elle-même (sa tuile) : depuis un autre appareil, on peut seulement le désactiver.",
+    recvStop: "Arrêter (garder ce qui est arrivé)",
+    recvDelete: "Supprimer ce qui est arrivé",
+    recvDeleteTitle: "Supprimer ce qui est arrivé de {name} ?",
+    recvDeleteText: "{path} ({size}) sera supprimé. Action irréversible : un nouvel envoi recommencera depuis le début.",
+    recvPaused: "La réception de {name} est en pause : {have} sur {size} sont arrivés et restent sous {path}. Renvoyez-le depuis le PC pour reprendre là où il en était.",
+    recvPausedWhy: "La réception de {name} s'est arrêtée ({error}) : {have} sur {size} sont arrivés et restent sous {path}. Renvoyez-le depuis le PC pour reprendre là où il en était."
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2899,15 +2929,20 @@ var MSG = {
     recvCodeHint: "PC の MaxPack に入力してください。「新しいコード」を押すと古いコードは使えなくなります。",
     recvCodeElsewhere: "安全のため、コードは本体自身の画面にだけ表示されます。本体で MaxPack を開いて確認してください。",
     recvNew: "新しいコード",
-    recvOffBusy: "PC からゲームを受信中です。先に中止してください。",
+    recvOffBusy: "PC からゲームを受信中です。先に停止してください。",
     recvReceiving: "PC から {name} を {drive} に受信中: {pct} %（{size} 中 {have}）、{speed} MB/s。",
     recvVerifying: "届いた {name} を検証中: {pct} %、{speed} MB/s。",
     recvDone: "{name} が届き、検証に合格しました。次の検索でライブラリに表示されます。",
-    recvFailed: "{name} は破損した状態で届きました: {what} が一致しません。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
-    recvFailedError: "{name} は届きましたが検証できませんでした: {error}。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
+    recvFailed: "{name} は破損した状態で届きました: {what} が一致しません。{path} として残ります。PC からもう一度送るか、届いた分を削除してください。",
+    recvFailedError: "{name} は届きましたが検証できませんでした: {error}。{path} として残ります。PC からもう一度送るか、届いた分を削除してください。",
     recvCancelled: "{name} の受信を中止しました。届いた分は削除されました。",
-    recvCancel: "受信を中止",
-    recvOnHere: "オンにするには、本体自身のブラウザーで MaxPack を開いてください（そのタイルから）。ほかの機器からはオフにしかできません。"
+    recvOnHere: "オンにするには、本体自身のブラウザーで MaxPack を開いてください（そのタイルから）。ほかの機器からはオフにしかできません。",
+    recvStop: "停止（届いた分を残す）",
+    recvDelete: "届いた分を削除",
+    recvDeleteTitle: "{name} の届いた分を削除しますか？",
+    recvDeleteText: "{path}（{size}）を削除します。元に戻せません。もう一度送ると最初からになります。",
+    recvPaused: "{name} の受信は一時停止中です: {size} 中 {have} が届き、{path} として残っています。PC からもう一度送ると続きから再開します。",
+    recvPausedWhy: "{name} の受信は止まりました（{error}）: {size} 中 {have} が届き、{path} として残っています。PC からもう一度送ると続きから再開します。"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -3199,15 +3234,20 @@ var MSG = {
     recvCodeHint: "Digite-o no MaxPack do PC. “Novo código” faz o anterior deixar de valer.",
     recvCodeElsewhere: "Por segurança, o código só aparece na tela do próprio console: abra o MaxPack lá para vê-lo.",
     recvNew: "Novo código",
-    recvOffBusy: "Um jogo está chegando do PC: cancele-o antes.",
+    recvOffBusy: "Um jogo está chegando do PC: pare-o antes.",
     recvReceiving: "Recebendo {name} do PC em {drive}: {pct} % ({have} de {size}), {speed} MB/s.",
     recvVerifying: "Conferindo {name} como chegou: {pct} %, {speed} MB/s.",
     recvDone: "{name} chegou e confere: a biblioteca o mostra na próxima varredura.",
-    recvFailed: "{name} chegou danificado: {what} não conferem. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
-    recvFailedError: "{name} chegou mas não pôde ser conferido: {error}. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
+    recvFailed: "{name} chegou danificado: {what} não conferem. Ele fica como {path}: envie-o de novo do PC, ou apague o que chegou.",
+    recvFailedError: "{name} chegou mas não pôde ser conferido: {error}. Ele fica como {path}: envie-o de novo do PC, ou apague o que chegou.",
     recvCancelled: "O recebimento de {name} foi cancelado: o que tinha chegado foi apagado.",
-    recvCancel: "Cancelar o recebimento",
-    recvOnHere: "Para ligar, abra o MaxPack no navegador do próprio console (o bloco dele): de outro aparelho só é possível desligar."
+    recvOnHere: "Para ligar, abra o MaxPack no navegador do próprio console (o bloco dele): de outro aparelho só é possível desligar.",
+    recvStop: "Parar (manter o que chegou)",
+    recvDelete: "Apagar o que chegou",
+    recvDeleteTitle: "Apagar o que chegou de {name}?",
+    recvDeleteText: "{path} ({size}) será apagado. Não dá para desfazer: um novo envio começa do início.",
+    recvPaused: "O recebimento de {name} está pausado: {have} de {size} chegaram e ficam como {path}. Envie de novo do PC para continuar de onde parou.",
+    recvPausedWhy: "O recebimento de {name} parou ({error}): {have} de {size} chegaram e ficam como {path}. Envie de novo do PC para continuar de onde parou."
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3499,15 +3539,20 @@ var MSG = {
     recvCodeHint: "Inseriscilo in MaxPack sul PC. «Nuovo codice» fa smettere di valere quello vecchio.",
     recvCodeElsewhere: "Per sicurezza il codice compare solo sullo schermo della console stessa: apri MaxPack lì per vederlo.",
     recvNew: "Nuovo codice",
-    recvOffBusy: "Sta arrivando un gioco dal PC: annullalo prima.",
+    recvOffBusy: "Sta arrivando un gioco dal PC: fermalo prima.",
     recvReceiving: "Ricezione di {name} dal PC su {drive}: {pct} % ({have} di {size}), {speed} MB/s.",
     recvVerifying: "Controllo di {name} così com'è arrivato: {pct} %, {speed} MB/s.",
     recvDone: "{name} è arrivato ed è corretto: la libreria lo mostra al prossimo passaggio.",
-    recvFailed: "{name} è arrivato danneggiato: {what} non corrispondono. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
-    recvFailedError: "{name} è arrivato ma non è stato possibile controllarlo: {error}. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
+    recvFailed: "{name} è arrivato danneggiato: {what} non corrispondono. Resta come {path}: invialo di nuovo dal PC, oppure elimina ciò che è arrivato.",
+    recvFailedError: "{name} è arrivato ma non è stato possibile controllarlo: {error}. Resta come {path}: invialo di nuovo dal PC, oppure elimina ciò che è arrivato.",
     recvCancelled: "La ricezione di {name} è stata annullata: ciò che era arrivato è stato eliminato.",
-    recvCancel: "Annulla la ricezione",
-    recvOnHere: "Per attivarlo, apri MaxPack nel browser della console stessa (il suo riquadro): da un altro dispositivo si può solo disattivare."
+    recvOnHere: "Per attivarlo, apri MaxPack nel browser della console stessa (il suo riquadro): da un altro dispositivo si può solo disattivare.",
+    recvStop: "Ferma (tieni ciò che è arrivato)",
+    recvDelete: "Elimina ciò che è arrivato",
+    recvDeleteTitle: "Eliminare ciò che è arrivato di {name}?",
+    recvDeleteText: "{path} ({size}) verrà eliminato. L'operazione non è reversibile: un nuovo invio riparte dall'inizio.",
+    recvPaused: "La ricezione di {name} è in pausa: sono arrivati {have} di {size} e restano come {path}. Invialo di nuovo dal PC per riprendere da dove era.",
+    recvPausedWhy: "La ricezione di {name} si è fermata ({error}): sono arrivati {have} di {size} e restano come {path}. Invialo di nuovo dal PC per riprendere da dove era."
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3799,15 +3844,20 @@ var MSG = {
     recvCodeHint: "PC의 MaxPack에 입력하세요. “새 코드”를 누르면 이전 코드는 더 이상 쓸 수 없습니다.",
     recvCodeElsewhere: "보안을 위해 코드는 콘솔 자체 화면에만 표시됩니다. 콘솔에서 MaxPack을 열어 확인하세요.",
     recvNew: "새 코드",
-    recvOffBusy: "PC에서 게임을 받는 중입니다. 먼저 취소하세요.",
+    recvOffBusy: "PC에서 게임을 받는 중입니다. 먼저 멈추세요.",
     recvReceiving: "PC에서 {name}을(를) {drive}(으)로 받는 중: {pct} %({size} 중 {have}), {speed} MB/s.",
     recvVerifying: "도착한 {name} 검증 중: {pct} %, {speed} MB/s.",
     recvDone: "{name}이(가) 도착했고 검증을 통과했습니다. 다음 검색 때 라이브러리에 표시됩니다.",
-    recvFailed: "{name}이(가) 손상된 채로 도착했습니다: {what}이(가) 일치하지 않습니다. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
-    recvFailedError: "{name}이(가) 도착했지만 검증할 수 없었습니다: {error}. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
+    recvFailed: "{name}이(가) 손상된 채로 도착했습니다: {what}이(가) 일치하지 않습니다. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 도착한 부분을 삭제하세요.",
+    recvFailedError: "{name}이(가) 도착했지만 검증할 수 없었습니다: {error}. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 도착한 부분을 삭제하세요.",
     recvCancelled: "{name} 받기를 취소했습니다. 도착한 부분은 삭제되었습니다.",
-    recvCancel: "받기 취소",
-    recvOnHere: "켜려면 콘솔 자체 브라우저에서 MaxPack을 여세요(타일에서). 다른 기기에서는 끄기만 할 수 있습니다."
+    recvOnHere: "켜려면 콘솔 자체 브라우저에서 MaxPack을 여세요(타일에서). 다른 기기에서는 끄기만 할 수 있습니다.",
+    recvStop: "멈추기(도착한 부분 유지)",
+    recvDelete: "도착한 부분 삭제",
+    recvDeleteTitle: "{name}의 도착한 부분을 삭제할까요?",
+    recvDeleteText: "{path}({size})이(가) 삭제됩니다. 되돌릴 수 없습니다. 다시 보내면 처음부터 시작합니다.",
+    recvPaused: "{name} 받기가 일시 중지되었습니다: {size} 중 {have}이(가) 도착해 {path}(으)로 남아 있습니다. PC에서 다시 보내면 이어서 받습니다.",
+    recvPausedWhy: "{name} 받기가 멈췄습니다({error}): {size} 중 {have}이(가) 도착해 {path}(으)로 남아 있습니다. PC에서 다시 보내면 이어서 받습니다."
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -4099,15 +4149,20 @@ var MSG = {
     recvCodeHint: "اكتبه في MaxPack على الحاسوب. «رمز جديد» يُبطل الرمز القديم.",
     recvCodeElsewhere: "حفاظًا على الأمان، لا يظهر الرمز إلا على شاشة الجهاز نفسه: افتح MaxPack هناك لتراه.",
     recvNew: "رمز جديد",
-    recvOffBusy: "تصل لعبة من الحاسوب: ألغها أولًا.",
+    recvOffBusy: "تصل لعبة من الحاسوب: أوقفها أولًا.",
     recvReceiving: "جارٍ استقبال {name} من الحاسوب على {drive}: {pct} % ({have} من {size})، {speed} MB/s.",
     recvVerifying: "جارٍ التحقق من {name} كما وصل: {pct} %، {speed} MB/s.",
     recvDone: "وصل {name} وهو سليم: تعرضه المكتبة في جولتها التالية.",
-    recvFailed: "وصل {name} تالفًا: {what} غير مطابقة. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
-    recvFailedError: "وصل {name} لكن تعذّر التحقق منه: {error}. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
+    recvFailed: "وصل {name} تالفًا: {what} غير مطابقة. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو احذف ما وصل.",
+    recvFailedError: "وصل {name} لكن تعذّر التحقق منه: {error}. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو احذف ما وصل.",
     recvCancelled: "أُلغي استقبال {name}: حُذف ما كان قد وصل.",
-    recvCancel: "إلغاء الاستقبال",
-    recvOnHere: "لتشغيله، افتح MaxPack في متصفح الجهاز نفسه (من بلاطته): من جهاز آخر يمكن إيقافه فقط."
+    recvOnHere: "لتشغيله، افتح MaxPack في متصفح الجهاز نفسه (من بلاطته): من جهاز آخر يمكن إيقافه فقط.",
+    recvStop: "إيقاف (الاحتفاظ بما وصل)",
+    recvDelete: "حذف ما وصل",
+    recvDeleteTitle: "حذف ما وصل من {name}؟",
+    recvDeleteText: "سيُحذف {path} ({size}). لا يمكن التراجع عن ذلك: يبدأ الإرسال التالي من البداية.",
+    recvPaused: "استقبال {name} متوقف مؤقتًا: وصل {have} من {size} ويبقى باسم {path}. أرسله من الحاسوب مرة أخرى للمتابعة من حيث توقف.",
+    recvPausedWhy: "توقف استقبال {name} ({error}): وصل {have} من {size} ويبقى باسم {path}. أرسله من الحاسوب مرة أخرى للمتابعة من حيث توقف."
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -5464,12 +5519,14 @@ $('update-later').onclick = function () {
 function bannerButtons() {
   var row = [];
   if ($('update').classList.contains('show')) row = row.concat([$('update-go'), $('update-later')]);
-  if ($('recv').classList.contains('show')) row = row.concat([$('recv-cancel'), $('recv-close')]);
+  // Stop or Close first, Delete last: the D-pad never lands on Delete first.
+  if ($('recv').classList.contains('show')) row = row.concat([$('recv-stop'), $('recv-close'), $('recv-delete')]);
   return row.filter(function (b) { return !b.hidden; });
 }
 
 // A receive from the PC (state.receive, src/receive.rs): its progress, its verify and how it ended, in a banner
-// over every screen; Cancel while it is under way (or failed: it deletes what arrived), Close once it ended.
+// over every screen. While it is under way, "Stop (keep what arrived)" pauses it (a send again goes on where it was);
+// "Delete what arrived" asks first; Close once it ended. Paused by itself after a while with nothing from the PC.
 var recvClosed = 0;
 function recvText() {
   var r = state && state.receive;
@@ -5483,6 +5540,8 @@ function recvText() {
   }
   if (r.state === 'done') return t('recvDone', { name: name });
   if (r.state === 'cancelled') return t('recvCancelled', { name: name });
+  if (r.state === 'paused') return t(r.error ? 'recvPausedWhy' : 'recvPaused', { name: name, error: r.error || '',
+    have: fmtSize(r.have), size: fmtSize(r.size), path: r.path });
   var names = r.verify && Array.isArray(r.verify.bad) ? r.verify.bad.map(function (b) { return b.name; }) : [];
   if (names.length) return t('recvFailed', { name: name, path: r.path,
     what: names.slice(0, 8).join(', ') + ((Number(r.verify.nbad) || 0) > names.length ? ', …' : '') });
@@ -5493,24 +5552,33 @@ function renderReceive() {
   var show = !!r && (under || r.seq !== recvClosed);
   live($('recv-msg'), show ? recvText : null);
   $('recv').classList.toggle('show', show);
-  $('recv').classList.toggle('ok', show && r.state !== 'failed');
-  $('recv').classList.toggle('warn', show && r.state === 'failed');
+  $('recv').classList.toggle('ok', show && r.state !== 'failed' && r.state !== 'paused');
+  $('recv').classList.toggle('warn', show && (r.state === 'failed' || r.state === 'paused'));
   if (!show) return;
-  $('recv-cancel').hidden = !(under || r.state === 'failed');
-  $('recv-cancel').disabled = !!r.cancelling || !!$('recv-cancel')._busy;
+  $('recv-stop').hidden = !under;
+  $('recv-stop').disabled = !!r.cancelling || !!$('recv-stop')._busy;
+  $('recv-delete').hidden = !(under || r.state === 'failed' || r.state === 'paused');
+  $('recv-delete').disabled = !!r.cancelling || !!$('recv-delete')._busy;
   $('recv-close').hidden = under;
 }
-$('recv-cancel').onclick = async function () {
-  var btn = this;
+// POST /api/pairing/stop or /cancel; the next state says how it ended.
+async function recvAct(btn, path) {
   btn._busy = true;
   btn.disabled = true;
   try {
-    var r = await fetch('/api/pairing/cancel', { method: 'POST' });
+    var r = await fetch(path, { method: 'POST' });
     if (r.ok && state && state.receive) state.receive.state = (await r.json()).state || state.receive.state;
   } catch (e) { /* the next state says what happened */ }
   btn._busy = false;
   renderReceive();
   schedule(300);
+}
+$('recv-stop').onclick = function () { recvAct(this, '/api/pairing/stop'); };
+$('recv-delete').onclick = function () {
+  var btn = this, r = state && state.receive;
+  if (!r) return;
+  ask(t('recvDeleteTitle', { name: r.name }), t('recvDeleteText', { path: r.path, size: fmtSize(r.have) }), t('delete'),
+    function () { recvAct(btn, '/api/pairing/cancel'); });
 };
 $('recv-close').onclick = function () {
   var had = document.activeElement === this;
