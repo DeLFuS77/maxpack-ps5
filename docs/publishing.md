@@ -22,7 +22,9 @@ one's README and Corresponding Source links point at the others.
   without squashing or rebasing. Up to 1.0.1 it was `e8de15a` (tag `motor-consola-3`); since 1.0.2 it is
   `5463d75`, the engine of MaxPack 1.0.7 for the PC (tag `motor-consola-4`, named in `vendor/maxpack/COMMIT.tag`).
   For the next engine sync, tag its commit `motor-consola-5`, push that tag alone, and run
-  `tools/sync_maxpack.sh` so that `COMMIT.tag` names it.
+  `tools/sync_maxpack.sh` so that `COMMIT.tag` names it. The branch with the console's verify and receive
+  carries `a896b41` (the quick verify), not tagged yet, so its `COMMIT.tag` is missing: tag that commit (or the
+  one it lands as) `motor-consola-5` and sync again before a release.
 - **Tags.** This repository keeps the upstream project's tags locally (`v0.0.1-beta` to `v0.3.2`).
   Never `git push --tags`: it would publish them, and every `v*` tag starts the release job. Push
   only the release tag, `v` plus `Cargo.toml`'s version (`v1.0.0`); the release job refuses any

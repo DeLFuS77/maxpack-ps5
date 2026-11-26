@@ -107,6 +107,8 @@ A flat TOML subset: `key = value` with strings, `true`/`false`, integers and arr
 | `auto_remove_missing` | true | remove a title from the home screen when its source stays missing for `auto_remove_delay_seconds` (the cache stays; see Flow) |
 | `auto_remove_delay_seconds` | 300 | how long a source must stay missing before `auto_remove_missing` removes its title (1..86400) |
 | `notify` | true | system toasts |
+| `receive_from_pc` | false | Settings > "Receive games from the PC" (Receive from the PC, below): off, every `/api/receive/*` route answers 403 `receive_off`. Set only by `POST /api/pairing` (`POST /api/settings` refuses the key and keeps the file's value) |
+| `receive_code` | "" | the six-digit pairing code the PC sends (`X-MaxPack-Code`): made by the console when the switch is first turned on and by "New code" (`POST /api/pairing/new`), evenly over the million codes from `/dev/urandom`; never typed in the file (one that is not six digits is logged and left empty). Never in `GET /api/settings`, never logged, never served by `/file/data/...`: `/api/state` `pairing.code` gives it only to the page open on the console itself |
 | `log` | true | write `/data/maxpack/maxpack.log` (stdout always gets the lines) |
 | `debug` | false | klog capture to `/data/maxpack/klog.txt` and the `/file/data/...` route |
 
@@ -835,6 +837,19 @@ minute):
   ends (up to about a minute): 200 `{verdict:"passed"|"broken"|"inconclusive", passed, verify_option:"set"|"0x...",
   probes:[{url, expect:"refused"|"connects", check:"ok"|"accepted"|"unproven", status?, code?, ssl_detail?, error?}]}`;
   409 text while another run is under way. Behind the same Host and Origin checks as every POST.
+- `POST /api/verify/<TID>`, body exactly `quick` or `full` -> 204 and the verify runs (Verify on the console, below); else
+  `{code, detail}` (`maxpack_logic::verify::Refusal`): 400 `bad_request`, 404 `not_found` (not a library title), 409
+  `not_p5z`, `install_running`, `verify_running`, `receive_running` or `game_running`. `POST /api/verify/cancel` -> 204,
+  409 when none runs. `/api/state` `verify`: `{state:"running"|"done"|"failed"|"cancelled", cancelling, title_id, path, kind,
+  phase:"quick"|"full", done, total, mbps, elapsed_ms, error}` of this run, or null; each `.p5z` game has `verified`:
+  `{kind, at, ok, files_ok, files_bad, bad:[{what, name}]}` while its file is the one verified, else null.
+- `/api/receive/*`: the PC's routes (Receive from the PC, below), each behind the switch, the pairing code and its lockout,
+  answered in JSON (`{error, detail}` on a refusal; the Host and Origin checks above answer 403 `{error:"forbidden"}`).
+  `POST /api/pairing`, body exactly `on` or `off` -> 204 (409 text for `off` while a receive is under way);
+  `POST /api/pairing/new` -> 204; `POST /api/pairing/cancel` -> the receive of this run cancelled as the PC's cancel
+  does. `/api/state` `receive`: `{seq, state, name, drive, path, dest, size, have, from, mbps, cancelling, verify:{bytes,
+  total, nbad, bad:[{what, name, why}]}|null, error, elapsed_ms}` of this run (never its token), or null; `pairing`:
+  `{on, code, here}`, `code` only for a request from loopback (the console's own browser), else null.
 - `/api/inst/<x>`: the installer's own API as `/api/<x>` (`maxpack_logic::inst::installer_path`): GET `state`,
   `icon?p5z=`; POST `scan`, `probe`, `install`, `pause`, `verify`, `uninstall`, `discard` (JSON bodies, see the
   engine's `src/web/mp_api.h`); anything else 404. Method, Host, Content-Type and body go as sent, `loopback`
@@ -850,7 +865,8 @@ minute):
   entries), only for a title in `titles` whose library copy (when the uninstall was asked for) is gone, never a
   title id installed on the console, and after a running game exits; anything else is logged and left to
   auto-remove.
-  Never gated on the mounter state: that is the "installer only" mode.
+  Never gated on the mounter state: that is the "installer only" mode. An `install`, `verify` or `uninstall` is 409
+  `{ok:false, code:"console_busy"}` while a console job runs (Console jobs, below).
 - Not ported from the upstream project's 0.3.2: its ShadowMountPlus-shaped `POST /api/v1/*` routes (for Playden).
   They would pass the checks above (Playden is a native app on the console: libcurl to `127.0.0.1`, no Origin), but
   Playden calls ShadowMountPlus only, at `127.0.0.1:10101`, and the upstream project serves them on its own port,
@@ -918,8 +934,9 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`; now `motor-consola-4`, 5463d75, the engine of MaxPack 1.0.7 for the PC; before it
-`motor-consola-3`, e8de15a), with the zstd and
+there in `vendor/maxpack/COMMIT.tag`; now a896b41, the engine with the quick verify (`mp_p5z_verify_quick`), not tagged yet,
+so `COMMIT.tag` is missing until a `motor-consola-5` tag names it and the sync runs again; before it `motor-consola-4`,
+5463d75, the engine of MaxPack 1.0.7 for the PC, and `motor-consola-3`, e8de15a), with the zstd and
 zlib its submodules pin. Since then the engine reads a `.p5z` that grew (Supported sources), and its installer refuses
 one (`grown_p5z`: its packs are laid out as only ampr-emu-ng's p5z mode reads them; play it from the `.p5z`, or make a
 compact copy on the PC with `maxpack compact`, which is index version 1 again). Verify compares an installed `.p5z`'s
@@ -928,7 +945,8 @@ that `.p5z` grew on the PC, Verify checks only the folder's packs, as when the `
 works is not called damaged. The page shows the counts either way (the engine's detail says "without the .p5z to
 compare the loose files", which the page does not show). `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
-`mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's
+`mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`), and `mp_verify_p5z` and `mp_p5z_verify_quick`, which
+`ps5/verify.c` calls for the console's own verify. `ps5/installer.c` sets it up as the engine's
 `src/ps5/main_ps5.c` does: `mp_inst_env_default` (`/data`, `/mnt/usb0..7`, `/mnt/ext0..1`), the ShadowMountPlus
 client with `smp_fakelib_mode` from `/data/maxpack/config.json` (installs register in ShadowMountPlus as in
 phase 2), the runtime = `BUNDLED_AMPR` (the bundled `libSceAmpr.sprx`, embedded once; mtime from build.sh),
@@ -951,9 +969,102 @@ opens at `http://<console IP>:8095`. `state.images` is listed under the library 
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
-a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
+a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, a
+`.p5z` verified OK and one found damaged with a verify that runs and refuses as the payload does, the receive's routes
+answered as the payload's (nothing written; the pairing code only to a page opened at localhost) with `--receive
+demo|failed` for a receive that runs by itself, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
 ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
 refuses, or with `--ampr-fail older` refuses an older release).
+
+## Console jobs (`src/jobs.rs`, `maxpack_logic::job`)
+The console runs jobs of the MaxPack engine of its own: the game sheet's verify (Verify on the console) and the
+receive from the PC (Receive from the PC), besides the installer's (install, verify, uninstall). The engine's progress
+hook and cancel flag are one per process, so one job of the engine runs at a time: a console job does not start while
+the installer runs or queues one (`installer::idle`) or another console job runs (409 `install_running`,
+`verify_running`, `receive_running`; the receive's start says `busy`), and the installer's `install`, `verify` and
+`uninstall` are 409 `console_busy` while one runs. `jobs::gate` is held while a console job checks and sets itself up
+and while web.rs forwards such an installer request (`hold_off`), so neither slips in beside the other. A receive
+counts from its start to the end of its verify, also while it waits for the PC: the page's banner cancels it. Any game
+running blocks a verify: MaxPack's launches (`running`) and every process's app info title id
+(`launch::games_running`, as `launch::title_runs` reads one; not MaxPack's tile, not a system app; a walk that fails
+counts as a game). Quitting (`POST /api/quit`, another copy taking the port) cancels a verify and stops a receive's
+verify keeping its file; a receive's PUT ends with the process and its bytes stay. Delete and eject wait for a verify
+of that file or drive (409), and eject for a receive writing on that drive.
+
+## Verify on the console (`src/verify.rs`, `ps5/verify.c`, `maxpack_logic::verify`)
+A library `.p5z`'s sheet has "Verify quickly" and "Verify fully" (`POST /api/verify/<TID>`, body `quick` or `full`). The
+gate (`verify::gate`, in this order): a library title (404), a `.p5z` (409 `not_p5z`), no other job of the engine, no
+game running. The job runs on its own thread, its progress, MB/s (`job::Rate`, over 10 s) and Cancel on the sheet:
+- **Quick**: the engine's `mp_p5z_verify_quick` (`maxpack verify --quick` on the PC), called through
+  `maxpack_verify_quick` in `ps5/verify.c`, which hands Rust its report as JSON with the paths and the engine's message
+  hex-encoded, so any bytes in them survive (`verify::parse_quick`). It checks the header, the footer, the index CRC,
+  each volume's SHA-256 over `[64, end)` and its 64-byte header, and each file stored in the `.p5z`, reading at the speed
+  of the disk without decompressing the packs, and names what fails (the first 64: a volume or a file, how: `sha256`,
+  `header`, `data`, `read`). It honours a matching append journal as `mp_play_open` and never touches the file. It uses
+  no global of the engine (its own progress and cancel callbacks).
+- **Full**: the quick one first. A copy it finds damaged stops there, recorded as the quick verify that named what is
+  wrong; only one that passes goes on to the engine's own verify, `mp_verify_p5z` (what `maxpack verify` runs: every
+  packed file unpacked and checked against its SHA-256), with 5 threads (as the test compression found the payload
+  gets), through `maxpack_verify_full` with the engine's progress hook and cancel flag (set only while it runs, cleared
+  under the job's lock after it). It counts files; its failures go to the engine's stderr only, so the sheet gives
+  their number. `/api/state` `verify.phase` says which runs.
+The result is kept in `/data/maxpack/verified.json` (`verify::Store`, by path, at most 500, the oldest go): kind, date by
+the console's clock, ok, the counts (the quick one counts volumes and files) and what failed by name; it shows on the
+sheet while the file has the size and mtime it had when the verify started (a changed copy is a new copy to verify). The
+sheet says "Verified on <date>: all N files match", or "Damaged (...): B of N do not match", what fails, and to repair it
+on the PC with its repair data (PAR2) or copy it again. "Copy report" has `Verified on the console: <kind>, OK|damaged on
+<date> ...` (`verify::report_line`): counts, and only volume names, which are the packs' own (`ampr_zstd-NNN.pak`), never
+a file of the game. A `.p5z` received from the PC is recorded as verified quickly when it arrives.
+
+## Receive from the PC (`src/receive.rs`, `maxpack_logic::receive`)
+MaxPack on the PC sends a `.p5z` with `maxpack send <game.p5z> <ps5-ip> --code <6 digits> [--drive <id>]`. The routes are
+on the page's server (port 8095), as the shared contract of both sides says:
+- **The switch and the code.** Settings > "Receive games from the PC" (`receive_from_pc`, off by default; `POST
+  /api/pairing` turns it on and off at once, off is refused while a receive is under way) and the pairing code
+  (`receive_code`: six digits made when the switch is first turned on, `receive::code_from` evenly over the million codes
+  from `/dev/urandom`; "New code", `POST /api/pairing/new`, replaces it and the old one stops working). The page shows
+  the code only on the console's own screen: `/api/state` `pairing.code` is given only to a request from loopback (the
+  tile opens the page at 127.0.0.1), since anyone on the network can read the page and the code is what keeps them from
+  writing to the drives; elsewhere the row says where to see it. The code is never logged nor served by `/file/data/...`.
+- **The gate** of every `/api/receive/*` route (`receive::gate`), after the page's Host and Origin checks: off, 403
+  `receive_off`; no `X-MaxPack-Code` or not the code, 401 `bad_code` (compared in constant time; a missing header is not
+  counted); 5 wrong codes in a row from one address (an IPv4 address, or an IPv6 /64), 429 `locked` for 60 s, and so do
+  every address 20 wrong codes from all addresses within a minute, or more than 256 addresses guessing within 30 minutes
+  (`receive::Lockout`); while locked the code is not even compared. A wrong code is logged with its address only.
+- `GET /api/receive/drives` -> `{"drives":[{"id","free","total","fs"}]}`: `internal` (`/data`), `usb0`..`usb7` and
+  `ext0`..`ext1` (`/mnt/<id>`) when mounted and their `homebrew` is listed by the scan (`receive::scanned`: a scan root, or
+  one level under a root that is not a drive's own root; not excluded) and is a folder or not there yet, never a link.
+- `POST /api/receive/start`, `{"name","size","drive"}` -> 200 `{"id","have"}` (`receive::start_gate`, in this order):
+  400 `bad_request`; 400 `bad_name` (`receive::valid_name`: 1 to 200 bytes ending in `.p5z`, no `/`, `\`, `..`, control
+  character, none of `"*:<>?|`, no leading dot); 400 `bad_size` (under 96 bytes); 404 `no_drive`; 400 `fat32` (`fs`
+  `msdosfs` and size of 4 GiB or more); 409 `exists` (anything at `<homebrew>/<name>`, or something that is not a file at
+  `<name>.maxpack-recv`); the receive under way of the same name, drive and size goes on (its token, its `have`), any other
+  under way is 409 `busy`, as is a job of the engine; 507 `no_space` with `missing` (what is still to come plus 256 MiB).
+  A new receive makes `homebrew` if missing and opens `<homebrew>/<name>.maxpack-recv` (created, `O_NOFOLLOW`): `have` is
+  its length when it is no longer than the size and did not fail its verify in this run, so a receive cut by the network
+  or a restart goes on where it was; else it is truncated to 0. The token is 16 random bytes in hex.
+- `PUT /api/receive/data?id=<token>&offset=<n>`: web.rs hands its head to `receive::put` without reading the body (the
+  16 KiB request limit does not apply), which streams it (up to 64 MiB, else 413 `too_large`; no Content-Length 411
+  `length_required`) in 1 MiB pieces written with `pwrite` at the offset, and `fdatasync`s before answering 200
+  `{"have"}`. `offset` must be `have` (409 `offset` with `have`); past the size 400 `past_size`; a receive no longer
+  receiving 409 `state`; an unknown token 404 `unknown_id`. One PUT writes at a time: another waits up to 10 s (a PUT
+  whose connection is going ends within the 5 s read timeout). A body cut short keeps what arrived (`have` grows piece by
+  piece): the PC asks again from its last answer, gets 409 `offset` with the real `have`, and goes on. `Expect:
+  100-continue` is answered once the request passes; otherwise a refused body is read and dropped first, so the PC reads
+  the answer rather than a reset.
+- `GET /api/receive/status?id=` -> `{"have","size","state":"receiving|verifying|done|failed|cancelled","verify":{bytes,
+  total, nbad, bad:[{kind, volume, name, expected, found, why}]}|null,"error"}`; it answers for a receive that ended too,
+  until another starts or the payload restarts.
+- `POST /api/receive/finish?id=` (only with every byte: else 409 `incomplete` with `have`) -> 202 and the status: the file
+  is `fsync`ed, then the engine's quick verify runs on it (state `verifying`, its progress in `verify`). All of it
+  matches: renamed to `<name>` (only onto nothing; the folder `fsync`ed), `done`, recorded as verified quickly, and the
+  scan loop is woken, so the library lists it on that pass. Damaged or unreadable: `failed`, the file stays
+  `.maxpack-recv` and `verify.bad` and `error` say what failed; a start of that name begins again from 0.
+- `POST /api/receive/cancel?id=` (the page's `POST /api/pairing/cancel` for the receive of this run): the file deleted,
+  `cancelled`; a verify under way stops first (up to 3 s); a receive that is `done` is 409 `state` (its `.p5z` is the
+  library's).
+- Nothing else is written: the bytes go only to `<drive>/homebrew/<name>.maxpack-recv` and its rename. The page shows a
+  receive in a banner over every screen (progress, MB/s, the verify, how it ended, Cancel and Close).
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
@@ -998,6 +1109,12 @@ under "Scan paths", one path per line (`exclude`), and "Download updated recomme
 The sheet's error line says in the page's language why a `.p5z` short of space (`no_space`) or a `.p5z` that grew with
 an ampr-emu-ng too old for it (`old_ng`: what to do, restart MaxPack or make a compact copy on the PC) is not built; any
 other error shows the payload's English text.
+A `.p5z`'s sheet (not a duplicate) has "Verify on the console": "Verify quickly" and "Verify fully" (Verify on the console),
+with its bar, phase, MB/s and Cancel while it runs (off while any verify runs or a game runs), and under them the last
+result with its date, what fails, and what to do; the report is fetched again when it changes. Settings has "Receive
+games from the PC" (a switch that acts at once) and, with it on, the pairing code in large digits with "New code" on the
+console's own screen, or a line saying where to see it elsewhere. A receive shows in a banner over every screen
+(Receive from the PC), whose Cancel and Close are in the D-pad's row of banner buttons with the update notice's.
 Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
 an extra one, changes a `{placeholder}` or keeps the English text.
 
@@ -1016,6 +1133,9 @@ an extra one, changes a `{placeholder}` or keeps the English text.
 | `src/p5z.rs` | the engine's `mp_play_*` (describe a `.p5z`, extract its loose files) |
 | `src/web.rs`, `src/ui.html` | HTTP server and the single-file UI |
 | `src/installer.rs`, `ps5/installer.c` | the phase-2 installer (MaxPack engine in C) behind `/api/inst/*` |
+| `src/jobs.rs` | one job of the engine at a time: the console's verify and receive, the installer's jobs |
+| `src/verify.rs`, `ps5/verify.c` | "Verify quickly" and "Verify fully" of a library `.p5z` (the engine's quick and full verify), `verified.json` |
+| `src/receive.rs` | the receive of a `.p5z` from the PC (`/api/receive/*`), the pairing switch and code |
 | `src/sys.rs` | log, toasts, mount syscalls, kstuff probe |
 | `src/net.rs` | HTTPS GET over the console's sceHttp/sceSsl with explicit certificate checks (ampr-emu-ng updater, self-update, recommended settings) and the self-test's HEAD probe |
 | `src/tls.rs` | the secure-connection self-test (`POST /api/selftest/tls`) the self-update and the ampr-emu-ng update wait for |

@@ -5,6 +5,21 @@ What changed in each version of MaxPack for the console. The format follows
 
 ## Unreleased
 
+### Added
+
+- **Verify a `.p5z` on the console.** A `.p5z` game's sheet has **Verify quickly**, which reads the file at the
+  speed of the drive and checks each volume and loose file against the SHA-256 it was written with, and
+  **Verify fully**, which also unpacks every file and checks it, as `maxpack verify` does on the PC. The sheet
+  keeps the result with its date: every file matches, or what is damaged and that it can be repaired on the PC
+  with its repair data or copied again. **Copy report** says it too, without naming a file of the game. It
+  waits while a game runs, an install runs or a game arrives from the PC.
+- **Receive games from the PC.** With Settings > **Receive games from the PC** on, MaxPack for the PC sends a
+  `.p5z` straight to a drive of the console (`maxpack send`), with the six-digit pairing code that only the
+  console's own screen shows. A send cut short goes on where it was, also after a restart. The console checks
+  what arrived with the quick verify: a `.p5z` that checks out shows up in the library, one that does not
+  stays aside with what is wrong. A banner follows it on every screen, with Cancel. Off by default; wrong codes
+  lock the sender out for a minute.
+
 ### Fixed
 
 - **"Back to the recommended setting"** says what it sets, under the button ("Sets Fakelib to "Off"."), so a

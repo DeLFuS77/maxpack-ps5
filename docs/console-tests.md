@@ -7,7 +7,8 @@ Where to look:
 - the log, `/data/maxpack/maxpack.log` (also on the page, at the bottom);
 - the state, `http://<console-ip>:8095/api/state`: the fields `waiting`, `games` (with
   `kind == "p5z"` for a `.p5z`, and `error_code` and `missing_bytes` if it does not fit; `hidden`,
-  `crash` and `rebuild_queued`), `images` and `unplayable` (the `.p5z` files that cannot be played);
+  `crash` and `rebuild_queued`; `verified` for a `.p5z`), `images` and `unplayable` (the `.p5z` files that cannot
+  be played), `verify` (a verify on the console, section 12), `receive` and `pairing` (a game from the PC, 13);
 - a game's report, `http://<console-ip>:8095/api/report/<TITLE_ID>` (section 7);
 - the installer's state, `http://<console-ip>:8095/api/inst/state`: `job`, `pending`, `installed`
   and `last`;
@@ -884,3 +885,113 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
   - Expected: the console plays the `.p5z` as it was before that update (the engine reads it through
     that file, and never cuts it), or as it grew if the update had ended before the process was stopped;
     MaxPack on the PC settles it the next time it opens it.
+## 12. Verify on the console
+
+With a build of this version, MaxPack alone, and a game you play from its `.p5z` (section 6), on a USB drive,
+a few GB and more than one volume if you can. On the PC, make a damaged copy of that `.p5z` for 12.4: copy the
+file and, with a hex editor, change one byte somewhere in the middle of it (not in the first or the last MB).
+Note for each test the size of the `.p5z`, the time and the MB/s the sheet shows.
+
+- [ ] **12.1. Verify quickly.**
+  - Open the game's sheet. Expected: "Verify on the console" with "Verify quickly", "Verify fully" and "Not
+    verified on this console yet."
+  - Press "Verify quickly". Expected: a bar and "Verifying (volumes and loose files): N %, M MB/s, ..." (about
+    the drive's read speed), "Cancel the verify" in place of the buttons; then "Verified quickly on <date>: its
+    N volumes and files match." In the log, `<TID>: verify (quick) of <path>` and `<TID>: quick verify of
+    <path>: OK in N s: ...`. The date is the console's clock (it may be years behind).
+  - Copy report. Expected: a line `Verified on the console: quick, OK on <date> (N volumes and files)`, and no
+    file of the game named in it.
+  - Stop MaxPack and start it again, and open the sheet. Expected: the same result is still there
+    (`/data/maxpack/verified.json`).
+- [ ] **12.2. Verify fully.**
+  - Press "Verify fully". Expected: first "(volumes and loose files)", then "(unpacking every file)" with its
+    own %; much slower. Then "Verified on <date>: all N files match." In the log, the quick line, then
+    `<TID>: full verify of <path>: OK in N s: N files OK, 0 failed (M MB checked)`. Note the time of each phase.
+  - While it runs, start another game from the home screen (optional). Expected: the verify goes on; note how
+    much slower it gets.
+- [ ] **12.3. Cancel.**
+  - Start "Verify fully" and cancel it during the first phase; again during the second. Expected each time:
+    "Cancelling..." then "Verify cancelled." and the earlier result under it; in the log `verify cancelled
+    after N s`.
+  - Right after, install a game from the Install tab (section 5). Expected: it installs and verifies as
+    always (the engine's cancel flag was cleared).
+- [ ] **12.4. A damaged copy.**
+  - Put the damaged copy in place of the good one (FTP, binary mode) and wait for the library to show it.
+    Press "Verify quickly". Expected, in red: "Damaged (verified quickly on <date>): 1 of N volumes and files do
+    not match. What fails: ampr_zstd-00N.pak. Repair it on the PC with its repair data (PAR2), or copy it
+    again." In the log, `volume ampr_zstd-00N.pak (sha256)`. The report says `quick, damaged on ...; volumes:
+    ampr_zstd-00N.pak` and nothing else of the game.
+  - Press "Verify fully". Expected: it stops after the first phase with the same result (a damaged copy is not
+    unpacked).
+  - Put the good copy back. Expected: the sheet says "Not verified on this console yet." (another file).
+- [ ] **12.5. What a verify waits for.**
+  - With a game running, press "Verify quickly". Expected: "Close the game first."; the log says which game.
+  - With an install running in the Install tab, press it. Expected: "The installer is busy: try again when its
+    job ends."
+  - While a verify runs: start an install in the Install tab. Expected: "MaxPack is verifying a .p5z or
+    receiving a game from the PC: try again when it ends." Delete the game from its sheet. Expected: refused
+    ("the game is being verified"). Unmount the USB drive. Expected: refused, and the log says `eject
+    /mnt/usbN: refused: a .p5z on it is being verified`.
+  - Open another `.p5z` game's sheet while one verifies. Expected: "Another .p5z is being verified: <path>." and
+    its buttons off.
+
+## 13. Receive from the PC
+
+With a build of this version, MaxPack alone, a PC on the same network with a MaxPack for the PC that has
+`maxpack send` (its branch `pc-enviar`, or the release that brings it), the console's IP, and two `.p5z` games: a
+small one (a few GB) and a large one (tens of GB), plus the damaged copy of 12.4. Optional: a FAT32 USB drive.
+In the commands, `<ip>` is the console's IP and `<code>` the pairing code.
+
+- [ ] **13.1. Off by default.**
+  - On the PC: `curl -H "X-MaxPack-Code: 000000" http://<ip>:8095/api/receive/drives`. Expected: 403 and
+    `{"error":"receive_off",...}`. `maxpack send` says so too.
+- [ ] **13.2. The switch and the code.**
+  - On the console (the tile), Settings > "Receive games from the PC": turn it on. Expected: at once, "Pairing
+    code" with six digits in large type and "New code".
+  - In a browser on the PC, `http://<ip>:8095`, Settings. Expected: the switch is on, and instead of the code
+    "For safety, the code shows only on the console's own screen: ...". `http://<ip>:8095/api/state` has
+    `"pairing":{"on":true,"code":null,...}`, and `http://<ip>:8095/api/settings` has no code either.
+  - In `/data/maxpack/config.toml` (FTP): `receive_from_pc = true` and `receive_code`. With `debug` on,
+    `http://<ip>:8095/file/data/maxpack/config.toml` answers 404.
+- [ ] **13.3. A wrong code.**
+  - Run `maxpack send` with a wrong code five times. Expected: a wrong-code answer each time; the sixth answers
+    that it is locked for a minute; the log has `receive: wrong pairing code from <PC address>` (never a code)
+    and `refused for N s more`. After a minute the right code works.
+- [ ] **13.4. A send that works.**
+  - `maxpack send "<small game>.p5z" <ip> --code <code> --drive usb0`. Expected on the console: a banner on
+    every screen, "Receiving <name> from the PC on USB 1: N % (...), M MB/s.", then "Checking <name> as it
+    arrived: ...", then "<name> arrived and checks out: the library shows it on its next pass." with Close.
+    The PC ends with success. In `/mnt/usb0/homebrew/`: `<name>` and no `.maxpack-recv`. In the log,
+    `receive: <name> (...) to ...`, `every byte arrived`, `checks out (...)`. Note the MB/s on both sides.
+  - Expected: the game shows up in the library within seconds, its sheet says "Verified quickly on <date>",
+    and it plays (section 6).
+  - Without `--drive`, and with `--drive internal`: the same, in `/data/homebrew/`.
+- [ ] **13.5. A cut, and a restart, in the middle.**
+  - Send the large game. Halfway, unplug the PC's network cable (or turn its Wi-Fi off) for 30 s and plug it
+    back. Expected: the PC goes on where it was (its retries) and it ends as in 13.4.
+  - Send it again to another drive; halfway end the PC's command (Ctrl+C) and run the same command again.
+    Expected: it goes on from where it was, not from 0 (the log says `the PC goes on at N`).
+  - Once more; halfway stop MaxPack on the console (Settings > Stop) and start it from its tile, turn nothing
+    on (the switch stays on), and run the same command again. Expected: `resuming the file there at N bytes`
+    and it ends as in 13.4.
+- [ ] **13.6. What a start refuses.**
+  - The small game again to the same drive. Expected: the PC says the `.p5z` is already there.
+  - A `.p5z` larger than 4 GiB to a FAT32 drive (optional). Expected: refused as FAT32.
+  - A `.p5z` larger than a drive's free space. Expected: refused, with how much more is needed.
+  - While an install runs, or a verify of 12 runs. Expected: busy. While a send runs, a second one from
+    another PC (or another window) of another game. Expected: busy.
+  - While a send runs: the Install tab's Install says "MaxPack is verifying a .p5z or receiving a game from
+    the PC: ..."; "Verify quickly" on a sheet says "A game is arriving from the PC: ..."; unmounting the target
+    drive is refused; turning the switch off says "A game is arriving from the PC: cancel it first."
+- [ ] **13.7. A damaged copy.**
+  - Send the damaged copy of 12.4. Expected: "<name> arrived damaged: ampr_zstd-00N.pak do not match. It stays
+    as <path>.maxpack-recv: ..." in the banner (in amber), the PC ends with an error naming that volume, and the
+    `.maxpack-recv` is there; the library does not list it.
+  - Without cancelling, send the good copy with that name. Expected: it starts from 0 (the damaged one is not
+    resumed), and it checks out.
+  - Send the damaged copy once more (to another drive), and Cancel in the banner. Expected: "The receive of
+    <name> was cancelled: ..." and the `.maxpack-recv` is gone.
+- [ ] **13.8. Cancel from the console, and a new code.**
+  - During a send, Cancel in the banner. Expected: the PC stops with a "cancelled" answer, the `.maxpack-recv`
+    is gone, the log says `cancelled at N of M bytes`.
+  - "New code" in Settings. Expected: the PC's old code is refused, the new one works.
