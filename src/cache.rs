@@ -884,14 +884,14 @@ pub fn check(src: &Source, s: &Settings) -> Fresh {
         }
     }
     // A cache built before kraken.image existed (or with it deleted): ng could not find the pkg.
-    // The same for a .p5z's maxpack.image.
-    let image = match src.kind {
-        Kind::Pkg => Some(PKG_IMAGE),
-        Kind::P5z => Some(P5Z_IMAGE),
-        Kind::Folder(_) => None,
+    // The same for a .p5z's maxpack.image, and its eboot.bin, which `keep_off` takes out.
+    let needed: &[&str] = match src.kind {
+        Kind::Pkg => &[PKG_IMAGE],
+        Kind::P5z => &[P5Z_IMAGE, "eboot.bin"],
+        Kind::Folder(_) => &[],
     };
-    if let Some(image) = image.filter(|i| !dir(&src.title_id).join(i).is_file()) {
-        return Fresh::Stale(format!("{image} missing"));
+    if let Some(name) = needed.iter().find(|n| !dir(&src.title_id).join(n).is_file()) {
+        return Fresh::Stale(format!("{name} missing"));
     }
     // Every input with the size and mtime `.done` recorded at the build's start, and no input added
     // or removed. Equality only: a source written on a PC whose clock is years ahead of the
@@ -1121,7 +1121,10 @@ fn compose_fakelib(src: &Source, s: &Settings, inside: Option<Inside>) -> Result
         // or a copy over FTP during a long build lands here after the state above was read. So the copy
         // is what is checked (an OldNg, nothing recorded), and a swap after the copy differs from the
         // recorded state, so the next pass refreshes and checks again.
-        ng_gate(play, &find_ci(&fakelib, AMPR_LIB).unwrap_or_else(|| fakelib.join(AMPR_LIB)))?;
+        if let Err(e) = ng_gate(play, &find_ci(&fakelib, AMPR_LIB).unwrap_or_else(|| fakelib.join(AMPR_LIB))) {
+            keep_off(&src.title_id);
+            return Err(e);
+        }
     }
     fs::write(dir.join(AMPR_STATE), state.to_string())
 }
@@ -1238,6 +1241,28 @@ fn ng_gate(play: &crate::p5z::Play, ng: &Path) -> Result<()> {
     }
     maxpack_logic::p5z::ng_plays(&play.info, crate::ampr_version_of(ng).as_deref())
         .map_err(|why| Error::new(ErrorKind::Unsupported, OldNg(format!("{why} ({}): not started with it", ng.display()))))
+}
+
+/// A .p5z that grew, whose fakelib/ now holds an ampr-emu-ng that does not play it (compose_fakelib's
+/// OldNg): the cache's eboot.bin goes at once, so neither its tile nor Play can start the game with that
+/// copy, even when the build or rebuild that follows cannot clear the cache (an I/O error); the next good
+/// build extracts it again, and `check` rebuilds a .p5z cache without it. When it cannot go either,
+/// /system_ex/app/<TID> is unmounted, so the tile has no /app0 until a build registers the game again.
+/// Only a .p5z that grew gets here (ng_gate passes every other .p5z, and a folder or pkg never reaches
+/// it). `State::titles` is left as it is: it only decides the overlay at launch, not whether the tile
+/// starts.
+fn keep_off(tid: &str) {
+    let eboot = dir(tid).join("eboot.bin");
+    match fs::remove_file(&eboot) {
+        Ok(()) => log!("{tid}: {} removed: not started with this ampr-emu-ng", eboot.display()),
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => {
+            log!("{tid}: remove {}: {e}; unmounting its /system_ex/app so its tile cannot start it", eboot.display());
+            if let Err(e) = crate::register::unmount_title(tid) {
+                log!("{tid}: WARNING: {e}: its tile could start it with an ampr-emu-ng that does not play it");
+            }
+        }
+    }
 }
 
 /// `e` with `what` before its message, still a NoSpace, a TryAgain or an OldNg when it was one.

@@ -173,7 +173,11 @@ is ignored as a whole). The web UI edits the same file.
   differs from the record (the next pass refreshes and checks it). A fakelib refresh of a built cache of a grown
   `.p5z` (the ampr dir changed) whose copy is refused does not keep that `fakelib/`: it removes `.done` and rebuilds,
   which clears the cache and stops the same way (so a rebuild that fails before clearing, an I/O error, leaves no
-  cache that says it is built). A `.p5z` that
+  cache that says it is built). Whenever the copy is refused, in a build or a refresh, the cache's `eboot.bin` goes
+  first (`cache::keep_off`), so neither the tile nor Play can start the game with that copy even if the cache then
+  cannot be cleared; when it cannot be removed either, `/system_ex/app/<TID>` is unmounted (`register::unmount_title`),
+  so the tile has no `/app0` until a build registers the game again. A `.p5z` cache without `eboot.bin`, like one
+  without `maxpack.image`, is stale. Only a `.p5z` that grew gets there. A `.p5z` that
   never grew is not looked at (an older ampr-emu-ng plays it as before). A grown `.p5z`'s `maxpack.image` has a line
   for every volume, as the description lists them: a volume with no chunk, or with room no chunk uses, keeps its
   region (ampr-emu-ng checks each chunk against its own record).
@@ -268,7 +272,7 @@ is ignored as a whole). The web UI edits the same file.
   behind (2012 on a real one), and a source written on a PC has a "future" mtime that must not rebuild every pass.
   Inputs: FPKG = the .pkg, backport dir (recursive);
   folder = `eboot.bin`, `sce_sys/param.json`, its lib dir and files (not the folder itself: the game
-  writes there); .p5z = the file and the backport, and `maxpack.image` must exist. Otherwise rebuilt: a different `.p5z` of the same
+  writes there); .p5z = the file and the backport, and `maxpack.image` and `eboot.bin` must exist. Otherwise rebuilt: a different `.p5z` of the same
   title (another version: another size, header or footer) rebuilds the cache. A pkg's `.done` also carries `pkg_id` (FNV-1a 64 of the size,
   the first 64 KiB, the 4 KiB CNT header and the last 64 KiB), a folder's `folder_id` (FNV-1a 64 of
   each input file's path relative to the folder and size, plus the bytes of every input but
