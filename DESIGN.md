@@ -382,7 +382,8 @@ toasted (`i18n::ampr_refused`). A checked file is written to a temp file in `/da
 renamed to `/data/maxpack/ampr/libSceAmpr.sprx`, recorded in `ampr.bundled` as `<tag> <len> <crc32>` and
 toasted (`i18n::ampr_updated`). A copy we wrote (bundled or downloaded) is ours: the bundled copy replaces
 ours only when the bundled version is newer; a hand-placed file is kept by both, and ownership is checked
-again after the download. Network errors are logged and retried up to 3 times 20 s apart, then nothing
+again after the download. Network errors are logged and retried up to 3 times 20 s apart (not a body over its size
+limit, `net::too_large`, which stays over it), then nothing
 until the next start. An install wakes the scan loop (fakelib refresh); one update runs at a time.
 Never a downgrade, at start or forced (`maxpack_logic::ampr::not_older`): a release older than the bundled
 `VERSION` or than the version in use (`known_version`), or whose tag is not a version, is refused before anything
@@ -618,6 +619,8 @@ pub fn firmware() -> Option<String>;                     // "13.60" from the SDK
 
 // net.rs (blocking GET over sceHttp/sceSsl, 4 pinned root CAs; Err on non-200, sce error or > max bytes)
 pub fn https_get(url: &str, max: usize) -> std::io::Result<Vec<u8>>;
+pub fn status_of(e: &std::io::Error) -> Option<u16>;    // the HTTP status of a non-200 answer
+pub fn too_large(e: &std::io::Error) -> bool;          // a body over max: never tried again
 ```
 
 ## Recommended settings (`src/recommended.rs`, `maxpack_logic::recommended`)
@@ -659,12 +662,14 @@ scope: every other setting (`overlay_off`, backports, scans). The console never 
   has not passed` when the self-test has not passed by the time MaxPack starts (`tls::passed`, asked once): a check
   that passes later in the same run does not start it; the next start does. Otherwise
   `GET https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json` (262144 bytes at most;
-  tried again as the self-update's look, `maxpack_logic::update::look_failed`, after no answer or a server error),
+  tried again as the self-update's look, `maxpack_logic::update::look_failed`, after no answer or a server error;
+  a body over that size is not tried again, `net::too_large`),
   checked with `parse`, and only when its `version` is higher than the list in use: saved to
   `/data/maxpack/recommended.json` (tmp + rename), put in use, `recommended: downloaded v<version> (<n> titles)`, and
   the scan loop woken, which recomposes the `fakelib/` of every game whose effective mode or stub changed (Cache).
   Else `recommended: kept v<version> (download is not newer)`, `recommended: download refused: <reason>` or
-  `recommended: download failed: <error>`; the list in use stays.
+  `recommended: download failed: <error>` (`... download refused: GET <url>: body over 262144 bytes` for one too
+  large); the list in use stays.
 - **Notice at launch** (`recommended::on_launch`, from the launch watcher: every new sandbox of one of our titles,
   and an exec the sandbox watch missed). With `notify`, the notice as a notification in the console's language
   (`i18n::notice_long_first_boot`), sent from its own thread; logged `<TID>: notice long_first_boot`, or
@@ -844,7 +849,8 @@ minute):
   DeLFuS77/maxpack-ps5 (`https://api.github.com/repos/DeLFuS77/maxpack-ps5/releases/latest`, no token, through
   `net::https_get`). A 404 means none is published, or the repository is private: one log line
   (`update: no published release ...`), nothing offered, no retry. No answer, or a 5xx, is tried again 20 s later,
-  3 tries in all; any other status (a 403 rate limit) is logged once. Only one log line says how the look ended.
+  3 tries in all; any other status (a 403 rate limit), or an answer over its size limit (`net::too_large`), is logged
+  once. Only one log line says how the look ended.
 - A release is offered (`maxpack_logic::update::latest`) when its tag is `vX.Y.Z` (no pre-release suffix), newer
   than `Cargo.toml`'s version by numbers, not a draft or a pre-release, and it has exactly one `maxpack.elf` and one
   `SHA256SUMS` asset, each at `https://github.com/DeLFuS77/maxpack-ps5/releases/download/<tag>/<name>` and within the

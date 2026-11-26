@@ -95,6 +95,10 @@ pub fn spawn_refresh(state: Arc<crate::web::State>) {
     std::thread::spawn(move || {
         let body = match download() {
             Ok(b) => b,
+            Err(e) if crate::net::too_large(&e) => {
+                log!("recommended: download refused: {e}");
+                return;
+            }
             Err(e) => {
                 log!("recommended: download failed: {e}; the list in use stays until the next start");
                 return;
@@ -126,7 +130,7 @@ pub fn spawn_refresh(state: Arc<crate::web::State>) {
 }
 
 /// GET URL, LOOK_TRIES at most as the self-update's look (maxpack_logic::update::look_failed): tried
-/// again only after no answer or a server error.
+/// again only after no answer or a server error, never for a body over MAX_BYTES (net::too_large).
 fn download() -> std::io::Result<Vec<u8>> {
     use maxpack_logic::update::{look_failed, LookFailed, LOOK_DELAY_SECS, LOOK_TRIES};
     let mut tries = 0;
@@ -134,7 +138,7 @@ fn download() -> std::io::Result<Vec<u8>> {
         tries += 1;
         match crate::net::https_get(URL, logic::MAX_BYTES) {
             Ok(b) => return Ok(b),
-            Err(e) if tries < LOOK_TRIES && look_failed(crate::net::status_of(&e)) == LookFailed::TryAgain => {
+            Err(e) if tries < LOOK_TRIES && !crate::net::too_large(&e) && look_failed(crate::net::status_of(&e)) == LookFailed::TryAgain => {
                 log!("recommended: {e} (try {tries} of {LOOK_TRIES})");
                 std::thread::sleep(std::time::Duration::from_secs(LOOK_DELAY_SECS));
             }

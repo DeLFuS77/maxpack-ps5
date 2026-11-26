@@ -175,6 +175,22 @@ impl std::fmt::Display for HttpStatus {
 
 impl std::error::Error for HttpStatus {}
 
+/// A body over the caller's max, kept inside the io::Error so a caller can tell it (`too_large`) from
+/// a request that got no answer: the same file is as large at the next try, so it is never retried.
+#[derive(Debug)]
+struct TooLarge {
+    url: String,
+    max: usize,
+}
+
+impl std::fmt::Display for TooLarge {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "GET {}: body over {} bytes", self.url, self.max)
+    }
+}
+
+impl std::error::Error for TooLarge {}
+
 /// The HTTP status of an https_get error that got an answer; None when none came (a sce error,
 /// no network, a body over max bytes).
 pub fn status_of(e: &io::Error) -> Option<u16> {
@@ -182,8 +198,13 @@ pub fn status_of(e: &io::Error) -> Option<u16> {
     u16::try_from(s.status).ok()
 }
 
+/// Whether an https_get error is a body over max bytes: not worth another try.
+pub fn too_large(e: &io::Error) -> bool {
+    e.get_ref().is_some_and(|i| i.is::<TooLarge>())
+}
+
 /// GETs url (https:// or http://) and returns the body: Err on a non-200 status (`status_of`), a
-/// sce error (hex code in the message) or a body over max bytes.
+/// sce error (hex code in the message) or a body over max bytes (`too_large`).
 pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
     request(url, c"GET", HTTP_TIMEOUT_US, |req, status| {
         if status != 200 {
@@ -199,7 +220,7 @@ pub fn https_get(url: &str, max: usize) -> io::Result<Vec<u8>> {
                 return Ok(body);
             }
             if n > max - body.len() {
-                return Err(io::Error::other(format!("GET {url}: body over {max} bytes")));
+                return Err(io::Error::other(TooLarge { url: url.to_string(), max }));
             }
             body.extend_from_slice(&buf[..n]);
         }

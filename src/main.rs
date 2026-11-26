@@ -578,7 +578,8 @@ fn install_bundled_ampr() {
     }
 }
 
-/// net::https_get with up to `attempts` tries 20 s apart; each failure logged.
+/// net::https_get with up to `attempts` tries 20 s apart; each failure logged. A body over `max`
+/// (net::too_large) ends it at once: it is as large at the next try.
 fn get_retry(url: &str, max: usize, attempts: u32) -> Result<Vec<u8>, String> {
     let mut last = String::new();
     for n in 1..=attempts {
@@ -587,6 +588,9 @@ fn get_retry(url: &str, max: usize, attempts: u32) -> Result<Vec<u8>, String> {
             Err(e) => {
                 log!("ampr: update: GET {url} (attempt {n}/{attempts}): {e}");
                 last = e.to_string();
+                if net::too_large(&e) {
+                    break;
+                }
             }
         }
         if n < attempts {

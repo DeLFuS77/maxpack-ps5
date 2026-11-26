@@ -35,7 +35,8 @@ pub fn available() -> Option<serde_json::Value> {
 }
 
 /// The start-up look, in its own thread: once per start, LOOK_TRIES at most and only after no answer
-/// or a server error (the console may not be online yet); one log line says how it ended.
+/// or a server error (the console may not be online yet; not an answer over LATEST_MAX, which stays
+/// over it); one log line says how it ended.
 pub fn spawn_check() {
     std::thread::spawn(|| {
         let url = logic::LATEST_URL;
@@ -49,7 +50,7 @@ pub fn spawn_check() {
                         log!("update: no published release of {} (HTTP 404: none yet, or the repository is private); nothing offered", logic::REPO);
                         return;
                     }
-                    LookFailed::TryAgain if tries < logic::LOOK_TRIES => {
+                    LookFailed::TryAgain if tries < logic::LOOK_TRIES && !crate::net::too_large(&e) => {
                         std::thread::sleep(Duration::from_secs(logic::LOOK_DELAY_SECS));
                     }
                     _ => {
