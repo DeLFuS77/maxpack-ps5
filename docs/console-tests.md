@@ -815,9 +815,9 @@ name no game.
     served to the console (it takes only the repository's file); those are tested on the PC:
     `cargo test -p maxpack-logic recommended`.
 
-## 11. Next version: a `.p5z` that grew
+## 11. 1.0.2: a `.p5z` that grew
 
-With a build of this branch, MaxPack alone, a game you already played from its `.p5z` in section 6
+With a 1.0.2 build, MaxPack alone, a game you already played from its `.p5z` in section 6
 (packed with `maxpack pack --p5z`, a few GB, more than one volume if you can) and a MaxPack for the PC
 that has `maxpack add` and `maxpack update` (its branch `pc-ampliar`, or the release that brings them). On the PC, `maxpack info <game.p5z>` says how many
 times a `.p5z` grew and how much room it does not use. This build carries ampr-emu-ng
