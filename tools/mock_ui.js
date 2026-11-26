@@ -4,14 +4,15 @@
 // progress) without a console. Nothing here goes into maxpack.elf.
 //
 //   node tools/mock_ui.js [--port 8095] [--waiting other|kstuff|none] [--job on|paused|off]
-//                         [--last done|failed|needs_confirm|none] [--empty]
+//                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
 //                         [--ampr-fail checksum|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
-// Install), --job on (a .p5z being copied, ~2 % a second), --last none.
+// Install), --job on (a .p5z being copied, ~2 % a second), --last none. --last grown: the last
+// install refused a .p5z that grew (the engine's grown_p5z).
 // --empty: no games, images, found items or installs (the empty states).
 // --update: a newer release found at start (state.update), so the page shows its notice with
 // Update and Later; Update (POST /api/self_update) "installs" it: 3 s later the mock answers with
@@ -280,7 +281,9 @@ function lastValue() {
   if (lastExtra) return lastExtra;
   switch (mock.last) {
     case 'done': return { kind: 'install', title_id: 'PPSA09012', code: 'done', detail: '' };
-    case 'failed': return { kind: 'install', title_id: 'PPSA07890', code: 'io_error', detail: 'no se pudo escribir /data/maxpack/tmp/PPSA07890/eboot.bin' };
+    case 'failed': return { kind: 'install', title_id: 'PPSA07890', code: 'io_error', detail: 'could not write /data/maxpack/tmp/PPSA07890/eboot.bin' };
+    case 'grown': return { kind: 'install', title_id: 'PPSA07300', code: 'grown_p5z',
+      detail: 'this .p5z grew (DLC or an update were added to it): play it from the .p5z, or make a compact copy of it on the PC (maxpack compact) to install it' };
     case 'needs_confirm': return { kind: 'install', title_id: 'PPSA07890', code: 'needs_confirm', detail: '',
       existing: [{ path: '/data/homebrew/PPSA07890', size: 39 * GB, from_maxpack: false }],
       source: '/mnt/usb0/Astro Example.p5z', dest: '/data' };

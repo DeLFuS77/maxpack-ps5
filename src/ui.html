@@ -1082,6 +1082,8 @@ var MSG = {
     iDone_install: '{name} installed.', iDone_verify: '{name} verified.', iDone_uninstall: '{name} uninstalled.',
     iStopped: 'Paused. Press Resume under Unfinished installs to go on where it stopped.',
     iNoSpace: 'Not enough space: {size} more needed.', iBadP5z: 'The .p5z is damaged or not valid.',
+    // Install: a .p5z that grew (the engine's grown_p5z), which only plays from the .p5z
+    iGrownP5z: 'This .p5z grew on the PC (a DLC or an update was added to it), so it cannot be installed. Play it from the .p5z as it is, or make a compact copy of it on the PC (maxpack compact) and install that.',
     iBadDest: 'That drive is no longer connected.',
     iNoRuntime: "This .p5z has no ampr-emu-ng and the installer doesn't carry one. Pack it again with --runtime.",
     iIoError: "Couldn't write to the drive.", iBadPath: "That path isn't on a USB drive or in /data.",
@@ -1329,6 +1331,7 @@ var MSG = {
     iStopped: "Пауза. Нажмите «Продолжить» в разделе «Незавершённые установки», чтобы продолжить с места остановки.",
     iNoSpace: "Не хватает места: нужно ещё {size}.",
     iBadP5z: "Файл .p5z повреждён или недопустим.",
+    iGrownP5z: "Этот .p5z был дополнен на ПК (в него добавили DLC или обновление), поэтому его нельзя установить. Запускайте игру прямо из .p5z или сделайте на ПК компактную копию (maxpack compact) и установите её.",
     iBadDest: "Этот накопитель больше не подключён.",
     iNoRuntime: "В этом .p5z нет ampr-emu-ng, и установщик его не содержит. Упакуйте заново с --runtime.",
     iIoError: "Не удалось записать на накопитель.",
@@ -1582,6 +1585,7 @@ var MSG = {
     iStopped: "已暂停。在“未完成的安装”下点击“继续”，即可从中断处接着进行。",
     iNoSpace: "空间不足：还需要 {size}。",
     iBadP5z: ".p5z 已损坏或无效。",
+    iGrownP5z: "此 .p5z 已在电脑上扩充（添加了 DLC 或更新），因此无法安装。请直接从 .p5z 运行，或在电脑上制作一份紧凑副本（maxpack compact）后安装该副本。",
     iBadDest: "该驱动器已不再连接。",
     iNoRuntime: "此 .p5z 不含 ampr-emu-ng，安装器也没有自带。请使用 --runtime 重新打包。",
     iIoError: "无法写入驱动器。",
@@ -1835,6 +1839,7 @@ var MSG = {
     iStopped: "Pausiert. Drücke unter „Unfertige Installationen“ auf „Fortsetzen“, um dort weiterzumachen, wo es aufgehört hat.",
     iNoSpace: "Nicht genug Platz: {size} mehr nötig.",
     iBadP5z: "Die .p5z ist beschädigt oder ungültig.",
+    iGrownP5z: "Diese .p5z wurde am PC erweitert (ein DLC oder ein Update kam hinzu) und lässt sich daher nicht installieren. Spiele sie direkt aus der .p5z oder erstelle am PC eine kompakte Kopie (maxpack compact) und installiere diese.",
     iBadDest: "Dieses Laufwerk ist nicht mehr verbunden.",
     iNoRuntime: "Diese .p5z enthält kein ampr-emu-ng und der Installer bringt keins mit. Packe sie erneut mit --runtime.",
     iIoError: "Auf das Laufwerk konnte nicht geschrieben werden.",
@@ -2039,6 +2044,7 @@ var MSG = {
     iDone_install: '{name} instalado.', iDone_verify: '{name} verificado.', iDone_uninstall: '{name} desinstalado.',
     iStopped: 'En pausa. Pulsa Seguir en Instalaciones a medias para continuar donde se quedó.',
     iNoSpace: 'No cabe: faltan {size}.', iBadP5z: 'El .p5z está dañado o no es válido.',
+    iGrownP5z: 'Este .p5z creció en el PC (se le añadió un DLC o una actualización), así que no se puede instalar. Juégalo desde el .p5z tal cual, o haz en el PC una copia compacta (maxpack compact) e instala esa.',
     iBadDest: 'Esa unidad ya no está conectada.',
     iNoRuntime: 'Este .p5z no trae ampr-emu-ng y el instalador no lleva ninguno. Vuelve a empaquetarlo con --runtime.',
     iIoError: 'No se pudo escribir en la unidad.', iBadPath: 'Esa ruta no está en un USB ni en /data.',
@@ -2286,6 +2292,7 @@ var MSG = {
     iStopped: "En pause. Appuyez sur « Reprendre » sous « Installations inachevées » pour continuer là où elle s'est arrêtée.",
     iNoSpace: "Pas assez de place : il manque {size}.",
     iBadP5z: "Le .p5z est endommagé ou invalide.",
+    iGrownP5z: "Ce .p5z a été agrandi sur le PC (un DLC ou une mise à jour y a été ajouté) : il ne peut donc pas être installé. Jouez-y depuis le .p5z tel quel, ou faites sur le PC une copie compacte (maxpack compact) et installez-la.",
     iBadDest: "Ce disque n'est plus connecté.",
     iNoRuntime: "Ce .p5z ne contient pas ampr-emu-ng et l'installateur n'en a pas. Empaquetez-le à nouveau avec --runtime.",
     iIoError: "Impossible d'écrire sur le disque.",
@@ -2539,6 +2546,7 @@ var MSG = {
     iStopped: "一時停止しました。「未完了のインストール」の「再開」を押すと、止まったところから続けます。",
     iNoSpace: "空き容量が足りません: あと {size} 必要です。",
     iBadP5z: ".p5z が破損しているか、無効です。",
+    iGrownP5z: "この .p5z は PC で拡張された（DLC またはアップデートを追加した）ため、インストールできません。.p5z のままプレイするか、PC でコンパクトなコピーを作って（maxpack compact）それをインストールしてください。",
     iBadDest: "そのドライブはもう接続されていません。",
     iNoRuntime: "この .p5z には ampr-emu-ng がなく、インストーラーにも含まれていません。--runtime を付けてもう一度パックしてください。",
     iIoError: "ドライブに書き込めませんでした。",
@@ -2792,6 +2800,7 @@ var MSG = {
     iStopped: "Pausado. Toque em Retomar em Instalações inacabadas para continuar de onde parou.",
     iNoSpace: "Espaço insuficiente: faltam {size}.",
     iBadP5z: "O .p5z está danificado ou não é válido.",
+    iGrownP5z: "Este .p5z cresceu no PC (recebeu um DLC ou uma atualização), por isso não pode ser instalado. Jogue-o direto do .p5z, ou faça no PC uma cópia compacta (maxpack compact) e instale essa.",
     iBadDest: "Esse drive não está mais conectado.",
     iNoRuntime: "Este .p5z não tem o ampr-emu-ng e o instalador não traz um. Empacote de novo com --runtime.",
     iIoError: "Não foi possível gravar no drive.",
@@ -3045,6 +3054,7 @@ var MSG = {
     iStopped: "In pausa. Premi Riprendi in Installazioni incomplete per continuare da dove si era fermata.",
     iNoSpace: "Spazio insufficiente: servono altri {size}.",
     iBadP5z: "Il .p5z è danneggiato o non valido.",
+    iGrownP5z: "Questo .p5z è stato ampliato sul PC (gli è stato aggiunto un DLC o un aggiornamento), quindi non si può installare. Giocalo direttamente dal .p5z, oppure crea sul PC una copia compatta (maxpack compact) e installa quella.",
     iBadDest: "Quell'unità non è più collegata.",
     iNoRuntime: "Questo .p5z non contiene ampr-emu-ng e l'installatore non ne ha uno. Impacchettalo di nuovo con --runtime.",
     iIoError: "Impossibile scrivere sull'unità.",
@@ -3298,6 +3308,7 @@ var MSG = {
     iStopped: "일시 중지됨. 끝나지 않은 설치에서 이어서 진행을 누르면 멈춘 곳부터 계속합니다.",
     iNoSpace: "공간이 부족합니다: {size} 더 필요합니다.",
     iBadP5z: ".p5z가 손상되었거나 올바르지 않습니다.",
+    iGrownP5z: "이 .p5z는 PC에서 확장되어(DLC나 업데이트가 추가됨) 설치할 수 없습니다. .p5z 그대로 플레이하거나, PC에서 압축 사본을 만들어(maxpack compact) 그것을 설치하세요.",
     iBadDest: "해당 드라이브가 더 이상 연결되어 있지 않습니다.",
     iNoRuntime: "이 .p5z에는 ampr-emu-ng가 없고 설치 프로그램에도 포함되어 있지 않습니다. --runtime으로 다시 패킹하세요.",
     iIoError: "드라이브에 쓸 수 없습니다.",
@@ -3551,6 +3562,7 @@ var MSG = {
     iStopped: "تم الإيقاف مؤقتًا. اضغط على استئناف ضمن عمليات تثبيت غير مكتملة للمتابعة من حيث توقفت.",
     iNoSpace: "المساحة غير كافية: يلزم {size} إضافية.",
     iBadP5z: "ملف .p5z تالف أو غير صالح.",
+    iGrownP5z: "تمت زيادة ملف .p5z هذا على الكمبيوتر (أضيف إليه DLC أو تحديث)، لذا لا يمكن تثبيته. شغّله من ملف .p5z كما هو، أو أنشئ على الكمبيوتر نسخة مضغوطة منه (maxpack compact) وثبّتها.",
     iBadDest: "لم يعد هذا المحرك متصلًا.",
     iNoRuntime: "لا يحتوي ملف .p5z هذا على ampr-emu-ng، والمُثبِّت لا يحمل نسخة منه. أعد التعبئة باستخدام --runtime.",
     iIoError: "تعذّرت الكتابة على المحرك.",
@@ -5071,7 +5083,7 @@ $('grid').addEventListener('mouseleave', function () { if (!cardOf(document.acti
 $('grid').addEventListener('focusout', function (e) { if (!cardOf(e.relatedTarget)) blurGame(); });
 
 // ---- chunk 4: Install, the phase-2 installer (/api/inst/<x> is its own /api/<x>) ----
-// Its answers: 200 {ok:true, ...} or {ok:false, code, detail} (detail in Spanish, from the engine);
+// Its answers: 200 {ok:true, ...} or {ok:false, code, detail} (detail in English, from the engine);
 // 503 {code:'starting'|'no_installer'} from the payload. Polled every second while the tab is open.
 var inst = null, instTimer = null, instOn = false, instSel = null, instDest = null, instExtra = [];
 // instNames: every title id -> name seen, so a result still names a game gone from the lists.
@@ -5082,7 +5094,7 @@ var INST_CODES = {
   stopped: 'iStopped', no_space: 'iNoSpace', bad_p5z: 'iBadP5z', bad_dest: 'iBadDest', no_runtime: 'iNoRuntime',
   io_error: 'iIoError', bad_path: 'iBadPath', bad_source: 'iBadSource', busy: 'iBusy', not_found: 'iNotFound',
   verify_bad: 'iVerifyBad', game_running: 'iGameRunning', needs_confirm: 'iNeedsConfirm', bad_json: 'iBadJson',
-  forbidden: 'iForbidden', starting: 'iStarting', no_installer: 'iNoInstaller'
+  forbidden: 'iForbidden', starting: 'iStarting', no_installer: 'iNoInstaller', grown_p5z: 'iGrownP5z'
 };
 function instCode(code) { return INST_CODES[code] ? t(INST_CODES[code]) : String(code || '?'); }
 // GET state/icon or a POST with a JSON body; the answer's JSON, or an Error when it is not JSON.
