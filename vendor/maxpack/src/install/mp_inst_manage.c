@@ -123,7 +123,14 @@ int mp_inst_verify(const mp_inst_env *env, const char *title_id, mp_inst_verify_
         int same = !memcmp(f.archive_id, rec.archive_id, 16);
         free(f.path);
         mp_p5z *p = NULL;
-        if (same && mp_p5z_open(rec.p5z, &p, NULL) == 0) {
+        // Only against the .p5z it was installed from: one of version 1 (a grown one is never installed). A
+        // .p5z that grew after the install keeps its archive ID but its records are of what it grew into,
+        // not of the install: an install that works is not called damaged for that.
+        if (same && mp_p5z_open(rec.p5z, &p, NULL) == 0 && mp_p5z_version(p) != 1) {
+            mp_p5z_close(p);
+            p = NULL;
+        }
+        if (p) {
             long bad = mp_inst_check_dir(p, rec.dir, rec.runtime_replaced, env->threads, e);
             mp_p5z_close(p);
             if (bad < 0) return -1;

@@ -36,12 +36,14 @@ typedef struct {
     uint32_t grown;                        // how many times it has grown, this one included
     int nothing;                           // nothing changed: nothing was written
     int par2;                              // it has repair data next to it (<name>.p5z.par2): no longer of it
+    int journal_left;                      // it grew, but its journal could not be deleted: the next open does it
     unsigned dlc_data, dlc_license;        // add: the DLC added
     uint64_t dlc_bytes;
     // on failure, why as a code: "busy" (another MaxPack is changing it), "no_space", "too_big"
     // (max_size), "too_many_volumes", "mostly_changed", "already_packed" (the dump has packs), "no_packs_left"
-    // (the new dump leaves the packs empty), "other_game", "same_version", "no_title_id", "dlc_has_ini",
-    // "dlc_too_many", "dlc_refused", "changed_meanwhile"; NULL for any other (an I/O error)
+    // (the new dump leaves the packs empty), "other_game", "same_version", "no_title_id", "not_a_game"
+    // (update: the new dump has no eboot.bin, or is a DLC), "dlc_has_ini", "dlc_too_many", "dlc_refused",
+    // "changed_meanwhile"; NULL for any other (an I/O error)
     const char *code;
     char title_id[16], old_version[16], new_version[16];
 } mp_grow_result;

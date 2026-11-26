@@ -59,11 +59,19 @@ int p5z_out_copy(mp_pack_out *out, mp_p5z *from, size_t i, mp_err *e);
 // ---- the journal of an append (mp_p5z_journal.c) ----------------------------------------------------
 
 int p5z_journal_write(const char *p5z, uint64_t old_size, const uint8_t footer[32], mp_err *e);
-// 0 with what it says, 1 if there is one that is damaged, -1 if there is none.
+// 0 with what it says, 1 if there is one that is damaged, 2 if there is one that could not be read (an
+// I/O error: never to be taken for damaged), 3 if there is only a .tmp cut short (no append began), -1 if
+// there is none. The journal is <name>.maxpack-append or, when that is not there whole, a whole
+// <name>.maxpack-append.tmp (a rename that did not reach the disk).
 int p5z_journal_read(const char *p5z, uint64_t *old_size, uint8_t footer[32]);
 // 1 if the journal is whole and the .p5z, size bytes long, has its footer where it says.
 int p5z_journal_matches(const char *p5z, uint64_t size, uint64_t *old_size);
-void p5z_journal_remove(const char *p5z);
+// 1 if the append that began when the .p5z was old_size bytes long had ended: its last 32 bytes are a
+// whole footer whose index, past old_size, is of version 2 with prev_size old_size; 0 if not, -1 if the
+// .p5z could not be read to tell.
+int p5z_append_ended(const char *p5z, uint64_t size, uint64_t old_size);
+// Deletes the journal and its .tmp: 0 when neither is there afterwards.
+int p5z_journal_remove(const char *p5z);
 // mp_p5z_recover with the .p5z already open as its only writer (f).
 int p5z_restore_locked(mp_wfile *f, const char *p5z, int *what, mp_err *e);
 

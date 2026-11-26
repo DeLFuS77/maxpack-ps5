@@ -43,12 +43,14 @@ uint32_t mp_p5z_grown(const mp_p5z *p);   // how many times it grew (0 for versi
 // An append to a .p5z writes first, next to it, <name>.p5z.maxpack-append (the journal): the size the
 // .p5z had and its footer then. mp_p5z_recover, which every command that opens a .p5z runs first, takes
 // a .p5z with a journal back to that size, exactly as it was, and deletes the journal: NONE (no journal),
-// RESTORED, BUSY (another MaxPack is appending to it now: nothing is touched) or STALE (a journal that is
-// damaged or not of this file as it is: it goes, the .p5z is not touched). -1 only when the .p5z could not
-// be cut back (the journal stays for the next time). Meanwhile mp_p5z_open reads a .p5z with a journal
-// that matches it as it was before the append.
+// RESTORED, BUSY (another MaxPack is appending to it now: nothing is touched), STALE (a journal that is
+// damaged or not of this file as it is: it goes, the .p5z is not touched) or COMMITTED (the append had
+// ended, its new index and footer written, before its journal went: the .p5z is kept as it grew and only
+// the journal goes). -1 when the .p5z could not be cut back, when the journal is there and cannot be read
+// (both are left as they are) or when it could not be deleted. Meanwhile mp_p5z_open reads a .p5z with a
+// journal that matches it as it was before the append, or as it grew once that append had ended.
 #define MP_P5Z_JOURNAL ".maxpack-append"
-enum { MP_RECOVER_NONE = 0, MP_RECOVER_RESTORED, MP_RECOVER_BUSY, MP_RECOVER_STALE };
+enum { MP_RECOVER_NONE = 0, MP_RECOVER_RESTORED, MP_RECOVER_BUSY, MP_RECOVER_STALE, MP_RECOVER_COMMITTED };
 int mp_p5z_recover(const char *p5z, int *what, mp_err *e);
 const mp_pack_manifest *mp_p5z_manifest(const mp_p5z *p);
 int mp_p5z_info(const mp_p5z *p, FILE *out);

@@ -438,6 +438,9 @@ static int f_finish(void *ctx, const mp_pack_manifest *m, mp_err *e) {
     if (drain(o, 1, e) != 0) return -1;
     frames_stop(o);
     if (o->append && canonical_order(o, e) != 0) return -1;
+    // An append: what it added goes to the disk before its index and footer do, so a whole footer at the
+    // end, after a power cut, means a whole append (the journal's recovery keeps it then).
+    if (o->append && mp_wfile_sync_full(o->f, e) != 0) return -1;
     const uint32_t hs = o->append ? P5Z_INDEX_HEADER_V2 : P5Z_INDEX_HEADER;
     // For each manifest record, the stored file that contains it.
     pathref *refs = malloc((o->nfiles ? o->nfiles : 1) * sizeof *refs);

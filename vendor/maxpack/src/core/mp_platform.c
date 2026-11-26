@@ -4,6 +4,8 @@
 #define _POSIX_C_SOURCE 200809L
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE
+#elif defined(__FreeBSD__) || defined(__PROSPERO__)
+#define __BSD_VISIBLE 1   // flock and its LOCK_ names, which _POSIX_C_SOURCE hides there
 #endif
 #endif
 
@@ -697,13 +699,13 @@ int mp_dir_list(const char *dir, mp_list_cb cb, void *ctx, mp_err *e) {
     return rc;
 }
 
-int mp_rename(const char *from, const char *to, mp_err *e) {
+static int rename_with(const char *from, const char *to, DWORD flags, mp_err *e) {
     wchar_t *a = long_path(from), *b = long_path(to);
     int rc = 0;
     if (!a || !b) {
         mp_err_set(e, "invalid path: %s", !a ? from : to);
         rc = -1;
-    } else if (!MoveFileExW(a, b, 0)) {
+    } else if (!MoveFileExW(a, b, flags)) {
         win_err(e, "cannot rename", from, GetLastError());
         rc = -1;
     }
@@ -711,6 +713,15 @@ int mp_rename(const char *from, const char *to, mp_err *e) {
     free(b);
     return rc;
 }
+
+int mp_rename(const char *from, const char *to, mp_err *e) { return rename_with(from, to, 0, e); }
+
+// MOVEFILE_WRITE_THROUGH: MoveFileEx returns once the rename is flushed to the disk.
+int mp_rename_durable(const char *from, const char *to, mp_err *e) {
+    return rename_with(from, to, MOVEFILE_WRITE_THROUGH, e);
+}
+
+int mp_wfile_sync_full(mp_wfile *f, mp_err *e) { return mp_wfile_sync(f, e); }   // FlushFileBuffers flushes the drive's cache too
 
 static int remove_tree_w(const wchar_t *path, const char *shown, mp_err *e) {
     DWORD attr = GetFileAttributesW(path);
@@ -1295,6 +1306,39 @@ int mp_rename(const char *from, const char *to, mp_err *e) {
         return -1;
     }
     return 0;
+}
+
+// A new name is in the folder's entries: it reaches the disk when the folder is flushed. Some file
+// systems do not flush folders (EINVAL): there nothing more can be done.
+int mp_rename_durable(const char *from, const char *to, mp_err *e) {
+    if (mp_rename(from, to, e) != 0) return -1;
+    char *dir = mp_strdup(to);
+    if (!dir) {
+        mp_err_set(e, "out of memory");
+        return -1;
+    }
+    char *slash = strrchr(dir, '/');
+    if (!slash)
+        strcpy(dir, ".");
+    else if (slash == dir)
+        dir[1] = 0;
+    else
+        *slash = 0;
+    int fd = open(dir, O_RDONLY | O_CLOEXEC), rc = 0;
+    if (fd < 0 || (fsync(fd) != 0 && errno != EINVAL)) {
+        mp_err_set(e, "could not flush the folder %s to disk: %s", dir, strerror(errno));
+        rc = -1;
+    }
+    if (fd >= 0) close(fd);
+    free(dir);
+    return rc;
+}
+
+int mp_wfile_sync_full(mp_wfile *f, mp_err *e) {
+#if defined(__APPLE__)
+    if (fcntl(f->fd, F_FULLFSYNC) == 0) return 0;   // fsync leaves it in the drive's cache on macOS
+#endif
+    return mp_wfile_sync(f, e);
 }
 
 int mp_remove_tree(const char *path, mp_err *e) {

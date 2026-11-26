@@ -173,7 +173,15 @@ int mp_grow_update(const char *p5z, const char *dump, const mp_grow_opts *o, mp_
     size_t ini_len = 0;
     int rc = -1;
     if (open_recovered(p5z, &p, r, e) != 0) goto done;
-    if (mp_source_open(dump, &d, e) != 0) goto done;
+    if (mp_source_open_as(dump, MP_OPEN_ANY, &d, e) != 0) goto done;
+    // a game: a DLC (a package of additional content, or a folder without an eboot.bin) given by mistake
+    // would leave the .p5z with only the DLC
+    if (mp_source_is_dlc_package(d) || find_ci(d, "eboot.bin") < 0) {
+        const char *why = mp_source_is_dlc_package(d) ? "it is a DLC package" : "it has no eboot.bin";
+        code = "not_a_game";
+        mp_err_set(e, "the new dump is not a game (%s): a DLC goes in with add", why);
+        goto done;
+    }
     // the same game (its title ID), in another version
     char id[16] = "", ver[16] = "", name[128] = "";
     long pi = find_ci(d, "sce_sys/param.json");

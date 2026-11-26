@@ -39,6 +39,8 @@ int mp_wfile_pwrite(mp_wfile *f, const void *p, size_t n, uint64_t off, mp_err *
 uint64_t mp_wfile_size(const mp_wfile *f);
 int mp_wfile_close(mp_wfile *f, mp_err *e);   // also frees f on failure
 int mp_wfile_sync(mp_wfile *f, mp_err *e);    // forces the data to disk (fsync)
+// The same, through the drive's own cache where fsync does not reach it (F_FULLFSYNC on macOS).
+int mp_wfile_sync_full(mp_wfile *f, mp_err *e);
 // Asks the system not to keep in memory what is written through f (macOS; elsewhere nothing is
 // needed, see mp_file_open_read_uncached). 0, or -1 if the system refuses.
 int mp_wfile_uncached(mp_wfile *f);
@@ -65,6 +67,9 @@ typedef int (*mp_list_cb)(void *ctx, const char *name, int is_dir, uint64_t size
 int mp_dir_list(const char *dir_utf8, mp_list_cb cb, void *ctx, mp_err *e);
 // Renames a file or folder within the same file system; fails if 'to' exists.
 int mp_rename(const char *from_utf8, const char *to_utf8, mp_err *e);
+// The same, returning once the new name is on the disk (Windows: written through; elsewhere the folder
+// is flushed), for a file whose name has to survive a power cut.
+int mp_rename_durable(const char *from_utf8, const char *to_utf8, mp_err *e);
 // Deletes a whole folder (without following links) or a file. 0 also if it does not exist.
 int mp_remove_tree(const char *utf8_path, mp_err *e);
 // Bytes free for the user on the file system of path (which must exist).

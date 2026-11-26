@@ -164,7 +164,7 @@ int mp_inst_list(const mp_inst_env *env, mp_inst_record **out, size_t *n, mp_err
 
 typedef struct {
     uint64_t files_ok, files_bad;
-    int p5z_checked;   // it was compared with the .p5z (still in place and the same one)
+    int p5z_checked;   // it was compared with the .p5z (still in place, the same one, of version 1)
 } mp_inst_verify_result;
 
 int mp_inst_verify(const mp_inst_env *env, const char *title_id, mp_inst_verify_result *r, mp_err *e);

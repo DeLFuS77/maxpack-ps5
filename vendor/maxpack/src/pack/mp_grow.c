@@ -228,6 +228,11 @@ int mp_grow_run(const char *p5z, mp_source *dump, mp_grow_known known, void *kct
         mp_err_set(e, "invalid .p5z: its volumes are not those of its packs");
         goto done;
     }
+    for (size_t i = 0; !z && i < p->man.n; i++)
+        if (p->man.v[i].flags & MP_MANIFEST_PACKED) {
+            mp_err_set(e, "invalid .p5z: its manifest has files in packs it does not have (%s)", p->man.v[i].path);
+            goto done;
+        }
 
     size_t n = mp_source_count(dump);
     if (n == 0) {
@@ -596,9 +601,22 @@ int mp_grow_run(const char *p5z, mp_source *dump, mp_grow_known known, void *kct
             k++;
         }
     if (fault("index", e) != 0 || mp_cancel_check(e) != 0 || out.finish(out.ctx, &fin, e) != 0) goto done;
-    if (fault("footer", e) != 0 || mp_wfile_sync(f, e) != 0 || fault("synced", e) != 0) goto done;
-    p5z_journal_remove(p5z);
+    if (fault("footer", e) != 0 || mp_wfile_sync_full(f, e) != 0 || fault("synced", e) != 0) goto done;
+    // It has grown. A journal that cannot be deleted now (another program reading it) is not undone later:
+    // the new index says the size the .p5z had before this append, the journal's, and the next open keeps
+    // what grew and deletes it then.
     journal = 0;
+    if (g_fault && g_fault("journal delete") != 0) {
+        r->journal_left = 1;
+    } else {
+        for (int k = 0; k < 3 && p5z_journal_remove(p5z) != 0; k++) {
+            if (k == 2) {
+                r->journal_left = 1;
+                break;
+            }
+            mp_sleep_ms(100);
+        }
+    }
     r->p5z_size = mp_wfile_size(f);
     r->added_bytes = r->p5z_size - old_size;
     r->volumes = nvol;
@@ -617,8 +635,8 @@ done:
         // is what undoes it, at the next open
         if (rc != 0 && journal && !g_crashed) {
             mp_err keep = e ? *e : (mp_err){{0}};
-            if (mp_wfile_truncate(f, old_size, NULL) == 0 && mp_wfile_sync(f, NULL) == 0)
-                p5z_journal_remove(p5z);
+            if (mp_wfile_truncate(f, old_size, NULL) == 0 && mp_wfile_sync_full(f, NULL) == 0)
+                p5z_journal_remove(p5z);   // one left is of a file as it was: harmless, the next open deletes it
             else if (e)
                 mp_err_set(e, "%s; what was added could not be taken away yet: the next time MaxPack opens %s "
                               "it will be",
