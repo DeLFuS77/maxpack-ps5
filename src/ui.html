@@ -462,8 +462,8 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
 .banner.show { display: block; -webkit-animation: banner-in 0.35s var(--ease); animation: banner-in 0.35s var(--ease); }
 .banner:first-child { margin-top: 1rem; }
 /* The update notice: its text, then Update and Later (hidden while it runs). */
-#update.show { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem; }
-#update-msg { flex: 1 1 16rem; }
+#update.show, #recv.show { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem; }
+#update-msg, #recv-msg { flex: 1 1 16rem; }
 .banner-btns { display: flex; gap: 0.6rem; }
 .banner-btns button[hidden] { display: none; }
 .card .status-pill, .card .running-pill {
@@ -500,6 +500,9 @@ main > section:not([hidden]) { -webkit-animation: view-in 0.35s ease-out; animat
 .job-status { margin-top: 0.7rem; font-size: 0.92rem; color: var(--fg-2); overflow-wrap: anywhere; }
 .job-status:empty { display: none; }
 .job-status.bad { color: var(--danger-ink); }
+/* Settings > "Receive games from the PC": the pairing code, large enough to read from the sofa. */
+.recv-code { display: block; margin-top: 0.4rem; font: 800 2.2rem/1.2 var(--mono); letter-spacing: 0.25em; }
+.recv-code[hidden] { display: none; }
 #confirm { z-index: 20; }
 .dialog {
   width: 100%; max-width: 34rem; max-height: 100%; overflow: auto; padding: 1.6rem;
@@ -686,6 +689,8 @@ button.inst-item[aria-checked="true"] {
   <div class="banner" id="eject" role="status"></div>
   <div class="banner ok" id="update"><span id="update-msg" role="status"></span>
     <span class="banner-btns"><button class="small primary" type="button" id="update-go">Update</button><button class="small" type="button" id="update-later">Later</button></span></div>
+  <div class="banner" id="recv"><span id="recv-msg" role="status"></span>
+    <span class="banner-btns"><button class="small" type="button" id="recv-cancel" data-i18n="recvCancel">Cancel the receive</button><button class="small" type="button" id="recv-close" data-i18n="close">Close</button></span></div>
 </div>
 
 <main>
@@ -785,6 +790,8 @@ button.inst-item[aria-checked="true"] {
     <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprtls" data-i18n="amprNeedsTls" hidden>ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
     <div class="row"><span><span class="lbl" data-i18n="tlsTitle">Secure connections</span><span class="hint" data-i18n="tlsHint">MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.</span><span class="hint" id="tlsmsg" role="status"></span></span><button id="tlscheck" type="button" data-i18n="tlsCheck">Check secure connections</button></div>
     <ul class="tls-list" id="tlslist" hidden></ul>
+    <label class="row"><span><span class="lbl" data-i18n="recvLbl">Receive games from the PC</span><span class="hint" data-i18n="recvHint">MaxPack on the PC can send a .p5z here (maxpack send, or Send to the console in its window). The console checks it as it arrives and the library finds it. Off, nothing on the network can write to the drives.</span><span class="hint bad" id="recvmsg" role="status" hidden></span></span><input type="checkbox" id="recv-on"></label>
+    <div class="row" id="recv-code-row" hidden><span><span class="lbl" data-i18n="recvCodeLbl">Pairing code</span><span class="recv-code" id="recv-code"></span><span class="hint" id="recv-code-hint"></span></span><button type="button" id="recv-new" data-i18n="recvNew">New code</button></div>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
     <label class="row"><span class="lbl" data-i18n="scanInterval">Scan interval, seconds (1-3600)</span><input type="number" id="f_scan_interval_seconds" min="1" max="3600"></label>
     <label class="row"><span class="lbl" data-i18n="stabilityWait">Wait for a copy to finish, seconds (0-3600, 0 = off)</span><input type="number" id="f_stability_wait_seconds" min="0" max="3600"></label>
@@ -1139,7 +1146,22 @@ var MSG = {
     verifyPhase_quick: "volumes and loose files",
     verifyPhase_full: "unpacking every file",
     verifyQuickOk: "Verified quickly on {date}: its {files} volumes and files match.",
-    verifyQuickBad: "Damaged (verified quickly on {date}): {bad} of {files} volumes and files do not match."
+    verifyQuickBad: "Damaged (verified quickly on {date}): {bad} of {files} volumes and files do not match.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Receive games from the PC",
+    recvHint: "MaxPack on the PC can send a .p5z here (maxpack send, or Send to the console in its window). The console checks it as it arrives and the library finds it. Off, nothing on the network can write to the drives.",
+    recvCodeLbl: "Pairing code",
+    recvCodeHint: "Type it in MaxPack on the PC. New code makes the old one stop working.",
+    recvCodeElsewhere: "For safety, the code shows only on the console's own screen: open MaxPack there to see it.",
+    recvNew: "New code",
+    recvOffBusy: "A game is arriving from the PC: cancel it first.",
+    recvReceiving: "Receiving {name} from the PC on {drive}: {pct} % ({have} of {size}), {speed} MB/s.",
+    recvVerifying: "Checking {name} as it arrived: {pct} %, {speed} MB/s.",
+    recvDone: "{name} arrived and checks out: the library shows it on its next pass.",
+    recvFailed: "{name} arrived damaged: {what} do not match. It stays as {path}: send it again from the PC, or cancel to delete it.",
+    recvFailedError: "{name} arrived but could not be checked: {error}. It stays as {path}: send it again from the PC, or cancel to delete it.",
+    recvCancelled: "The receive of {name} was cancelled: what had arrived is deleted.",
+    recvCancel: "Cancel the receive"
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1423,7 +1445,22 @@ var MSG = {
     verifyPhase_quick: "тома и отдельные файлы",
     verifyPhase_full: "распаковка каждого файла",
     verifyQuickOk: "Быстро проверено {date}: все тома и файлы ({files}) совпадают.",
-    verifyQuickBad: "Повреждён (быстрая проверка {date}): не совпадают {bad} из {files} томов и файлов."
+    verifyQuickBad: "Повреждён (быстрая проверка {date}): не совпадают {bad} из {files} томов и файлов.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Приём игр с ПК",
+    recvHint: "MaxPack на ПК может отправить сюда .p5z (maxpack send или «Отправить на консоль» в его окне). Консоль проверяет его при получении, и библиотека его находит. Когда выключено, ничто из сети не может писать на диски.",
+    recvCodeLbl: "Код сопряжения",
+    recvCodeHint: "Введите его в MaxPack на ПК. «Новый код» отменяет старый.",
+    recvCodeElsewhere: "В целях безопасности код показывается только на экране самой консоли: откройте MaxPack там, чтобы его увидеть.",
+    recvNew: "Новый код",
+    recvOffBusy: "С ПК приходит игра: сначала отмените приём.",
+    recvReceiving: "Приём {name} с ПК на {drive}: {pct} % ({have} из {size}), {speed} MB/s.",
+    recvVerifying: "Проверка {name} в том виде, в каком он пришёл: {pct} %, {speed} MB/s.",
+    recvDone: "{name} получен и прошёл проверку: библиотека покажет его при следующем проходе.",
+    recvFailed: "{name} пришёл повреждённым: не совпадают {what}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
+    recvFailedError: "{name} пришёл, но его не удалось проверить: {error}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
+    recvCancelled: "Приём {name} отменён: полученное удалено.",
+    recvCancel: "Отменить приём"
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1707,7 +1744,22 @@ var MSG = {
     verifyPhase_quick: "卷和散装文件",
     verifyPhase_full: "逐个解压文件",
     verifyQuickOk: "已于 {date} 快速校验：全部 {files} 个卷和文件一致。",
-    verifyQuickBad: "已损坏（于 {date} 快速校验）：{files} 个卷和文件中有 {bad} 个不一致。"
+    verifyQuickBad: "已损坏（于 {date} 快速校验）：{files} 个卷和文件中有 {bad} 个不一致。",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "从电脑接收游戏",
+    recvHint: "电脑上的 MaxPack 可以把 .p5z 发送到这里（maxpack send，或其窗口中的“发送到主机”）。主机会在收到时校验，游戏库会找到它。关闭时，网络上的任何东西都无法写入磁盘。",
+    recvCodeLbl: "配对码",
+    recvCodeHint: "请在电脑上的 MaxPack 中输入。“新配对码”会让旧的失效。",
+    recvCodeElsewhere: "为了安全，配对码只显示在主机自己的屏幕上：请在主机上打开 MaxPack 查看。",
+    recvNew: "新配对码",
+    recvOffBusy: "正在从电脑接收游戏：请先取消。",
+    recvReceiving: "正在从电脑接收 {name} 到 {drive}：{pct} %（{have} / {size}），{speed} MB/s。",
+    recvVerifying: "正在校验收到的 {name}：{pct} %，{speed} MB/s。",
+    recvDone: "{name} 已收到并通过校验：游戏库会在下一轮扫描中显示它。",
+    recvFailed: "{name} 收到时已损坏：{what} 不一致。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
+    recvFailedError: "{name} 已收到但无法校验：{error}。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
+    recvCancelled: "已取消接收 {name}：已收到的部分已删除。",
+    recvCancel: "取消接收"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -1991,7 +2043,22 @@ var MSG = {
     verifyPhase_quick: "Volumes und lose Dateien",
     verifyPhase_full: "jede Datei entpacken",
     verifyQuickOk: "Schnell geprüft am {date}: alle {files} Volumes und Dateien stimmen.",
-    verifyQuickBad: "Beschädigt (schnell geprüft am {date}): {bad} von {files} Volumes und Dateien stimmen nicht."
+    verifyQuickBad: "Beschädigt (schnell geprüft am {date}): {bad} von {files} Volumes und Dateien stimmen nicht.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Spiele vom PC empfangen",
+    recvHint: "MaxPack am PC kann eine .p5z hierher senden (maxpack send oder „An die Konsole senden“ in seinem Fenster). Die Konsole prüft sie beim Eintreffen, und die Bibliothek findet sie. Ausgeschaltet kann nichts aus dem Netzwerk auf die Laufwerke schreiben.",
+    recvCodeLbl: "Kopplungscode",
+    recvCodeHint: "Gib ihn in MaxPack am PC ein. „Neuer Code“ macht den alten ungültig.",
+    recvCodeElsewhere: "Aus Sicherheitsgründen erscheint der Code nur auf dem Bildschirm der Konsole selbst: Öffne MaxPack dort, um ihn zu sehen.",
+    recvNew: "Neuer Code",
+    recvOffBusy: "Gerade kommt ein Spiel vom PC: brich es zuerst ab.",
+    recvReceiving: "Empfange {name} vom PC auf {drive}: {pct} % ({have} von {size}), {speed} MB/s.",
+    recvVerifying: "Prüfe {name}, wie es angekommen ist: {pct} %, {speed} MB/s.",
+    recvDone: "{name} ist angekommen und stimmt: Die Bibliothek zeigt es beim nächsten Durchlauf.",
+    recvFailed: "{name} ist beschädigt angekommen: {what} stimmen nicht. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
+    recvFailedError: "{name} ist angekommen, ließ sich aber nicht prüfen: {error}. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
+    recvCancelled: "Der Empfang von {name} wurde abgebrochen: Was angekommen war, ist gelöscht.",
+    recvCancel: "Empfang abbrechen"
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2220,7 +2287,22 @@ var MSG = {
     verifyPhase_quick: "volúmenes y archivos sueltos",
     verifyPhase_full: "descomprimiendo cada archivo",
     verifyQuickOk: "Verificado rápido el {date}: sus {files} volúmenes y archivos cuadran.",
-    verifyQuickBad: "Dañado (verificado rápido el {date}): {bad} de {files} volúmenes y archivos no cuadran."
+    verifyQuickBad: "Dañado (verificado rápido el {date}): {bad} de {files} volúmenes y archivos no cuadran.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Recibir juegos del PC",
+    recvHint: "MaxPack en el PC puede enviar aquí un .p5z (maxpack send, o «Enviar a la consola» en su ventana). La consola lo comprueba al llegar y la biblioteca lo encuentra. Apagado, nada de la red puede escribir en los discos.",
+    recvCodeLbl: "Código de emparejamiento",
+    recvCodeHint: "Escríbelo en MaxPack del PC. «Código nuevo» hace que el anterior deje de valer.",
+    recvCodeElsewhere: "Por seguridad, el código solo sale en la pantalla de la propia consola: abre MaxPack allí para verlo.",
+    recvNew: "Código nuevo",
+    recvOffBusy: "Está llegando un juego del PC: cancélalo antes.",
+    recvReceiving: "Recibiendo {name} del PC en {drive}: {pct} % ({have} de {size}), {speed} MB/s.",
+    recvVerifying: "Comprobando {name} tal como llegó: {pct} %, {speed} MB/s.",
+    recvDone: "{name} ha llegado y cuadra: la biblioteca lo muestra en su próxima pasada.",
+    recvFailed: "{name} ha llegado dañado: no cuadran {what}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
+    recvFailedError: "{name} ha llegado pero no se pudo comprobar: {error}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
+    recvCancelled: "Se canceló la recepción de {name}: lo que había llegado se ha borrado.",
+    recvCancel: "Cancelar la recepción"
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2504,7 +2586,22 @@ var MSG = {
     verifyPhase_quick: "volumes et fichiers isolés",
     verifyPhase_full: "décompression de chaque fichier",
     verifyQuickOk: "Vérifié rapidement le {date} : ses {files} volumes et fichiers correspondent.",
-    verifyQuickBad: "Endommagé (vérifié rapidement le {date}) : {bad} volumes et fichiers sur {files} ne correspondent pas."
+    verifyQuickBad: "Endommagé (vérifié rapidement le {date}) : {bad} volumes et fichiers sur {files} ne correspondent pas.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Recevoir des jeux du PC",
+    recvHint: "MaxPack sur le PC peut envoyer un .p5z ici (maxpack send, ou « Envoyer à la console » dans sa fenêtre). La console le vérifie à son arrivée et la bibliothèque le trouve. Désactivé, rien sur le réseau ne peut écrire sur les disques.",
+    recvCodeLbl: "Code d'appairage",
+    recvCodeHint: "Saisissez-le dans MaxPack sur le PC. « Nouveau code » rend l'ancien inutilisable.",
+    recvCodeElsewhere: "Par sécurité, le code ne s'affiche que sur l'écran de la console elle-même : ouvrez MaxPack sur la console pour le voir.",
+    recvNew: "Nouveau code",
+    recvOffBusy: "Un jeu arrive du PC : annulez-le d'abord.",
+    recvReceiving: "Réception de {name} depuis le PC sur {drive} : {pct} % ({have} sur {size}), {speed} MB/s.",
+    recvVerifying: "Vérification de {name} tel qu'il est arrivé : {pct} %, {speed} MB/s.",
+    recvDone: "{name} est arrivé et il est correct : la bibliothèque l'affiche à son prochain passage.",
+    recvFailed: "{name} est arrivé endommagé : {what} ne correspondent pas. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
+    recvFailedError: "{name} est arrivé mais n'a pas pu être vérifié : {error}. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
+    recvCancelled: "La réception de {name} a été annulée : ce qui était arrivé est supprimé.",
+    recvCancel: "Annuler la réception"
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2788,7 +2885,22 @@ var MSG = {
     verifyPhase_quick: "ボリュームと個別ファイル",
     verifyPhase_full: "全ファイルを展開",
     verifyQuickOk: "{date} にすばやく検証: {files} 個のボリュームとファイルがすべて一致しました。",
-    verifyQuickBad: "破損しています（{date} にすばやく検証）: {files} 個中 {bad} 個のボリュームとファイルが一致しません。"
+    verifyQuickBad: "破損しています（{date} にすばやく検証）: {files} 個中 {bad} 個のボリュームとファイルが一致しません。",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "PC からゲームを受信",
+    recvHint: "PC の MaxPack から .p5z をここへ送れます（maxpack send、またはウィンドウの「本体へ送る」）。本体は届いたときに検証し、ライブラリに表示されます。オフのときは、ネットワークからドライブへ何も書き込めません。",
+    recvCodeLbl: "ペアリングコード",
+    recvCodeHint: "PC の MaxPack に入力してください。「新しいコード」を押すと古いコードは使えなくなります。",
+    recvCodeElsewhere: "安全のため、コードは本体自身の画面にだけ表示されます。本体で MaxPack を開いて確認してください。",
+    recvNew: "新しいコード",
+    recvOffBusy: "PC からゲームを受信中です。先に中止してください。",
+    recvReceiving: "PC から {name} を {drive} に受信中: {pct} %（{size} 中 {have}）、{speed} MB/s。",
+    recvVerifying: "届いた {name} を検証中: {pct} %、{speed} MB/s。",
+    recvDone: "{name} が届き、検証に合格しました。次の検索でライブラリに表示されます。",
+    recvFailed: "{name} は破損した状態で届きました: {what} が一致しません。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
+    recvFailedError: "{name} は届きましたが検証できませんでした: {error}。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
+    recvCancelled: "{name} の受信を中止しました。届いた分は削除されました。",
+    recvCancel: "受信を中止"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -3072,7 +3184,22 @@ var MSG = {
     verifyPhase_quick: "volumes e arquivos soltos",
     verifyPhase_full: "descompactando cada arquivo",
     verifyQuickOk: "Verificado rápido em {date}: seus {files} volumes e arquivos conferem.",
-    verifyQuickBad: "Danificado (verificado rápido em {date}): {bad} de {files} volumes e arquivos não conferem."
+    verifyQuickBad: "Danificado (verificado rápido em {date}): {bad} de {files} volumes e arquivos não conferem.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Receber jogos do PC",
+    recvHint: "O MaxPack no PC pode enviar um .p5z para cá (maxpack send, ou “Enviar para o console” na janela dele). O console o confere ao chegar e a biblioteca o encontra. Desligado, nada na rede consegue gravar nos discos.",
+    recvCodeLbl: "Código de pareamento",
+    recvCodeHint: "Digite-o no MaxPack do PC. “Novo código” faz o anterior deixar de valer.",
+    recvCodeElsewhere: "Por segurança, o código só aparece na tela do próprio console: abra o MaxPack lá para vê-lo.",
+    recvNew: "Novo código",
+    recvOffBusy: "Um jogo está chegando do PC: cancele-o antes.",
+    recvReceiving: "Recebendo {name} do PC em {drive}: {pct} % ({have} de {size}), {speed} MB/s.",
+    recvVerifying: "Conferindo {name} como chegou: {pct} %, {speed} MB/s.",
+    recvDone: "{name} chegou e confere: a biblioteca o mostra na próxima varredura.",
+    recvFailed: "{name} chegou danificado: {what} não conferem. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
+    recvFailedError: "{name} chegou mas não pôde ser conferido: {error}. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
+    recvCancelled: "O recebimento de {name} foi cancelado: o que tinha chegado foi apagado.",
+    recvCancel: "Cancelar o recebimento"
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3356,7 +3483,22 @@ var MSG = {
     verifyPhase_quick: "volumi e file sciolti",
     verifyPhase_full: "decompressione di ogni file",
     verifyQuickOk: "Verificato rapidamente il {date}: tutti i {files} volumi e file corrispondono.",
-    verifyQuickBad: "Danneggiato (verifica rapida del {date}): {bad} volumi e file su {files} non corrispondono."
+    verifyQuickBad: "Danneggiato (verifica rapida del {date}): {bad} volumi e file su {files} non corrispondono.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "Ricevi giochi dal PC",
+    recvHint: "MaxPack sul PC può inviare qui un .p5z (maxpack send, o «Invia alla console» nella sua finestra). La console lo controlla all'arrivo e la libreria lo trova. Disattivato, niente dalla rete può scrivere sui dischi.",
+    recvCodeLbl: "Codice di abbinamento",
+    recvCodeHint: "Inseriscilo in MaxPack sul PC. «Nuovo codice» fa smettere di valere quello vecchio.",
+    recvCodeElsewhere: "Per sicurezza il codice compare solo sullo schermo della console stessa: apri MaxPack lì per vederlo.",
+    recvNew: "Nuovo codice",
+    recvOffBusy: "Sta arrivando un gioco dal PC: annullalo prima.",
+    recvReceiving: "Ricezione di {name} dal PC su {drive}: {pct} % ({have} di {size}), {speed} MB/s.",
+    recvVerifying: "Controllo di {name} così com'è arrivato: {pct} %, {speed} MB/s.",
+    recvDone: "{name} è arrivato ed è corretto: la libreria lo mostra al prossimo passaggio.",
+    recvFailed: "{name} è arrivato danneggiato: {what} non corrispondono. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
+    recvFailedError: "{name} è arrivato ma non è stato possibile controllarlo: {error}. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
+    recvCancelled: "La ricezione di {name} è stata annullata: ciò che era arrivato è stato eliminato.",
+    recvCancel: "Annulla la ricezione"
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3640,7 +3782,22 @@ var MSG = {
     verifyPhase_quick: "볼륨과 개별 파일",
     verifyPhase_full: "모든 파일 풀기",
     verifyQuickOk: "{date}에 빠른 검증: 볼륨과 파일 {files}개가 모두 일치합니다.",
-    verifyQuickBad: "손상됨({date}에 빠른 검증): 볼륨과 파일 {files}개 중 {bad}개가 일치하지 않습니다."
+    verifyQuickBad: "손상됨({date}에 빠른 검증): 볼륨과 파일 {files}개 중 {bad}개가 일치하지 않습니다.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "PC에서 게임 받기",
+    recvHint: "PC의 MaxPack에서 .p5z를 이곳으로 보낼 수 있습니다(maxpack send, 또는 창의 “콘솔로 보내기”). 콘솔이 도착할 때 검증하고 라이브러리에 표시됩니다. 꺼져 있으면 네트워크에서 드라이브에 아무것도 쓸 수 없습니다.",
+    recvCodeLbl: "페어링 코드",
+    recvCodeHint: "PC의 MaxPack에 입력하세요. “새 코드”를 누르면 이전 코드는 더 이상 쓸 수 없습니다.",
+    recvCodeElsewhere: "보안을 위해 코드는 콘솔 자체 화면에만 표시됩니다. 콘솔에서 MaxPack을 열어 확인하세요.",
+    recvNew: "새 코드",
+    recvOffBusy: "PC에서 게임을 받는 중입니다. 먼저 취소하세요.",
+    recvReceiving: "PC에서 {name}을(를) {drive}(으)로 받는 중: {pct} %({size} 중 {have}), {speed} MB/s.",
+    recvVerifying: "도착한 {name} 검증 중: {pct} %, {speed} MB/s.",
+    recvDone: "{name}이(가) 도착했고 검증을 통과했습니다. 다음 검색 때 라이브러리에 표시됩니다.",
+    recvFailed: "{name}이(가) 손상된 채로 도착했습니다: {what}이(가) 일치하지 않습니다. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
+    recvFailedError: "{name}이(가) 도착했지만 검증할 수 없었습니다: {error}. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
+    recvCancelled: "{name} 받기를 취소했습니다. 도착한 부분은 삭제되었습니다.",
+    recvCancel: "받기 취소"
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -3924,7 +4081,22 @@ var MSG = {
     verifyPhase_quick: "الأجزاء والملفات المنفصلة",
     verifyPhase_full: "فك ضغط كل ملف",
     verifyQuickOk: "تم التحقق السريع في {date}: جميع الأجزاء والملفات ({files}) مطابقة.",
-    verifyQuickBad: "تالف (تحقق سريع في {date}): {bad} من {files} أجزاء وملفات غير مطابقة."
+    verifyQuickBad: "تالف (تحقق سريع في {date}): {bad} من {files} أجزاء وملفات غير مطابقة.",
+    // Settings > "Receive games from the PC" and the receive's banner (src/receive.rs, POST /api/pairing)
+    recvLbl: "استقبال الألعاب من الحاسوب",
+    recvHint: "يستطيع MaxPack على الحاسوب إرسال ملف .p5z إلى هنا (maxpack send، أو «إرسال إلى الجهاز» في نافذته). يتحقق الجهاز منه عند وصوله وتجده المكتبة. عند الإيقاف لا يستطيع شيء على الشبكة الكتابة على الأقراص.",
+    recvCodeLbl: "رمز الاقتران",
+    recvCodeHint: "اكتبه في MaxPack على الحاسوب. «رمز جديد» يُبطل الرمز القديم.",
+    recvCodeElsewhere: "حفاظًا على الأمان، لا يظهر الرمز إلا على شاشة الجهاز نفسه: افتح MaxPack هناك لتراه.",
+    recvNew: "رمز جديد",
+    recvOffBusy: "تصل لعبة من الحاسوب: ألغها أولًا.",
+    recvReceiving: "جارٍ استقبال {name} من الحاسوب على {drive}: {pct} % ({have} من {size})، {speed} MB/s.",
+    recvVerifying: "جارٍ التحقق من {name} كما وصل: {pct} %، {speed} MB/s.",
+    recvDone: "وصل {name} وهو سليم: تعرضه المكتبة في جولتها التالية.",
+    recvFailed: "وصل {name} تالفًا: {what} غير مطابقة. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
+    recvFailedError: "وصل {name} لكن تعذّر التحقق منه: {error}. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
+    recvCancelled: "أُلغي استقبال {name}: حُذف ما كان قد وصل.",
+    recvCancel: "إلغاء الاستقبال"
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -5153,6 +5325,7 @@ async function poll() {
     updTimedOut();
     setBanner('offline', false);
     renderUpdate();
+    renderReceive();
     var cache = state.cache || {};
     setBanner('lowspace', !!cache.low_space, function () { return t('lowSpace', { free: gb(cache.free) }); });
     setBanner('noampr', cache.ampr_present === false);
@@ -5278,9 +5451,106 @@ $('update-later').onclick = function () {
   if (had) document.querySelector('.nav [aria-selected="true"]').focus();
 };
 function bannerButtons() {
-  if (!$('update').classList.contains('show')) return [];
-  return [$('update-go'), $('update-later')].filter(function (b) { return !b.hidden; });
+  var row = [];
+  if ($('update').classList.contains('show')) row = row.concat([$('update-go'), $('update-later')]);
+  if ($('recv').classList.contains('show')) row = row.concat([$('recv-cancel'), $('recv-close')]);
+  return row.filter(function (b) { return !b.hidden; });
 }
+
+// A receive from the PC (state.receive, src/receive.rs): its progress, its verify and how it ended, in a banner
+// over every screen; Cancel while it is under way (or failed: it deletes what arrived), Close once it ended.
+var recvClosed = 0;
+function recvText() {
+  var r = state && state.receive;
+  if (!r) return '';
+  var name = r.name || '?', speed = r.mbps != null ? Number(r.mbps).toFixed(1) : '?';
+  if (r.state === 'receiving') return t('recvReceiving', { name: name, drive: driveLabel(r.drive), pct: r.size ? Math.floor(r.have / r.size * 100) : 0,
+    have: fmtSize(r.have), size: fmtSize(r.size), speed: speed });
+  if (r.state === 'verifying') {
+    var v = r.verify || {};
+    return r.cancelling ? t('verifyCancelling') : t('recvVerifying', { name: name, pct: v.total ? Math.floor(v.bytes / v.total * 100) : 0, speed: speed });
+  }
+  if (r.state === 'done') return t('recvDone', { name: name });
+  if (r.state === 'cancelled') return t('recvCancelled', { name: name });
+  var names = r.verify && Array.isArray(r.verify.bad) ? r.verify.bad.map(function (b) { return b.name; }) : [];
+  if (names.length) return t('recvFailed', { name: name, path: r.path,
+    what: names.slice(0, 8).join(', ') + ((Number(r.verify.nbad) || 0) > names.length ? ', …' : '') });
+  return t('recvFailedError', { name: name, error: r.error || '?', path: r.path });
+}
+function renderReceive() {
+  var r = state && state.receive, under = !!r && (r.state === 'receiving' || r.state === 'verifying');
+  var show = !!r && (under || r.seq !== recvClosed);
+  live($('recv-msg'), show ? recvText : null);
+  $('recv').classList.toggle('show', show);
+  $('recv').classList.toggle('ok', show && r.state !== 'failed');
+  $('recv').classList.toggle('warn', show && r.state === 'failed');
+  if (!show) return;
+  $('recv-cancel').hidden = !(under || r.state === 'failed');
+  $('recv-cancel').disabled = !!r.cancelling || !!$('recv-cancel')._busy;
+  $('recv-close').hidden = under;
+}
+$('recv-cancel').onclick = async function () {
+  var btn = this;
+  btn._busy = true;
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/pairing/cancel', { method: 'POST' });
+    if (r.ok && state && state.receive) state.receive.state = (await r.json()).state || state.receive.state;
+  } catch (e) { /* the next state says what happened */ }
+  btn._busy = false;
+  renderReceive();
+  schedule(300);
+};
+$('recv-close').onclick = function () {
+  var had = document.activeElement === this;
+  recvClosed = state && state.receive ? state.receive.seq : 0;
+  renderReceive();
+  if (had) document.querySelector('.nav [aria-selected="true"]').focus();
+};
+// Settings > "Receive games from the PC" (POST /api/pairing): the switch acts at once, without Save. The code
+// (state.pairing.code) comes only to the page open on the console itself; elsewhere the row says where it is.
+function renderPairing() {
+  var p = (state && state.pairing) || {}, box = $('recv-on');
+  if (!box._busy) box.checked = !!p.on;
+  $('recv-code-row').hidden = !p.on;
+  setText($('recv-code'), p.code ? String(p.code).slice(0, 3) + ' ' + String(p.code).slice(3) : '');
+  $('recv-code').hidden = !p.code;
+  setText($('recv-code-hint'), t(p.code ? 'recvCodeHint' : 'recvCodeElsewhere'));
+  $('recv-new').hidden = !p.code;
+}
+function recvMsg(text) {
+  setText($('recvmsg'), text);
+  $('recvmsg').hidden = !text;
+}
+$('recv-on').onchange = async function () {
+  var box = this, on = box.checked;
+  box._busy = true;
+  box.disabled = true;
+  recvMsg('');
+  try {
+    var r = await fetch('/api/pairing', { method: 'POST', body: on ? 'on' : 'off' });
+    if (!r.ok) throw new Error(r.status === 409 ? t('recvOffBusy') : (await r.text()) || 'HTTP ' + r.status);
+    if (state) state.pairing = Object.assign(state.pairing || {}, { on: on });
+  } catch (e) {
+    box.checked = !on;
+    recvMsg(e.message);
+  }
+  box._busy = false;
+  box.disabled = false;
+  renderPairing();
+  schedule(300);
+};
+$('recv-new').onclick = async function () {
+  var btn = this;
+  btn.disabled = true;
+  recvMsg('');
+  try {
+    var r = await fetch('/api/pairing/new', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.text()) || 'HTTP ' + r.status);
+  } catch (e) { recvMsg(e.message); }
+  btn.disabled = false;
+  schedule(300);
+};
 // ArrowDown from the top bar: the update notice first when it shows, then the open screen.
 function focusBelowTop() {
   var row = bannerButtons();
@@ -5315,6 +5585,7 @@ function readSettings() {
 }
 function renderSettingsInfo() {
   renderTls();
+  renderPairing();
   // The ampr-emu-ng update waits for the secure-connection check, as the self-update does.
   var tc = state && state.tls_check;
   $('amprtls').hidden = !tc || tc.passed === true;
@@ -6007,8 +6278,10 @@ function moveInTop(t, key) {
   var j = row.indexOf(t) + (key === 'ArrowLeft' ? -1 : 1);
   if (row[j]) row[j].focus();
 }
+// Not one that is hidden (the pairing code's row while the switch is off): focus would stay where it was.
 function fields() {
-  return Array.prototype.slice.call(document.querySelectorAll('#settings textarea, #settings input, #settings select, #settings button'));
+  return Array.prototype.slice.call(document.querySelectorAll('#settings textarea, #settings input, #settings select, #settings button'))
+    .filter(function (c) { return c.offsetParent !== null; });
 }
 function moveInSettings(t, key) {
   var list = fields(), i = list.indexOf(t);
@@ -6125,6 +6398,7 @@ function renderAll() {
   setText($('logtoggle'), t(logOpen ? 'hideLog' : 'showLog'));
   ['offline', 'lowspace', 'paused', 'waiting', 'smsg', 'eject', 'i-msg'].forEach(function (id) { if ($(id)._live) live($(id), $(id)._live); });
   renderUpdate();
+  renderReceive();
   $('i-path').placeholder = t('iManualPh');
   $('i-path').setAttribute('aria-label', t('iManualAria'));
   if (inst) renderInst(true);

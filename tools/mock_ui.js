@@ -7,7 +7,7 @@
 //                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
-//                         [--ampr-fail checksum|older|none]
+//                         [--ampr-fail checksum|older|none] [--receive demo|failed|none]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -84,6 +84,7 @@ const mock = {
   tls: arg('tls', 'never'),
   tls_result: arg('tls-result', 'passed'),
   ampr_fail: arg('ampr-fail', 'none'),
+  receive: arg('receive', 'none'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
@@ -193,7 +194,7 @@ const verified = new Map([
 ]);
 let verifyJob = null, verifyTimer = null;
 // src/jobs.rs: a console job runs (a verify, a receive from the PC).
-function consoleBusy() { return verifyRunning(); }
+function consoleBusy() { return verifyRunning() || recvUnder(); }
 function withVerified(g) { g.verified = g.kind === 'p5z' ? verified.get(g.path) || null : null; return g; }
 function verifyRunning() { return !!verifyJob && verifyJob.state === 'running'; }
 function verifyEnd(state, error) {
@@ -208,6 +209,7 @@ function verifyStart(tid, body) {
   if (g.kind !== 'p5z') return [409, 'not_p5z', 'only a .p5z is verified on the console'];
   if (currentJob()) return [409, 'install_running', 'the installer is running a job; try again when it ends'];
   if (verifyRunning()) return [409, 'verify_running', 'a .p5z is being verified on the console; try again when it ends'];
+  if (recvUnder()) return [409, 'receive_running', 'a receive from the PC is under way; try again when it ends'];
   if (runningNow().length) return [409, 'game_running', 'a game is running: close it first'];
   // The quick phase reads the .p5z (10 % a second), the full one unpacks more (5 % a second); a damaged copy stops
   // after the quick one, as the payload does.
@@ -288,7 +290,7 @@ function games() {
   ];
 }
 
-function apiState() {
+function apiState(req) {
   return {
     version, update: updateValue(), tls_check: tlsCheckValue(), busy: false, paused: runningNow().length > 0, waiting: waitingValue(), running: runningNow(),
     games: games(),
@@ -306,6 +308,8 @@ function apiState() {
     ],
     cache: { path: '/data/maxpack/caches', size: 2 * GB, free: 311 * GB, low_space: false, ampr_present: true },
     verify: verifyJob,
+    receive: recvState(),
+    pairing: { on: pairing.on, code: isLoopback(req) && pairing.code ? pairing.code : null, here: isLoopback(req) },
     log: ['2026-11-23 20:00:00Z [1000] web UI on port 8095', '2026-11-23 20:00:02Z [3000] installer: ready in 412 ms'],
   };
 }
@@ -449,6 +453,168 @@ function instPost(name, body) {
   }
 }
 
+// ---- Receive games from the PC (src/receive.rs): Settings' switch and code, and the PC's /api/receive/* ----
+// The switch starts off (on with --receive); the code goes only to a page opened at localhost or 127.0.0.1, as the
+// payload gives it only to the console's own screen. The PC's routes answer as the payload's, so maxpack send can be
+// tried against the mock: the switch (403 receive_off), the code and its lockout (401 bad_code; 5 wrong in a row from
+// one address, 429 locked for 60 s), the drives "internal" (/data, ufs) and "usb0" (/mnt/usb0, exfatfs), start,
+// data (counted and dropped: nothing is written), status, finish (a verify of 3 s; a name with "damaged" in it fails
+// on a volume and a file) and cancel. --receive demo|failed: a receive that runs by itself (5 % a second) so the
+// banner shows without a PC; at run time /mock?receive=demo.
+const pairing = { on: mock.receive !== 'none', code: '' };
+let recvJob = null, recvSeq = 0, recvTimer = null;
+const recvLock = new Map();
+const RECV_DRIVES = [
+  { id: 'internal', mount: '/data', free: 311 * GB, total: 825 * GB, fs: 'ufs' },
+  { id: 'usb0', mount: '/mnt/usb0', free: 412 * GB, total: 1000 * GB, fs: 'exfatfs' },
+];
+const received = new Set();
+function mockCode() { return String(Math.floor(Math.random() * 1e6)).padStart(6, '0'); }
+if (pairing.on) pairing.code = mockCode();
+function isLoopback(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress); }
+function recvUnder() { return !!recvJob && (recvJob.state === 'receiving' || recvJob.state === 'verifying'); }
+// state.receive (src/receive.rs `json`): never the token.
+function recvState() {
+  if (!recvJob) return null;
+  const j = recvJob;
+  return { seq: j.seq, state: j.state, name: j.name, drive: j.mount, path: j.partial, dest: j.dest, size: j.size, have: j.have,
+    from: j.from, mbps: recvUnder() ? j.mbps : null, cancelling: false, verify: j.verify, error: j.error, elapsed_ms: Date.now() - j.started };
+}
+// The status the PC polls (maxpack_logic::receive::status_json).
+function recvStatus(j) {
+  return { have: j.have, size: j.size, state: j.state, error: j.error, verify: j.verify && { bytes: j.verify.bytes, total: j.verify.total,
+    nbad: j.verify.nbad, bad: j.verify.bad.map((b) => ({ kind: b.what, volume: b.volume, name: b.name, expected: 'aa'.repeat(32),
+      found: 'bb'.repeat(32), why: 'sha256' })) } };
+}
+const recvNo = (code, status, detail, extra) => [status, Object.assign({ error: code, detail }, extra || {})];
+function recvNewJob(name, size, drive, have) {
+  const d = RECV_DRIVES.find((x) => x.id === drive);
+  recvJob = { id: require('crypto').randomBytes(16).toString('hex'), seq: ++recvSeq, name, size, drive, mount: d.mount,
+    partial: `${d.mount}/homebrew/${name}.maxpack-recv`, dest: `${d.mount}/homebrew/${name}`, have, from: have,
+    state: 'receiving', verify: null, error: null, mbps: null, started: Date.now() };
+  return recvJob;
+}
+// The verify after finish: 3 s, then done (the name joins the drive's files) or failed.
+function recvVerify(j) {
+  j.state = 'verifying';
+  j.verify = { bytes: 0, total: j.size, nbad: 0, bad: [] };
+  let step = 0;
+  clearInterval(recvTimer);
+  recvTimer = setInterval(() => {
+    if (j.state !== 'verifying') return clearInterval(recvTimer);
+    j.verify.bytes = Math.min(j.size, Math.round(j.size * ++step / 3));
+    j.mbps = j.size / 3 / 1e6;
+    if (step < 3) return;
+    clearInterval(recvTimer);
+    if (/damaged/i.test(j.name) || j.demoFail) {
+      j.verify.nbad = 2;
+      j.verify.bad = [{ what: 'volume', volume: 2, name: 'ampr_zstd-002.pak' }, { what: 'file', volume: null, name: 'sce_sys/param.json' }];
+      j.state = 'failed';
+      j.error = '2 of 40 volumes and files do not match: volume ampr_zstd-002.pak (sha256) and 1 more';
+    } else {
+      j.state = 'done';
+      received.add(j.dest);
+    }
+  }, 1000);
+}
+// --receive demo|failed (and /mock?receive=): a receive of 18 GB that arrives 5 % a second by itself.
+function recvDemo(kind) {
+  clearInterval(recvTimer);
+  if (kind !== 'demo' && kind !== 'failed') { recvJob = null; return; }
+  pairing.on = true;
+  if (!pairing.code) pairing.code = mockCode();
+  const j = recvNewJob(kind === 'failed' ? 'Demo Damaged [PPSA09876].p5z' : 'Demo Game [PPSA09876].p5z', 18 * GB, 'usb0', 0);
+  j.demoFail = kind === 'failed';
+  recvTimer = setInterval(() => {
+    if (j.state !== 'receiving') return clearInterval(recvTimer);
+    j.have = Math.min(j.size, j.have + Math.round(j.size * 0.05));
+    j.mbps = j.size * 0.05 / 1e6;
+    if (j.have >= j.size) recvVerify(j);
+  }, 1000);
+}
+// maxpack_logic::receive::gate: the switch, then the lockout and the code.
+function recvGate(req) {
+  if (!pairing.on) return recvNo('receive_off', 403, 'receiving games from the PC is off on the console (Settings)');
+  const key = req.socket.remoteAddress, now = Date.now(), t = recvLock.get(key) || { wrong: 0, until: 0 };
+  if (t.until > now) return recvNo('locked', 429, 'too many wrong codes', { retry_after: Math.ceil((t.until - now) / 1000) });
+  const code = req.headers['x-maxpack-code'];
+  if (code === undefined) return recvNo('bad_code', 401, 'missing or wrong pairing code (X-MaxPack-Code)');
+  if (code === pairing.code) { recvLock.delete(key); return null; }
+  t.wrong += 1;
+  if (t.wrong >= 5) Object.assign(t, { wrong: 0, until: now + 60000 });
+  recvLock.set(key, t);
+  return recvNo('bad_code', 401, 'missing or wrong pairing code (X-MaxPack-Code)');
+}
+// maxpack_logic::receive::valid_name and start_gate, in their order.
+function recvStart(body) {
+  let b;
+  try { b = JSON.parse(body); } catch (e) { return recvNo('bad_request', 400, 'expected {"name","size","drive"}'); }
+  if (!b || typeof b.name !== 'string' || typeof b.size !== 'number' || typeof b.drive !== 'string')
+    return recvNo('bad_request', 400, 'expected {"name","size","drive"}');
+  const { name, size, drive } = b;
+  if (Buffer.byteLength(name) > 200 || !/^[^/\\:*?"<>|\u0000-\u001f\u007f-\u009f]+\.p5z$/i.test(name) || /\.\./.test(name) || name.startsWith('.'))
+    return recvNo('bad_name', 400, 'not a plain .p5z file name');
+  if (size < 96) return recvNo('bad_size', 400, 'a .p5z is at least 96 bytes');
+  const d = RECV_DRIVES.find((x) => x.id === drive);
+  if (!d) return recvNo('no_drive', 404, 'no such drive on the console');
+  const dest = `${d.mount}/homebrew/${name}`;
+  if (received.has(dest) || games().some((g) => g.path === dest)) return recvNo('exists', 409, 'that .p5z is already there');
+  if (recvJob && recvJob.state === 'receiving' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size)
+    return [200, { id: recvJob.id, have: recvJob.have }];
+  if (recvUnder()) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
+  if (currentJob()) return recvNo('busy', 409, 'the installer is running a job; try again when it ends');
+  if (verifyRunning()) return recvNo('busy', 409, 'a .p5z is being verified on the console; try again when it ends');
+  const missing = size + 256 * MB - d.free;
+  if (missing > 0) return recvNo('no_space', 507, 'not enough space on the drive', { missing });
+  clearInterval(recvTimer);
+  const j = recvNewJob(name, size, drive, 0);
+  return [200, { id: j.id, have: j.have }];
+}
+function recvById(url) {
+  const id = url.searchParams.get('id');
+  return recvJob && recvJob.id === id ? recvJob : null;
+}
+function recvCancel(j) {
+  if (j.state === 'done') return recvNo('state', 409, 'the receive is done');
+  if (j.state !== 'cancelled') Object.assign(j, { state: 'cancelled', mbps: null });
+  clearInterval(recvTimer);
+  return [200, recvStatus(j)];
+}
+// The PC's routes; null for a request that is not one of them.
+function recvRoute(req, url, body, bytes) {
+  const p = url.pathname;
+  if (!p.startsWith('/api/receive/')) return null;
+  const no = recvGate(req);
+  if (no) return no;
+  if (req.method === 'GET' && p === '/api/receive/drives')
+    return [200, { drives: RECV_DRIVES.map((d) => ({ id: d.id, free: d.free, total: d.total, fs: d.fs })) }];
+  if (req.method === 'POST' && p === '/api/receive/start') return recvStart(body);
+  const j = recvById(url);
+  if (!j) return recvNo('unknown_id', 404, 'no receive with that id: start again');
+  if (req.method === 'PUT' && p === '/api/receive/data') {
+    const offset = Number(url.searchParams.get('offset'));
+    if (j.state !== 'receiving') return recvNo('state', 409, `the receive is ${j.state}`);
+    if (bytes > 64 * MB) return recvNo('too_large', 413, 'at most 64 MiB per request');
+    if (offset !== j.have) return recvNo('offset', 409, `the data must go on at byte ${j.have}`, { have: j.have });
+    if (offset + bytes > j.size) return recvNo('past_size', 400, 'past the size given at start');
+    const t = (Date.now() - (j.last || j.started)) / 1000;
+    j.have += bytes;
+    j.mbps = t > 0 ? bytes / t / 1e6 : null;
+    j.last = Date.now();
+    return [200, { have: j.have }];
+  }
+  if (req.method === 'GET' && p === '/api/receive/status') return [200, recvStatus(j)];
+  if (req.method === 'POST' && p === '/api/receive/finish') {
+    if (j.state !== 'receiving') return recvNo('state', 409, `the receive is ${j.state}`);
+    if (j.have !== j.size) return recvNo('incomplete', 409, `only ${j.have} bytes arrived`, { have: j.have });
+    recvVerify(j);
+    return [202, recvStatus(j)];
+  }
+  if (req.method === 'POST' && p === '/api/receive/cancel') return recvCancel(j);
+  return recvNo('not_found', 404, 'no such route');
+}
+if (mock.receive === 'demo' || mock.receive === 'failed') recvDemo(mock.receive);
+
 // ---- server ----
 function send(res, status, type, body) {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -490,8 +656,10 @@ const REFUSED = {
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
-  let chunks = '';
-  req.on('data', (c) => { chunks += c; });
+  // The receive's data is counted, never kept (up to 64 MiB a request).
+  const counted = req.method === 'PUT' && url.pathname === '/api/receive/data';
+  let chunks = '', bytes = 0;
+  req.on('data', (c) => { if (counted) bytes += c.length; else chunks += c; });
   req.on('end', () => {
     const why = refusal(req);
     if (why) {
@@ -509,9 +677,26 @@ http.createServer((req, res) => {
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
+      if (url.searchParams.has('receive')) recvDemo(url.searchParams.get('receive'));
       return json(res, 200, mock);
     }
-    if (req.method === 'GET' && p === '/api/state') return json(res, 200, apiState());
+    if (req.method === 'GET' && p === '/api/state') return json(res, 200, apiState(req));
+    const rx = recvRoute(req, url, chunks, bytes);
+    if (rx) return json(res, rx[0], rx[1]);
+    // Settings > "Receive games from the PC" (src/receive.rs set_on, renew, cancel).
+    if (req.method === 'POST' && p === '/api/pairing') {
+      if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
+      if (chunks === 'off' && recvUnder()) return send(res, 409, 'text/plain', 'a game is arriving from the PC: cancel it first');
+      pairing.on = chunks === 'on';
+      if (pairing.on && !pairing.code) pairing.code = mockCode();
+      return send(res, 204, 'text/plain', '');
+    }
+    if (req.method === 'POST' && p === '/api/pairing/new') { pairing.code = mockCode(); return send(res, 204, 'text/plain', ''); }
+    if (req.method === 'POST' && p === '/api/pairing/cancel') {
+      if (!recvJob) return json(res, 404, { error: 'unknown_id', detail: 'no receive' });
+      const c = recvCancel(recvJob);
+      return json(res, c[0], c[1]);
+    }
     if (req.method === 'GET' && p === '/api/settings') return json(res, 200, settings);
     if (req.method === 'GET' && p === '/api/ampr') return json(res, 200, { ...ampr, updating: false });
     if (req.method === 'GET' && p.startsWith('/api/sizes/')) return json(res, 200, { game: 38 * GB, dlc: 0, save: 120 * MB, cache: 210 * MB });
@@ -679,7 +864,7 @@ http.createServer((req, res) => {
     return send(res, 404, 'text/plain', 'not found');
   });
 }).listen(port, () => {
-  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''}, update=${mock.update}, update_fail=${mock.update_fail}, tls=${mock.tls}, tls_result=${mock.tls_result}, ampr_fail=${mock.ampr_fail})`);
+  console.log(`mock UI on http://localhost:${port}/ (waiting=${mock.waiting}, job=${mock.job}, last=${mock.last}${mock.empty ? ', empty' : ''}, update=${mock.update}, update_fail=${mock.update_fail}, tls=${mock.tls}, tls_result=${mock.tls_result}, ampr_fail=${mock.ampr_fail}, receive=${mock.receive})`);
   console.log(`switch at run time: http://localhost:${port}/mock?waiting=none&job=paused&last=needs_confirm`);
   // The addresses to try the banner's URL with (see the top of the file).
   const lan = Object.values(require('os').networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal);
