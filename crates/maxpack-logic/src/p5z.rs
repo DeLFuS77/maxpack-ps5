@@ -1,6 +1,8 @@
 //! The .p5z game file as a playable source: the rules of the payload that need no PS5. The engine's
 //! `info --play` JSON is read here, each loose file is given its destination, and the `maxpack.image`
-//! text that ampr-emu-ng reads is written here (the text is a contract: see `image_text`).
+//! text that ampr-emu-ng reads is written here (the text is a contract: see `image_text`). A .p5z
+//! that grew by appending (index version 2) is played only with an ampr-emu-ng that knows it
+//! (`ng_plays`).
 
 use crate::cache::{reserved, LIB_DIRS, P5Z_MOUNT_DIR};
 use serde::Deserialize;
@@ -10,6 +12,10 @@ use std::collections::BTreeMap;
 pub const MAX_VOLUMES: usize = 256;
 /// Free space kept over the loose files, the same margin the installer keeps.
 pub const SPACE_MARGIN: u64 = 256 << 20;
+/// The first ampr-emu-ng whose p5z mode plays a .p5z that grew by appending: chunks in any order, room
+/// no chunk uses, volumes with no chunk, and volume headers that count fewer volumes than the index.
+/// An older one refuses the grown index at the game's start and serves none of its packed files.
+pub const GROWN_NG: &str = "v0.5.2-maxpack.1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Loose {
@@ -34,6 +40,18 @@ pub struct PlayInfo {
     pub loose_bytes: u64,
     pub loose: Vec<Loose>,
     pub volumes: Vec<Volume>,
+    /// The version of the .p5z's index: 1 as packed, 2 once it grew by appending (a DLC added, or the
+    /// files a new version of the game changes).
+    pub index_version: u32,
+    /// How many times it grew: 0 for index version 1, at least 1 for 2.
+    pub grown: u32,
+}
+
+impl PlayInfo {
+    /// The .p5z grew by appending: only an ampr-emu-ng from GROWN_NG on plays it (`ng_plays`).
+    pub fn grew(&self) -> bool {
+        self.index_version >= 2
+    }
 }
 
 /// Why a .p5z cannot be played.
@@ -58,7 +76,8 @@ pub fn is_p5z_name(name: &str) -> bool {
     matches!(name.rsplit_once('.'), Some((stem, ext)) if !stem.is_empty() && ext.eq_ignore_ascii_case("p5z"))
 }
 
-/// What `maxpack info --play` prints; every field is required.
+/// What `maxpack info --play` prints; every field is required but `index_version` and `grown`, which
+/// the engine adds only for a .p5z that grew (absent: version 1, grown 0).
 #[derive(Deserialize)]
 struct Raw {
     title_id: String,
@@ -69,7 +88,18 @@ struct Raw {
     loose_bytes: u64,
     loose: Vec<Loose>,
     volumes: Vec<Volume>,
+    #[serde(default = "first_index")]
+    index_version: u32,
+    #[serde(default)]
+    grown: u32,
 }
+
+fn first_index() -> u32 {
+    1
+}
+
+/// The index versions this MaxPack reads: a later one may need a later ampr-emu-ng than GROWN_NG.
+const INDEX_VERSIONS: [u32; 2] = [1, 2];
 
 /// The loose files a game needs to be installed and run.
 const REQUIRED: [&str; 4] = ["ampr_zstd.index", "ampr_emu.index", "eboot.bin", "sce_sys/param.json"];
@@ -85,6 +115,12 @@ pub fn parse_play_json(s: &str) -> Result<PlayInfo, Unplayable> {
     }
     if raw.volumes.iter().enumerate().any(|(i, v)| v.id as usize != i) {
         return Err(bad("volume ids are not 0..n-1 in order"));
+    }
+    if !INDEX_VERSIONS.contains(&raw.index_version) {
+        return Err(Unplayable::Damaged(format!("index version {} (this MaxPack reads versions 1 and 2)", raw.index_version)));
+    }
+    if (raw.index_version >= 2) != (raw.grown > 0) {
+        return Err(Unplayable::Damaged(format!("index version {} that grew {} times", raw.index_version, raw.grown)));
     }
     if let Some(missing) = REQUIRED.iter().find(|r| !raw.loose.iter().any(|l| l.path == **r)) {
         return Err(Unplayable::Damaged(format!("missing loose file {missing}")));
@@ -102,7 +138,26 @@ pub fn parse_play_json(s: &str) -> Result<PlayInfo, Unplayable> {
         loose_bytes: raw.loose_bytes,
         loose: raw.loose,
         volumes: raw.volumes,
+        index_version: raw.index_version,
+        grown: raw.grown,
     })
+}
+
+/// Whether the ampr-emu-ng in use plays `info`'s .p5z: `ng` is its version as MaxPack knows it (the
+/// bundled copy's VERSION, or the tag of the release it downloaded), None when it cannot tell (a file
+/// put there by hand, a copy an older MaxPack wrote, none). A .p5z that never grew plays with any, as
+/// before; one that grew only with GROWN_NG or later (`crate::version`, which compares X.Y.Z), so an
+/// older one never starts it half-way. Err: why not, in English.
+pub fn ng_plays(info: &PlayInfo, ng: Option<&str>) -> Result<(), String> {
+    let need = crate::version::parse_version(GROWN_NG);
+    if !info.grew() || ng.and_then(crate::version::parse_version) >= need {
+        return Ok(());
+    }
+    let have = match ng.map(str::trim) {
+        Some(v) if !v.is_empty() => format!("the ampr-emu-ng in use is {v}"),
+        _ => "the version of the ampr-emu-ng in use is not known".to_string(),
+    };
+    Err(format!("this .p5z grew (index version {}) and needs ampr-emu-ng {GROWN_NG} or later; {have}", info.index_version))
 }
 
 /// Where a loose file of the .p5z goes.
@@ -286,8 +341,113 @@ mod tests {
 
     const GOOD: &str = r#"{"title_id":"TEST00001","version":"01.000.000","name":"","archive_id":"c8fbfad535278d2f795372c334b345bb","size":2094371,"loose_bytes":39617,"loose":[{"path":"eboot.bin","size":10000},{"path":"empty.txt","size":0},{"path":"sce_sys/param.json","size":200},{"path":"ampr_emu.index","size":17856},{"path":"ampr_zstd.index","size":11561}],"volumes":[{"id":0,"offset":10149,"length":2067009}]}"#;
 
+    /// `maxpack info --play` of the engine in vendor/maxpack (mp_play_json) for a .p5z that never grew:
+    /// no index_version or grown, the JSON of before. The test game (PPSA00000) after `maxpack compact`.
+    const ENGINE_V1: &str = r#"{"title_id":"PPSA00000","version":"01.001.000","name":"MaxPack Test Game","archive_id":"6463a59194edf62f12e7969155bea93e","size":458786,"loose_bytes":344957,"loose":[{"path":"addcont0/data/empty.bin","size":0},{"path":"addcont0/module/libdlc.prx","size":4004},{"path":"addcont0/sce_sys/icon0.png","size":3008},{"path":"addcont0/sce_sys/param.json","size":184},{"path":"data/empty.bin","size":0},{"path":"dlc_emu.ini","size":82},{"path":"eboot.bin","size":200004},{"path":"modules/libgame.prx","size":70004},{"path":"sce_sys/about/legal.txt","size":3000},{"path":"sce_sys/changeinfo/changeinfo.xml","size":53},{"path":"sce_sys/icon0.png","size":20008},{"path":"sce_sys/keystone","size":96},{"path":"sce_sys/license.dat","size":1024},{"path":"sce_sys/nptitle.dat","size":80},{"path":"sce_sys/param.json","size":241},{"path":"sce_sys/pic0.png","size":30008},{"path":"sce_sys/playgo-chunk.dat","size":504},{"path":"sce_sys/trophy2/trophy00.ucp","size":5000},{"path":"ampr_emu.index","size":5040},{"path":"ampr_zstd.index","size":2617}],"volumes":[{"id":0,"offset":334746,"length":118163}]}"#;
+
+    /// The same engine for that game's .p5z that grew (index version 2), as it was before the compact:
+    /// packed in 3 volumes, then `maxpack update` and `maxpack add --dlc` appended volumes 3 and 4. The
+    /// update left volume 1 with no chunk at all and room no chunk uses in volumes 0 and 2, and the
+    /// headers of volumes 0 to 3 count fewer volumes than the index: every volume is still listed.
+    const ENGINE_V2: &str = r#"{"title_id":"PPSA00000","version":"01.001.000","name":"MaxPack Test Game","archive_id":"b2a1216e3c7eb65de2cb3f47a1b3d4a1","size":962113,"loose_bytes":344989,"loose":[{"path":"addcont0/data/empty.bin","size":0},{"path":"addcont0/module/libdlc.prx","size":4004},{"path":"addcont0/sce_sys/icon0.png","size":3008},{"path":"addcont0/sce_sys/param.json","size":184},{"path":"data/empty.bin","size":0},{"path":"dlc_emu.ini","size":82},{"path":"eboot.bin","size":200004},{"path":"modules/libgame.prx","size":70004},{"path":"sce_sys/about/legal.txt","size":3000},{"path":"sce_sys/changeinfo/changeinfo.xml","size":53},{"path":"sce_sys/icon0.png","size":20008},{"path":"sce_sys/keystone","size":96},{"path":"sce_sys/license.dat","size":1024},{"path":"sce_sys/nptitle.dat","size":80},{"path":"sce_sys/param.json","size":241},{"path":"sce_sys/pic0.png","size":30008},{"path":"sce_sys/playgo-chunk.dat","size":504},{"path":"sce_sys/trophy2/trophy00.ucp","size":5000},{"path":"ampr_emu.index","size":5040},{"path":"ampr_zstd.index","size":2649}],"volumes":[{"id":0,"offset":327463,"length":93380},{"id":1,"offset":420843,"length":262208},{"id":2,"offset":683051,"length":138060},{"id":3,"offset":826577,"length":93361},{"id":4,"offset":932609,"length":23423}],"index_version":2,"grown":2}"#;
+
     fn damaged(s: &str) -> bool {
         matches!(parse_play_json(s), Err(Unplayable::Damaged(_)))
+    }
+
+    #[test]
+    fn a_p5z_that_never_grew_reads_as_before() {
+        for json in [GOOD, ENGINE_V1] {
+            let info = parse_play_json(json).unwrap();
+            assert_eq!((info.index_version, info.grown, info.grew()), (1, 0, false));
+        }
+        let info = parse_play_json(ENGINE_V1).unwrap();
+        assert_eq!((info.title_id.as_str(), info.version.as_str()), ("PPSA00000", "01.001.000"));
+        assert_eq!(info.volumes, vec![Volume { id: 0, offset: 334_746, length: 118_163 }]);
+        assert_eq!(image_text("a.p5z", &info.volumes).unwrap(), "maxpack-image 1\np5z/a.p5z\n0 334746 118163\n");
+        // The fields said outright with a .p5z's values that never grew: the same.
+        let said = ENGINE_V1.replace("}]}", "}],\"index_version\":1,\"grown\":0}");
+        assert_eq!(parse_play_json(&said), Ok(info.clone()));
+        assert_eq!(parse_play_json(&ENGINE_V1.replace("}]}", "}],\"index_version\":1}")), Ok(info));
+    }
+
+    #[test]
+    fn a_p5z_that_grew_gives_every_volume_to_maxpack_image() {
+        let info = parse_play_json(ENGINE_V2).unwrap();
+        assert_eq!((info.index_version, info.grown, info.grew()), (2, 2, true));
+        assert_eq!((info.size, info.loose_bytes, info.loose.len()), (962_113, 344_989, 20));
+        // Volume 1 has no chunk left and 0 and 2 have holes: each is still one line, at its region.
+        assert_eq!(
+            image_text("grown.p5z", &info.volumes).unwrap(),
+            "maxpack-image 1\np5z/grown.p5z\n0 327463 93380\n1 420843 262208\n2 683051 138060\n3 826577 93361\n4 932609 23423\n"
+        );
+    }
+
+    #[test]
+    fn a_p5z_that_grew_keeps_the_limits() {
+        let one = "[{\"id\":0,\"offset\":327463,\"length\":93380},{\"id\":1,\"offset\":420843,\"length\":262208},{\"id\":2,\"offset\":683051,\"length\":138060},{\"id\":3,\"offset\":826577,\"length\":93361},{\"id\":4,\"offset\":932609,\"length\":23423}]";
+        assert!(ENGINE_V2.contains(one));
+        let vols: Vec<String> = (0..257).map(|i| format!("{{\"id\":{i},\"offset\":0,\"length\":1}}")).collect();
+        let many = ENGINE_V2.replace(one, &format!("[{}]", vols.join(",")));
+        assert_eq!(parse_play_json(&many), Err(Unplayable::TooManyVolumes(257)));
+        let at_most: Vec<String> = (0..256).map(|i| format!("{{\"id\":{i},\"offset\":0,\"length\":1}}")).collect();
+        assert!(parse_play_json(&ENGINE_V2.replace(one, &format!("[{}]", at_most.join(",")))).is_ok());
+        assert!(damaged(&ENGINE_V2.replace(one, "[]")));
+        assert!(damaged(&ENGINE_V2.replace("{\"id\":3,", "{\"id\":5,")));
+        assert!(damaged(&ENGINE_V2.replace("\"loose_bytes\":344989", "\"loose_bytes\":344990")));
+        assert!(damaged(&ENGINE_V2.replace("ampr_zstd.index", "other.index")));
+    }
+
+    #[test]
+    fn index_fields_that_do_not_agree_are_damaged() {
+        let tail = ",\"index_version\":2,\"grown\":2}";
+        assert!(ENGINE_V2.ends_with(tail));
+        let with = |t: &str| ENGINE_V2.replace(tail, t);
+        // No version 0, none this MaxPack does not know (a later one may need a later ampr-emu-ng).
+        for t in [",\"index_version\":0}", ",\"index_version\":3,\"grown\":1}", ",\"index_version\":4294967295,\"grown\":1}"] {
+            assert!(damaged(&with(t)), "{t}");
+        }
+        // A grown file says how many times it grew; one that never grew says none.
+        for t in [",\"index_version\":2}", ",\"index_version\":2,\"grown\":0}", ",\"grown\":1}", ",\"index_version\":1,\"grown\":1}"] {
+            assert!(damaged(&with(t)), "{t}");
+        }
+        // Not numbers, or past u32.
+        for t in [",\"index_version\":\"2\",\"grown\":2}", ",\"index_version\":2,\"grown\":-1}", ",\"index_version\":2,\"grown\":4294967296}",
+                  ",\"index_version\":null,\"grown\":2}"] {
+            assert!(damaged(&with(t)), "{t}");
+        }
+        assert_eq!(parse_play_json(&with(",\"index_version\":2,\"grown\":4294967295}")).map(|i| i.grown), Ok(u32::MAX));
+    }
+
+    #[test]
+    fn a_grown_p5z_needs_an_ampr_emu_ng_that_knows_it() {
+        assert_eq!(GROWN_NG, "v0.5.2-maxpack.1");
+        assert_eq!(crate::version::parse_version(GROWN_NG), Some((0, 5, 2)));
+        let v1 = parse_play_json(ENGINE_V1).unwrap();
+        let v2 = parse_play_json(ENGINE_V2).unwrap();
+        // A .p5z that never grew plays as before, with any ampr-emu-ng that has the p5z mode.
+        for ng in [None, Some("v0.5.1-maxpack.1"), Some("not a version")] {
+            assert_eq!(ng_plays(&v1, ng), Ok(()), "{ng:?}");
+        }
+        for ng in ["v0.5.2-maxpack.1", "v0.5.2-maxpack.7", "0.5.2", "v0.6.0-maxpack.1", "v1.0.0-maxpack.1"] {
+            assert_eq!(ng_plays(&v2, Some(ng)), Ok(()), "{ng}");
+        }
+        // Older, or a version MaxPack cannot tell (a file put there by hand, none): never half-way.
+        for ng in [Some("v0.5.1-maxpack.1"), Some("v0.5.1-maxpack.9"), Some("v0.5.0"), Some("v0.4.0"), Some("v0.5.2-beta"), Some(""), None] {
+            let why = ng_plays(&v2, ng).expect_err("refused");
+            assert!(why.contains(GROWN_NG), "{ng:?}: {why}");
+            if let Some(v) = ng.filter(|v| !v.is_empty()) {
+                assert!(why.contains(v), "{ng:?}: {why}");
+            }
+        }
+    }
+
+    /// The ampr-emu-ng that maxpack.elf carries (vendor/ampr-emu-ng/VERSION, src/main.rs BUNDLED_AMPR)
+    /// plays a .p5z that grew: a build that bundles an older one fails here.
+    #[test]
+    fn the_bundled_ampr_emu_ng_plays_a_grown_p5z() {
+        let bundled = include_str!("../../../vendor/ampr-emu-ng/VERSION").trim();
+        assert_eq!(ng_plays(&parse_play_json(ENGINE_V2).unwrap(), Some(bundled)), Ok(()), "{bundled}");
     }
 
     #[test]
