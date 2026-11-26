@@ -661,6 +661,8 @@ are in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
   behind the home-screen registration, the `fakelib` overlay and the backports are ported here;
   [dlc_emu](https://github.com/drakmor/dlc_emu), the bundled DLC emulator; and
   [pgo_stub](https://github.com/drakmor/pgo_stub), the bundled PlayGo stub.
+- **pearlxcore**: [ProsperoPkgTool](https://github.com/pearlxcore/ProsperoPkgTool) (MIT), from which the
+  installer engine's reading of PS5 debug packages and its Kraken decoder are ported.
 - [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk): the PS5 toolchain and libraries.
 - [zstd](https://github.com/facebook/zstd) and [zlib](https://zlib.net), in the installer's engine,
   and [SQLite](https://www.sqlite.org).

@@ -804,7 +804,7 @@ button.inst-item[aria-checked="true"] {
       <h3 data-i18n="aboutTitle">About</h3>
       <p data-i18n="aboutMaxPack" data-args="version=__VERSION__">MaxPack __VERSION__ mounts and installs PS5 games, with its own build of ampr-emu-ng.</p>
       <p data-i18n="aboutBased">Based on Kraken Mount by quer3q.</p>
-      <p data-i18n="aboutParts">It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); ps5-payload-sdk; zstd, zlib and SQLite.</p>
+      <p data-i18n="aboutParts">It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); code ported from ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib and SQLite.</p>
       <p data-i18n="aboutLicense">Free software under GPL-3.0-or-later, with no warranty. The licences are in THIRD_PARTY_NOTICES.</p>
     </div>
   </form>
@@ -1045,7 +1045,7 @@ var MSG = {
     aboutTitle: 'About',
     aboutMaxPack: 'MaxPack {version} mounts and installs PS5 games, with its own build of ampr-emu-ng.',
     aboutBased: 'Based on Kraken Mount by quer3q.',
-    aboutParts: 'It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); ps5-payload-sdk; zstd, zlib and SQLite.',
+    aboutParts: 'It uses ampr-emu-ng (quer3q); code from ShadowMountPlus and the dlc_emu and pgo_stub emulators (drakmor); code ported from ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib and SQLite.',
     aboutLicense: 'Free software under GPL-3.0-or-later, with no warranty. The licences are in THIRD_PARTY_NOTICES.',
     // Game sheet: a title id installed on the console (status error)
     errInstalledCopy: 'This title is installed on the console ({path}): MaxPack does not register or mount this copy, so the installed game stays as it is.',
@@ -1269,7 +1269,7 @@ var MSG = {
     aboutTitle: "О программе",
     aboutMaxPack: "MaxPack {version} монтирует и устанавливает игры PS5 с собственной сборкой ampr-emu-ng.",
     aboutBased: "Основан на Kraken Mount от quer3q.",
-    aboutParts: "Использует ampr-emu-ng (quer3q); код ShadowMountPlus и эмуляторы dlc_emu и pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib и SQLite.",
+    aboutParts: "Использует ampr-emu-ng (quer3q); код ShadowMountPlus и эмуляторы dlc_emu и pgo_stub (drakmor); код, перенесённый из ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib и SQLite.",
     aboutLicense: "Свободное ПО по лицензии GPL-3.0-or-later, без гарантий. Лицензии — в THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Эта игра установлена на консоли ({path}): MaxPack не регистрирует и не монтирует эту копию, установленная игра остаётся как есть.",
     errNoSpace: "На внутреннем SSD не хватает места для файлов этой игры: недостаёт {size}. Освободите место, и попытка повторится.",
@@ -1527,7 +1527,7 @@ var MSG = {
     aboutTitle: "关于",
     aboutMaxPack: "MaxPack {version} 使用自己构建的 ampr-emu-ng 来挂载和安装 PS5 游戏。",
     aboutBased: "基于 quer3q 的 Kraken Mount。",
-    aboutParts: "使用了 ampr-emu-ng（quer3q）、ShadowMountPlus 的代码以及 dlc_emu 和 pgo_stub 模拟器（drakmor）、ps5-payload-sdk、zstd、zlib 和 SQLite。",
+    aboutParts: "使用了 ampr-emu-ng（quer3q）、ShadowMountPlus 的代码以及 dlc_emu 和 pgo_stub 模拟器（drakmor）、移植自 ProsperoPkgTool（pearlxcore）的代码、ps5-payload-sdk、zstd、zlib 和 SQLite。",
     aboutLicense: "自由软件，遵循 GPL-3.0-or-later，不提供任何担保。许可证见 THIRD_PARTY_NOTICES。",
     errInstalledCopy: "此游戏已安装在主机上（{path}）：MaxPack 不会注册或挂载这份副本，已安装的游戏保持不变。",
     errNoSpace: "内部 SSD 的空间不足以存放此游戏的散装文件：还差 {size}。腾出空间后会自动重试。",
@@ -1785,7 +1785,7 @@ var MSG = {
     aboutTitle: "Info",
     aboutMaxPack: "MaxPack {version} bindet PS5-Spiele ein und installiert sie, mit einem eigenen Build von ampr-emu-ng.",
     aboutBased: "Basiert auf Kraken Mount von quer3q.",
-    aboutParts: "Es nutzt ampr-emu-ng (quer3q); Code aus ShadowMountPlus und die Emulatoren dlc_emu und pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib und SQLite.",
+    aboutParts: "Es nutzt ampr-emu-ng (quer3q); Code aus ShadowMountPlus und die Emulatoren dlc_emu und pgo_stub (drakmor); aus ProsperoPkgTool (pearlxcore) portierten Code; ps5-payload-sdk; zstd, zlib und SQLite.",
     aboutLicense: "Freie Software unter GPL-3.0-or-later, ohne Gewährleistung. Die Lizenzen stehen in THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Dieser Titel ist auf der Konsole installiert ({path}): MaxPack registriert und bindet diese Kopie nicht ein, das installierte Spiel bleibt unverändert.",
     errNoSpace: "Auf der internen SSD ist nicht genug Platz für die losen Dateien dieses Spiels: {size} fehlen. Schaffe Platz, dann wird es erneut versucht.",
@@ -2028,7 +2028,7 @@ var MSG = {
     aboutTitle: 'Acerca de',
     aboutMaxPack: 'MaxPack {version} monta e instala juegos de PS5, con su propia compilación de ampr-emu-ng.',
     aboutBased: 'Basado en Kraken Mount, de quer3q.',
-    aboutParts: 'Usa ampr-emu-ng (quer3q); código de ShadowMountPlus y los emuladores dlc_emu y pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib y SQLite.',
+    aboutParts: 'Usa ampr-emu-ng (quer3q); código de ShadowMountPlus y los emuladores dlc_emu y pgo_stub (drakmor); código portado de ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib y SQLite.',
     aboutLicense: 'Software libre con licencia GPL-3.0-or-later, sin garantía. Las licencias están en THIRD_PARTY_NOTICES.',
     errInstalledCopy: 'Este título está instalado en la consola ({path}): MaxPack no registra ni monta esta copia, así que el juego instalado se queda como está.',
     errNoSpace: 'No hay sitio en el SSD interno para los archivos sueltos de este juego: faltan {size}. Libera espacio y se vuelve a intentar.',
@@ -2246,7 +2246,7 @@ var MSG = {
     aboutTitle: "À propos",
     aboutMaxPack: "MaxPack {version} monte et installe les jeux PS5, avec sa propre version d'ampr-emu-ng.",
     aboutBased: "Basé sur Kraken Mount de quer3q.",
-    aboutParts: "Il utilise ampr-emu-ng (quer3q) ; du code de ShadowMountPlus et les émulateurs dlc_emu et pgo_stub (drakmor) ; ps5-payload-sdk ; zstd, zlib et SQLite.",
+    aboutParts: "Il utilise ampr-emu-ng (quer3q) ; du code de ShadowMountPlus et les émulateurs dlc_emu et pgo_stub (drakmor) ; du code porté de ProsperoPkgTool (pearlxcore) ; ps5-payload-sdk ; zstd, zlib et SQLite.",
     aboutLicense: "Logiciel libre sous GPL-3.0-or-later, sans garantie. Les licences figurent dans THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Ce titre est installé sur la console ({path}) : MaxPack n'enregistre ni ne monte cette copie, le jeu installé reste tel quel.",
     errNoSpace: "Il n'y a pas assez de place sur le SSD interne pour les fichiers de ce jeu : il manque {size}. Libérez de l'espace et une nouvelle tentative aura lieu.",
@@ -2504,7 +2504,7 @@ var MSG = {
     aboutTitle: "このアプリについて",
     aboutMaxPack: "MaxPack {version} は、独自ビルドの ampr-emu-ng で PS5 のゲームをマウント・インストールします。",
     aboutBased: "quer3q の Kraken Mount をベースにしています。",
-    aboutParts: "ampr-emu-ng（quer3q）、ShadowMountPlus のコードと dlc_emu・pgo_stub エミュレーター（drakmor）、ps5-payload-sdk、zstd、zlib、SQLite を使用しています。",
+    aboutParts: "ampr-emu-ng（quer3q）、ShadowMountPlus のコードと dlc_emu・pgo_stub エミュレーター（drakmor）、ProsperoPkgTool（pearlxcore）から移植したコード、ps5-payload-sdk、zstd、zlib、SQLite を使用しています。",
     aboutLicense: "GPL-3.0-or-later のフリーソフトウェアで、無保証です。ライセンスは THIRD_PARTY_NOTICES にあります。",
     errInstalledCopy: "このタイトルは本体にインストール済みです（{path}）。MaxPack はこのコピーを登録もマウントもしないため、インストール済みのゲームはそのままです。",
     errNoSpace: "このゲームのファイルを置くには内蔵 SSD の空きが足りません: {size} 不足しています。空きを作ると再試行されます。",
@@ -2762,7 +2762,7 @@ var MSG = {
     aboutTitle: "Sobre",
     aboutMaxPack: "O MaxPack {version} monta e instala jogos de PS5, com um build próprio do ampr-emu-ng.",
     aboutBased: "Baseado no Kraken Mount, de quer3q.",
-    aboutParts: "Usa o ampr-emu-ng (quer3q); código do ShadowMountPlus e os emuladores dlc_emu e pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib e SQLite.",
+    aboutParts: "Usa o ampr-emu-ng (quer3q); código do ShadowMountPlus e os emuladores dlc_emu e pgo_stub (drakmor); código portado do ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib e SQLite.",
     aboutLicense: "Software livre sob GPL-3.0-or-later, sem garantia. As licenças estão em THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Este título está instalado no console ({path}): o MaxPack não registra nem monta esta cópia, e o jogo instalado fica como está.",
     errNoSpace: "Não há espaço suficiente no SSD interno para os arquivos soltos deste jogo: faltam {size}. Libere espaço e ele será tentado de novo.",
@@ -3020,7 +3020,7 @@ var MSG = {
     aboutTitle: "Informazioni",
     aboutMaxPack: "MaxPack {version} monta e installa i giochi PS5, con una build propria di ampr-emu-ng.",
     aboutBased: "Basato su Kraken Mount di quer3q.",
-    aboutParts: "Usa ampr-emu-ng (quer3q); codice di ShadowMountPlus e gli emulatori dlc_emu e pgo_stub (drakmor); ps5-payload-sdk; zstd, zlib e SQLite.",
+    aboutParts: "Usa ampr-emu-ng (quer3q); codice di ShadowMountPlus e gli emulatori dlc_emu e pgo_stub (drakmor); codice portato da ProsperoPkgTool (pearlxcore); ps5-payload-sdk; zstd, zlib e SQLite.",
     aboutLicense: "Software libero con licenza GPL-3.0-or-later, senza garanzia. Le licenze sono in THIRD_PARTY_NOTICES.",
     errInstalledCopy: "Questo titolo è installato sulla console ({path}): MaxPack non registra né monta questa copia, e il gioco installato resta com'è.",
     errNoSpace: "Non c'è abbastanza spazio sull'SSD interno per i file sciolti di questo gioco: mancano {size}. Libera spazio e verrà ritentato.",
@@ -3278,7 +3278,7 @@ var MSG = {
     aboutTitle: "정보",
     aboutMaxPack: "MaxPack {version}은 자체 빌드한 ampr-emu-ng로 PS5 게임을 마운트하고 설치합니다.",
     aboutBased: "quer3q의 Kraken Mount를 기반으로 합니다.",
-    aboutParts: "ampr-emu-ng(quer3q), ShadowMountPlus의 코드와 dlc_emu 및 pgo_stub 에뮬레이터(drakmor), ps5-payload-sdk, zstd, zlib, SQLite를 사용합니다.",
+    aboutParts: "ampr-emu-ng(quer3q), ShadowMountPlus의 코드와 dlc_emu 및 pgo_stub 에뮬레이터(drakmor), ProsperoPkgTool(pearlxcore)에서 이식한 코드, ps5-payload-sdk, zstd, zlib, SQLite를 사용합니다.",
     aboutLicense: "GPL-3.0-or-later 자유 소프트웨어이며 보증하지 않습니다. 라이선스는 THIRD_PARTY_NOTICES에 있습니다.",
     errInstalledCopy: "이 타이틀은 콘솔에 설치되어 있습니다({path}). MaxPack은 이 사본을 등록하거나 마운트하지 않으며, 설치된 게임은 그대로 유지됩니다.",
     errNoSpace: "이 게임의 개별 파일을 두기에는 내장 SSD 공간이 부족합니다: {size} 모자랍니다. 공간을 확보하면 다시 시도합니다.",
@@ -3536,7 +3536,7 @@ var MSG = {
     aboutTitle: "حول",
     aboutMaxPack: "يركّب MaxPack {version} ألعاب PS5 ويثبّتها بإصداره الخاص من ampr-emu-ng.",
     aboutBased: "مبني على Kraken Mount من quer3q.",
-    aboutParts: "يستخدم ampr-emu-ng (quer3q)؛ وشيفرة من ShadowMountPlus ومحاكيَي dlc_emu وpgo_stub (drakmor)؛ وps5-payload-sdk؛ وzstd وzlib وSQLite.",
+    aboutParts: "يستخدم ampr-emu-ng (quer3q)؛ وشيفرة من ShadowMountPlus ومحاكيَي dlc_emu وpgo_stub (drakmor)؛ وشيفرة منقولة من ProsperoPkgTool (pearlxcore)؛ وps5-payload-sdk؛ وzstd وzlib وSQLite.",
     aboutLicense: "برنامج حر بموجب GPL-3.0-or-later، دون أي ضمان. التراخيص في THIRD_PARTY_NOTICES.",
     errInstalledCopy: "هذه اللعبة مثبّتة على الجهاز ({path}): لا يسجّل MaxPack هذه النسخة ولا يركّبها، وتبقى اللعبة المثبّتة كما هي.",
     errNoSpace: "لا توجد مساحة كافية على SSD الداخلي لملفات هذه اللعبة المنفصلة: ينقص {size}. وفّر مساحة وستُعاد المحاولة.",
