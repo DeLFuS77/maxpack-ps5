@@ -790,7 +790,7 @@ button.inst-item[aria-checked="true"] {
     <div class="row"><span><span class="lbl" id="amprstatus">ampr-emu-ng</span><span class="hint" id="amprtls" data-i18n="amprNeedsTls" hidden>ampr-emu-ng updates (at start or with this button) stay off until the secure-connection check below passes on this console.</span><span class="hint" id="amprmsg"></span></span><button id="amprupdate" type="button" data-i18n="amprUpdateNow">Update ampr-emu-ng now</button></div>
     <div class="row"><span><span class="lbl" data-i18n="tlsTitle">Secure connections</span><span class="hint" data-i18n="tlsHint">MaxPack downloads its updates over HTTPS. This check shows that the console refuses forged certificates; updates stay off until it passes once.</span><span class="hint" id="tlsmsg" role="status"></span></span><button id="tlscheck" type="button" data-i18n="tlsCheck">Check secure connections</button></div>
     <ul class="tls-list" id="tlslist" hidden></ul>
-    <label class="row"><span><span class="lbl" data-i18n="recvLbl">Receive games from the PC</span><span class="hint" data-i18n="recvHint">MaxPack on the PC can send a .p5z here (maxpack send, or Send to the console in its window). The console checks it as it arrives and the library finds it. Off, nothing on the network can write to the drives.</span><span class="hint bad" id="recvmsg" role="status" hidden></span></span><input type="checkbox" id="recv-on"></label>
+    <label class="row"><span><span class="lbl" data-i18n="recvLbl">Receive games from the PC</span><span class="hint" data-i18n="recvHint">MaxPack on the PC can send a .p5z here (maxpack send, or Send to the console in its window). The console checks it as it arrives and the library finds it. Off, nothing on the network can write to the drives.</span><span class="hint" id="recv-where" hidden></span><span class="hint bad" id="recvmsg" role="status" hidden></span></span><input type="checkbox" id="recv-on"></label>
     <div class="row" id="recv-code-row" hidden><span><span class="lbl" data-i18n="recvCodeLbl">Pairing code</span><span class="recv-code" id="recv-code"></span><span class="hint" id="recv-code-hint"></span></span><button type="button" id="recv-new" data-i18n="recvNew">New code</button></div>
     <label class="row"><span class="lbl" data-i18n="backports">Apply backports</span><input type="checkbox" id="f_backports"></label>
     <label class="row"><span class="lbl" data-i18n="scanInterval">Scan interval, seconds (1-3600)</span><input type="number" id="f_scan_interval_seconds" min="1" max="3600"></label>
@@ -1161,7 +1161,8 @@ var MSG = {
     recvFailed: "{name} arrived damaged: {what} do not match. It stays as {path}: send it again from the PC, or cancel to delete it.",
     recvFailedError: "{name} arrived but could not be checked: {error}. It stays as {path}: send it again from the PC, or cancel to delete it.",
     recvCancelled: "The receive of {name} was cancelled: what had arrived is deleted.",
-    recvCancel: "Cancel the receive"
+    recvCancel: "Cancel the receive",
+    recvOnHere: "To turn it on, open MaxPack in the console's own browser (its tile): from another device it can only be turned off."
   },
   ru: {
     screens: 'Разделы', library: 'Библиотека', settings: 'Настройки',
@@ -1460,7 +1461,8 @@ var MSG = {
     recvFailed: "{name} пришёл повреждённым: не совпадают {what}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
     recvFailedError: "{name} пришёл, но его не удалось проверить: {error}. Он остаётся как {path}: отправьте его с ПК ещё раз или отмените, чтобы удалить.",
     recvCancelled: "Приём {name} отменён: полученное удалено.",
-    recvCancel: "Отменить приём"
+    recvCancel: "Отменить приём",
+    recvOnHere: "Чтобы включить, откройте MaxPack в браузере самой консоли (её плитка): с другого устройства можно только выключить."
   },
   zh: {
     screens: '页面', library: '游戏库', settings: '设置',
@@ -1759,7 +1761,8 @@ var MSG = {
     recvFailed: "{name} 收到时已损坏：{what} 不一致。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
     recvFailedError: "{name} 已收到但无法校验：{error}。它保留为 {path}：请从电脑重新发送，或取消以删除它。",
     recvCancelled: "已取消接收 {name}：已收到的部分已删除。",
-    recvCancel: "取消接收"
+    recvCancel: "取消接收",
+    recvOnHere: "要开启，请在主机自己的浏览器中打开 MaxPack（它的图标）：在其他设备上只能关闭。"
   },
   de: {
     screens: 'Bereiche', library: 'Bibliothek', settings: 'Einstellungen',
@@ -2058,7 +2061,8 @@ var MSG = {
     recvFailed: "{name} ist beschädigt angekommen: {what} stimmen nicht. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
     recvFailedError: "{name} ist angekommen, ließ sich aber nicht prüfen: {error}. Es bleibt als {path}: sende es vom PC erneut oder brich ab, um es zu löschen.",
     recvCancelled: "Der Empfang von {name} wurde abgebrochen: Was angekommen war, ist gelöscht.",
-    recvCancel: "Empfang abbrechen"
+    recvCancel: "Empfang abbrechen",
+    recvOnHere: "Zum Einschalten öffne MaxPack im Browser der Konsole selbst (seine Kachel): von einem anderen Gerät lässt es sich nur ausschalten."
   },
   es: {
     screens: 'Pantallas', library: 'Biblioteca', settings: 'Ajustes',
@@ -2302,7 +2306,8 @@ var MSG = {
     recvFailed: "{name} ha llegado dañado: no cuadran {what}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
     recvFailedError: "{name} ha llegado pero no se pudo comprobar: {error}. Se queda como {path}: envíalo otra vez desde el PC, o cancela para borrarlo.",
     recvCancelled: "Se canceló la recepción de {name}: lo que había llegado se ha borrado.",
-    recvCancel: "Cancelar la recepción"
+    recvCancel: "Cancelar la recepción",
+    recvOnHere: "Para encenderlo, abre MaxPack en el navegador de la propia consola (su icono): desde otro aparato solo se puede apagar."
   },
   fr: {
     screens: 'Écrans', library: 'Bibliothèque', settings: 'Paramètres',
@@ -2601,7 +2606,8 @@ var MSG = {
     recvFailed: "{name} est arrivé endommagé : {what} ne correspondent pas. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
     recvFailedError: "{name} est arrivé mais n'a pas pu être vérifié : {error}. Il reste sous {path} : renvoyez-le depuis le PC, ou annulez pour le supprimer.",
     recvCancelled: "La réception de {name} a été annulée : ce qui était arrivé est supprimé.",
-    recvCancel: "Annuler la réception"
+    recvCancel: "Annuler la réception",
+    recvOnHere: "Pour l'activer, ouvrez MaxPack dans le navigateur de la console elle-même (sa tuile) : depuis un autre appareil, on peut seulement le désactiver."
   },
   ja: {
     screens: '画面', library: 'ライブラリ', settings: '設定',
@@ -2900,7 +2906,8 @@ var MSG = {
     recvFailed: "{name} は破損した状態で届きました: {what} が一致しません。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
     recvFailedError: "{name} は届きましたが検証できませんでした: {error}。{path} として残ります。PC からもう一度送るか、中止して削除してください。",
     recvCancelled: "{name} の受信を中止しました。届いた分は削除されました。",
-    recvCancel: "受信を中止"
+    recvCancel: "受信を中止",
+    recvOnHere: "オンにするには、本体自身のブラウザーで MaxPack を開いてください（そのタイルから）。ほかの機器からはオフにしかできません。"
   },
   pt: {
     screens: 'Telas', library: 'Biblioteca', settings: 'Configurações',
@@ -3199,7 +3206,8 @@ var MSG = {
     recvFailed: "{name} chegou danificado: {what} não conferem. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
     recvFailedError: "{name} chegou mas não pôde ser conferido: {error}. Ele fica como {path}: envie-o de novo do PC, ou cancele para apagá-lo.",
     recvCancelled: "O recebimento de {name} foi cancelado: o que tinha chegado foi apagado.",
-    recvCancel: "Cancelar o recebimento"
+    recvCancel: "Cancelar o recebimento",
+    recvOnHere: "Para ligar, abra o MaxPack no navegador do próprio console (o bloco dele): de outro aparelho só é possível desligar."
   },
   it: {
     screens: 'Schermate', library: 'Libreria', settings: 'Impostazioni',
@@ -3498,7 +3506,8 @@ var MSG = {
     recvFailed: "{name} è arrivato danneggiato: {what} non corrispondono. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
     recvFailedError: "{name} è arrivato ma non è stato possibile controllarlo: {error}. Resta come {path}: invialo di nuovo dal PC, oppure annulla per eliminarlo.",
     recvCancelled: "La ricezione di {name} è stata annullata: ciò che era arrivato è stato eliminato.",
-    recvCancel: "Annulla la ricezione"
+    recvCancel: "Annulla la ricezione",
+    recvOnHere: "Per attivarlo, apri MaxPack nel browser della console stessa (il suo riquadro): da un altro dispositivo si può solo disattivare."
   },
   ko: {
     screens: '화면', library: '라이브러리', settings: '설정',
@@ -3797,7 +3806,8 @@ var MSG = {
     recvFailed: "{name}이(가) 손상된 채로 도착했습니다: {what}이(가) 일치하지 않습니다. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
     recvFailedError: "{name}이(가) 도착했지만 검증할 수 없었습니다: {error}. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 취소해서 삭제하세요.",
     recvCancelled: "{name} 받기를 취소했습니다. 도착한 부분은 삭제되었습니다.",
-    recvCancel: "받기 취소"
+    recvCancel: "받기 취소",
+    recvOnHere: "켜려면 콘솔 자체 브라우저에서 MaxPack을 여세요(타일에서). 다른 기기에서는 끄기만 할 수 있습니다."
   },
   ar: {
     screens: 'الأقسام', library: 'المكتبة', settings: 'الإعدادات',
@@ -4096,7 +4106,8 @@ var MSG = {
     recvFailed: "وصل {name} تالفًا: {what} غير مطابقة. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
     recvFailedError: "وصل {name} لكن تعذّر التحقق منه: {error}. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو ألغِ لحذفه.",
     recvCancelled: "أُلغي استقبال {name}: حُذف ما كان قد وصل.",
-    recvCancel: "إلغاء الاستقبال"
+    recvCancel: "إلغاء الاستقبال",
+    recvOnHere: "لتشغيله، افتح MaxPack في متصفح الجهاز نفسه (من بلاطته): من جهاز آخر يمكن إيقافه فقط."
   }
 };
 // Each language in its own words (dump-forge's names and order), the <html lang> tag where it
@@ -5512,6 +5523,10 @@ $('recv-close').onclick = function () {
 function renderPairing() {
   var p = (state && state.pairing) || {}, box = $('recv-on');
   if (!box._busy) box.checked = !!p.on;
+  // Turned on only from the console's own browser (the payload refuses it elsewhere); off from anywhere.
+  box.disabled = !!box._busy || (!p.here && !p.on);
+  setText($('recv-where'), p.here ? '' : t('recvOnHere'));
+  $('recv-where').hidden = !!p.here;
   $('recv-code-row').hidden = !p.on;
   setText($('recv-code'), p.code ? String(p.code).slice(0, 3) + ' ' + String(p.code).slice(3) : '');
   $('recv-code').hidden = !p.code;
@@ -5529,7 +5544,7 @@ $('recv-on').onchange = async function () {
   recvMsg('');
   try {
     var r = await fetch('/api/pairing', { method: 'POST', body: on ? 'on' : 'off' });
-    if (!r.ok) throw new Error(r.status === 409 ? t('recvOffBusy') : (await r.text()) || 'HTTP ' + r.status);
+    if (!r.ok) throw new Error(r.status === 409 ? t('recvOffBusy') : r.status === 403 ? t('recvOnHere') : (await r.text()) || 'HTTP ' + r.status);
     if (state) state.pairing = Object.assign(state.pairing || {}, { on: on });
   } catch (e) {
     box.checked = !on;

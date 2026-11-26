@@ -479,6 +479,20 @@ fn refused(head: &str, why: maxpack_logic::http::Refusal) -> Reply {
     reply(403, "text/plain; charset=utf-8", format!("{es}\n{en}\n"))
 }
 
+/// POST /api/pairing and /api/pairing/new: `act` when maxpack_logic::receive::pairing_allowed says so (turning
+/// receiving on and a new code only from the console's own browser), else 403 `{code:"console_only", detail}`.
+fn pairing(p: maxpack_logic::receive::Pairing, loopback: bool, act: impl FnOnce() -> Result<(), (u16, String)>) -> Reply {
+    if !maxpack_logic::receive::pairing_allowed(p, loopback) {
+        log!("receive: {p:?} refused: only from the console's own browser");
+        let body = serde_json::json!({"code": "console_only", "detail": "only from MaxPack's page on the console itself"});
+        return reply(403, "application/json", body.to_string());
+    }
+    match act() {
+        Ok(()) => no_content(),
+        Err((code, why)) => reply(code, "text/plain", why),
+    }
+}
+
 /// An answer of src/receive.rs as JSON.
 fn receive_reply(a: crate::receive::Answer) -> Reply {
     reply(a.status, "application/json", a.body.to_string())
@@ -523,15 +537,14 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool, peer: std::net:
         // cancel of the receive under way.
         ("POST", "/api/pairing") => match maxpack_logic::titles::switch_body(body) {
             None => reply(400, "text/plain", "expected on or off"),
-            Some(on) => match crate::receive::set_on(state, on) {
-                Ok(()) => no_content(),
-                Err((code, why)) => reply(code, "text/plain", why),
-            },
+            Some(on) => {
+                use maxpack_logic::receive::Pairing;
+                pairing(if on { Pairing::On } else { Pairing::Off }, loopback, || crate::receive::set_on(state, on))
+            }
         },
-        ("POST", "/api/pairing/new") => match crate::receive::renew(state) {
-            Ok(()) => no_content(),
-            Err((code, why)) => reply(code, "text/plain", why),
-        },
+        ("POST", "/api/pairing/new") => {
+            pairing(maxpack_logic::receive::Pairing::NewCode, loopback, || crate::receive::renew(state))
+        }
         ("POST", "/api/pairing/cancel") => receive_reply(crate::receive::cancel(None)),
         ("GET", p) if p.starts_with("/api/sizes/") => sizes(state, &p["/api/sizes/".len()..]),
         ("GET", p) if p.starts_with("/api/report/") => report(state, &p["/api/report/".len()..]),

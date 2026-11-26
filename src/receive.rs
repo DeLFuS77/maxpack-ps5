@@ -206,6 +206,10 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
     let active = g.as_ref().map(|r| Active {
         state: r.stage, same: r.name == req.name && r.drive == req.drive && r.size == req.size, have: r.have,
     });
+    // The switch again, under the gate: turning it off (set_on, which holds the gate) cannot race this start.
+    if !state.settings.lock().unwrap_or_else(|e| e.into_inner()).receive_from_pc {
+        return Refusal::Off.into();
+    }
     let busy = maxpack_logic::job::busy(!crate::installer::idle(), crate::verify::running(), false);
     let facts = StartFacts { req: req.clone(), drive, dest_exists, partial: partial_len, failed_before, active, busy };
     let have = match logic::start_gate(&facts) {
@@ -641,8 +645,10 @@ pub fn json() -> Value {
 /// POST /api/pairing, body `on` or `off`: the switch, saved in config.toml; turned on with no code, a code is made.
 /// Off is refused while a receive is under way (cancel it first).
 pub fn set_on(state: &State, on: bool) -> Result<(), (u16, String)> {
+    // Held across the check and the save: a start (which looks at the switch again under it) cannot slip in.
+    let _gate = crate::jobs::gate();
     if !on && active() {
-        return Err((409, "a game is arriving from the PC: cancel it first".into()));
+        return Err((409, "a game is arriving from the PC: stop it first".into()));
     }
     let mut cur = state.settings.lock().unwrap_or_else(|e| e.into_inner());
     // From the file, not state.settings: a scan pass may have put an older copy there.

@@ -455,7 +455,8 @@ function instPost(name, body) {
 
 // ---- Receive games from the PC (src/receive.rs): Settings' switch and code, and the PC's /api/receive/* ----
 // The switch starts off (on with --receive); the code goes only to a page opened at localhost or 127.0.0.1, as the
-// payload gives it only to the console's own screen. The PC's routes answer as the payload's, so maxpack send can be
+// payload gives it only to the console's own screen, and only such a page turns it on or makes a new code (403
+// console_only elsewhere). The PC's routes answer as the payload's, so maxpack send can be
 // tried against the mock: the switch (403 receive_off), the code and its lockout (401 bad_code; 5 wrong in a row from
 // one address, 429 locked for 60 s), the drives "internal" (/data, ufs) and "usb0" (/mnt/usb0, exfatfs), start,
 // data (counted and dropped: nothing is written), status, finish (a verify of 3 s; a name with "damaged" in it fails
@@ -686,12 +687,18 @@ http.createServer((req, res) => {
     // Settings > "Receive games from the PC" (src/receive.rs set_on, renew, cancel).
     if (req.method === 'POST' && p === '/api/pairing') {
       if (chunks !== 'on' && chunks !== 'off') return send(res, 400, 'text/plain', 'expected on or off');
-      if (chunks === 'off' && recvUnder()) return send(res, 409, 'text/plain', 'a game is arriving from the PC: cancel it first');
+      // maxpack_logic::receive::pairing_allowed: on (and a new code) only from the console's own browser.
+      if (chunks === 'on' && !isLoopback(req)) return json(res, 403, { code: 'console_only', detail: "only from MaxPack's page on the console itself" });
+      if (chunks === 'off' && recvUnder()) return send(res, 409, 'text/plain', 'a game is arriving from the PC: stop it first');
       pairing.on = chunks === 'on';
       if (pairing.on && !pairing.code) pairing.code = mockCode();
       return send(res, 204, 'text/plain', '');
     }
-    if (req.method === 'POST' && p === '/api/pairing/new') { pairing.code = mockCode(); return send(res, 204, 'text/plain', ''); }
+    if (req.method === 'POST' && p === '/api/pairing/new') {
+      if (!isLoopback(req)) return json(res, 403, { code: 'console_only', detail: "only from MaxPack's page on the console itself" });
+      pairing.code = mockCode();
+      return send(res, 204, 'text/plain', '');
+    }
     if (req.method === 'POST' && p === '/api/pairing/cancel') {
       if (!recvJob) return json(res, 404, { error: 'unknown_id', detail: 'no receive' });
       const c = recvCancel(recvJob);

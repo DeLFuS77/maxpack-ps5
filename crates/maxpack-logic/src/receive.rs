@@ -162,6 +162,25 @@ impl Refusal {
     }
 }
 
+/// What the page asks of Settings > "Receive games from the PC" and of the receive under way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pairing {
+    On,
+    Off,
+    NewCode,
+    /// Stop the receive, keeping what arrived.
+    Stop,
+    /// Delete what arrived.
+    Delete,
+}
+
+/// Turning receiving on and making a new code only from the console's own browser (`loopback`): from any other
+/// device on the network they would undo "off by default" or break a send. Turning it off, stopping and deleting
+/// from anywhere, as the page's other actions.
+pub fn pairing_allowed(p: Pairing, loopback: bool) -> bool {
+    loopback || !matches!(p, Pairing::On | Pairing::NewCode)
+}
+
 /// A plain `.p5z` file name, as it will be in `<drive>/homebrew/`: 1 to MAX_NAME bytes ending in `.p5z` (any case)
 /// after a name, no `/`, `\`, `..` or control character, none of `"*:<>?|` (which exFAT and FAT32 do not
 /// store), and no leading `.` (the scan does not list a hidden file).
@@ -544,6 +563,18 @@ pub fn status_json(have: u64, size: u64, state: State, verify: Option<&VerifyPro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_console_turns_it_on() {
+        // On and a new code only from the console's own browser; off, stop and delete from anywhere.
+        assert!(pairing_allowed(Pairing::On, true));
+        assert!(!pairing_allowed(Pairing::On, false));
+        assert!(pairing_allowed(Pairing::NewCode, true));
+        assert!(!pairing_allowed(Pairing::NewCode, false));
+        for p in [Pairing::Off, Pairing::Stop, Pairing::Delete] {
+            assert!(pairing_allowed(p, true) && pairing_allowed(p, false), "{p:?}");
+        }
+    }
 
     #[test]
     fn states() {
