@@ -3,6 +3,31 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
+## Unreleased
+
+### Added
+
+- **A `.p5z` that grew on the PC plays.** MaxPack for the PC can add a DLC to a `.p5z` already made
+  (`maxpack add`), or turn it into a newer version of the game by compressing only what changed
+  (`maxpack update`), by appending to the file. Such a `.p5z` shows up and plays like any other, from the
+  drive it is on, with every volume it has, the old ones too.
+- MaxPack carries a new build of ampr-emu-ng, `v0.5.2-maxpack.1`, whose p5z mode reads those files. For
+  now it is a build of its CI, not a release yet (`vendor/ampr-emu-ng/SOURCE` says which); its launch
+  notice still says v0.5.1.
+
+### Changed
+
+- **Never half-way.** A `.p5z` that grew needs that ampr-emu-ng. When `/data/maxpack/ampr/` holds an older
+  one (put there by hand, or an older release installed with "Update ampr-emu-ng now"), MaxPack does not
+  start the game: its sheet says why and what to do (restart MaxPack to put back its own, deleting one you
+  put there by hand, or make a compact copy on the PC with `maxpack compact`), and a notice names it once.
+  A `.p5z` that never grew plays as before, with any.
+- **Install** says that a `.p5z` that grew cannot be installed: play it from the `.p5z`, or make a compact
+  copy on the PC and install that.
+- The installer is the MaxPack engine as it is now on the PC (it was the one of before the PC's 1.0.0):
+  its messages under an error are in English. `THIRD_PARTY_NOTICES` lists ProsperoPkgTool (MIT), whose
+  port the engine now carries.
+
 ## 1.0.2 - 2026-11-25
 
 ### Added

@@ -3,8 +3,9 @@
 A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/extended drives,
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
-The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng: quer3q's v0.5.1, with its pkg mode, plus our p5z mode; now `v0.5.1-maxpack.1`; its CI
-run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
+The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng: quer3q's v0.5.1, with its pkg mode, plus our p5z mode,
+which also plays a `.p5z` that grew; now `v0.5.2-maxpack.1`, for the time being a CI build of its branch `consola-orden` that is
+not released yet; its CI run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
 `-maxpack.N`; `SHA256SUMS` copied from that CI run, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from
 their GitHub releases, checked by `ps5/build.sh`; GPL-3.0, `THIRD_PARTY_NOTICES`): drakmor's dlc_emu
@@ -31,6 +32,13 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   volumes comes from a description that read fine: believed at once. Meanwhile it holds its title (Flow, Stability),
   and the engine's open in a build follows the same rule (Cache). A `.p5z` still being copied is skipped like a
   pkg (`stability_wait_seconds`).
+  A `.p5z` that grew on the PC (`maxpack add --dlc`, `maxpack update`: index version 2, appended to, never rewritten)
+  is a game like any other: the engine's description adds `"index_version":2,"grown":N` (absent for one that never
+  grew; `maxpack_logic::p5z::PlayInfo::grew`; a version other than 1 or 2, or a count that does not go with it, is
+  damaged) and still lists every volume, 0..n-1, the old ones too, with no chunk left in them or with room no chunk
+  uses. It plays only with an ampr-emu-ng that knows such a file (`maxpack_logic::p5z::GROWN_NG`,
+  `v0.5.2-maxpack.1`; Cache: `ng_gate`). While a journal (`<name>.p5z.maxpack-append`) says an append on the PC was
+  cut short, the engine reads the file as it was before it; the console never cuts it (recovery is the PC's).
 - Any drive. The cache is always on the internal SSD.
 
 ## Paths
@@ -141,6 +149,24 @@ is ignored as a whole). The web UI edits the same file.
   `.p5z`'s description gave, else the build fails. The stamp's `kind` is `p5z` and `.done` carries `p5z_id` (FNV-1a 64
   of the size as 8 bytes little-endian, the 64-byte header and the 32-byte footer, `p5z::id`; the identity `is_move`
   compares; a golden value is tested, so a change of it, which would make no cache relink when its `.p5z` moves, fails).
+  A `.p5z` that grew (`PlayInfo::grew`) is built only while the ampr-emu-ng it gets on top of its `fakelib/`, the
+  `libSceAmpr.sprx` of `/data/maxpack/ampr/` (always, whatever the game or backport ships), plays it
+  (`cache::ng_gate`, `maxpack_logic::p5z::ng_plays`: `v0.5.2-maxpack.1` or later). Its version is the one MaxPack
+  knows (`main::ampr_version_in_use`): the bundled `VERSION` for the bundled copy, the version `ampr.bundled` records
+  for another copy we wrote (a downloaded release); a file put there by hand, a v0.4.0 mark, none or a read error is
+  unknown, and unknown never plays a grown `.p5z`. That file is not always the bundled one: "Update ampr-emu-ng now"
+  installs the latest release even when it is older, and a hand-placed file is kept. Otherwise the build stops right
+  after the engine's open, before anything is extracted, with a `cache::OldNg` (`this .p5z grew (index version 2) and
+  needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is <v> (...): not started with it`): a failed
+  build, so the cache has no game files and neither Play nor the tile can start the game half-way (an older
+  ampr-emu-ng refuses the grown index at the game's start and serves none of its packed files). `main.rs` shows status
+  `error` with `error_code` `old_ng`, toasts `i18n::old_ng` once and memoizes it; `inputs_key` holds the ampr dir's
+  state (`cache::ampr_state`), so another `libSceAmpr.sprx` tries the build again (a restart too: the bundled copy
+  replaces an older one of ours at start). A fakelib refresh of a built cache of a grown `.p5z` (the ampr dir changed)
+  that meets such an ampr-emu-ng does not recompose `fakelib/`: it rebuilds, which stops the same way. A `.p5z` that
+  never grew is not looked at (an older ampr-emu-ng plays it as before). A grown `.p5z`'s `maxpack.image` has a line
+  for every volume, as the description lists them: a volume with no chunk, or with room no chunk uses, keeps its
+  region (ampr-emu-ng checks each chunk against its own record).
 - FPKG: it IS `/app0`: `sce_sys/**` (with the files only the pkg container holds: `save_data.png`,
   `pic0`/`pic1`, `snd0.at9`, `trophy00.ucp`, `nptitle.dat`, `npbind.dat`, which save data and
   trophies read from `/app0/sce_sys`), `eboot.bin`, every `*.prx`/`*.sprx`, every `*.elf` outside `decrypted/`
@@ -363,7 +389,7 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, its effective `playgo_off`,
+only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, the ampr dir's files (`cache::ampr_state`), its effective `playgo_off`,
 `cache::overlay_off` and `cache::fakelib_mode`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
 `.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
 Duplicate title ids: a folder beats a pkg, which beats a .p5z
@@ -524,6 +550,9 @@ pub struct NoSpace { pub missing: u64 /* margin included */ }       // a .p5z bu
 pub fn missing_bytes(e: &std::io::Error) -> Option<u64>;           // Some(missing) when e is a NoSpace
 pub struct TryAgain(String);                                        // a .p5z build or refresh stopped at the engine's open, tried again next pass (inside an io::Error)
 pub fn try_again(e: &std::io::Error) -> bool;                      // e is a TryAgain
+pub struct OldNg(String);                                           // a grown .p5z's build stopped: the ampr dir's ampr-emu-ng does not play it (inside an io::Error)
+pub fn old_ng(e: &std::io::Error) -> bool;                         // e is an OldNg
+pub fn ampr_state(src: &Source, s: &Settings) -> serde_json::Value; // {name: [size, mtime]} of the ampr dir's files fakelib/ gets, or null (main::inputs_key too)
 pub use maxpack_logic::cache::{DONE, PKG_MOUNT_DIR, P5Z_MOUNT_DIR}; // the cache dir's names are maxpack_logic::cache's
 pub fn mount_source(tid: &str) -> Option<(&'static str, String)>;  // pkg or .p5z: (folder below /app0: "kraken" | "p5z", the file)
 pub fn build(src: &Source, s: &Settings) -> std::io::Result<()>;   // always rebuilds
@@ -555,6 +584,7 @@ pub fn is_ours(title_id: &str) -> Result<(), std::path::PathBuf>; // Err(path) =
 // main.rs (shared version compare, used by cache.rs for ampr-emu-ng identities)
 pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32)>; // "X.Y.Z", leading "v" allowed
 pub(crate) fn newer(a: Option<&str>, b: Option<&str>) -> bool;   // a strictly newer than b; an unknown version is older than any
+pub(crate) fn ampr_version_in_use() -> Option<String>;           // the ampr dir's libSceAmpr.sprx: bundled VERSION or ampr.bundled's; None = unknown
 
 // installer.rs (the MaxPack engine through ps5/installer.c and mp_api_call; Answer = {status, ctype, body})
 pub fn start(state: Arc<State>, runtime: &'static [u8], runtime_version: &'static str); // own thread; 503 until up
@@ -646,7 +676,7 @@ minute):
 - `GET /api/state`:
   `{version, update:{version, size, tls_passed}|null (a newer release found at start, see Self-update), tls_check:{passed?, at?, version?, running} (the secure-connection self-test), busy, paused, waiting:"kstuff"|"other:<process>"|null, running:[TID], images:[{path, kind:"ffpkg"|"exfat"|"ffpfs"|"ffpfsc", title_id?}] (ShadowMountPlus images found where a source could be: never mounted; `title_id` from a `[TITLE_ID]` in the file name, absent otherwise), games:[{title_id, title_name, version, path, kind:"pkg"|"folder"|"p5z", packing:"plain"|"zstd"|"lz4"|null,
   drive, size, status:"pending"|"checking"|"building"|"ready"|"error"|"duplicate", error, installed_copy (the path that
-  shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
+  shows this title id installed on the console, with status "error": MaxPack leaves it alone; else null), error_code ("no_space" for a .p5z that does not fit, "old_ng" for a .p5z that grew and an ampr-emu-ng that does not play it (Cache), with status "error"; else null), missing_bytes (bytes short, margin included, with `no_space`; else null), cache_size, cache_built, backport,
   playgo: bool|null (the memoized "eboot imports PlayGo", null when unknown or `add_emulators` is off), playgo_off: bool (false while `add_emulators` is off),
   hidden: bool (in the `hidden` setting: the page lists it only with "show hidden" on),
   crash: {at, process, status}|null (the last crash, from crashes.json, see Crash report),
@@ -851,8 +881,11 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`, now `motor-consola-3`, e8de15a: its `ampr_emu.index` reader takes a slot table aligned to 8 bytes, as other packers write it), with the zstd and
-zlib its submodules pin. `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
+there in `vendor/maxpack/COMMIT.tag`; now 58f83fd, of the engine's branch `pc-ampliar`, with no tag yet: `motor-consola-4` is
+to be put on it, and the sync run again, before a release; before it `motor-consola-3`, e8de15a), with the zstd and
+zlib its submodules pin. Since 58f83fd the engine reads a `.p5z` that grew (Supported sources), and its installer refuses
+one (`grown_p5z`: its packs are laid out as only ampr-emu-ng's p5z mode reads them; play it from the `.p5z`, or make a
+compact copy on the PC with `maxpack compact`, which is index version 1 again). `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
 `mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's
 `src/ps5/main_ps5.c` does: `mp_inst_env_default` (`/data`, `/mnt/usb0..7`, `/mnt/ext0..1`), the ShadowMountPlus
@@ -863,7 +896,7 @@ toasts through `sys::notify` when `notify` is on. Its data stays in `/data/maxpa
 own server). Quitting pauses a running install (POST `/api/pause`, again for each queued job that starts) and
 waits up to 3 s for the queue (`mp_api_wait_idle`); a paused install is listed as unfinished at the next start,
 where Install resumes it.
-The page's **Install** tab is phase 2's page (`vendor/maxpack/web/index.html`) in this UI's style: the job with
+The page's **Install** tab is phase 2's page (the engine's `web/index.html`, gone since its commit f8e931a) in this UI's style: the job with
 progress, speed and time left (Pause), unfinished installs (Resume, Discard), what can be installed (icon,
 saving or "copied as is", Search again, a path added by hand through `probe`), the destination drives with
 their free space, Install (a replace asks first, listing the copies it deletes), and what MaxPack installed
@@ -872,12 +905,12 @@ each destination drive says whether the chosen game fits, as the engine's plan c
 the engine's 256 MiB `space_margin` against the drive's free space, plus what an unfinished install of that title
 already copied there), "Does not fit: N more needed" when not, and Install then says so without asking the engine;
 the engine checks again when it plans the install (`no_space`). It polls `/api/inst/state` every second while open; the engine's error codes are shown in
-the UI's words, its Spanish `detail` under them. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
+the UI's words (`grown_p5z` among them), its `detail` (the engine's, in English) under them. Its texts are in all 11 languages, like the rest of the page. While `waiting` is `other:<process>` the banner says MaxPack only installs and that the page
 opens at `http://<console IP>:8095`. `state.images` is listed under the library grid ("for now, with
 ShadowMountPlus"). `tools/mock_ui.js` (Node, development only) serves the page with fixed data, behind the same
 Host and Origin checks as the payload (with a hidden game, a recorded crash, Play, Hide, the report, a queued
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
-and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
+a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
 ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
 refuses).
 
@@ -919,6 +952,9 @@ D-pad's list of the sheet's controls only while it shows. A hand change draws th
 next state; the report is fetched again when `settings_source` or the stub changes. Settings has "Excluded paths"
 under "Scan paths", one path per line (`exclude`), and "Download updated recommended settings"
 (`recommended_update`) under the ampr-emu-ng update.
+The sheet's error line says in the page's language why a `.p5z` short of space (`no_space`) or a `.p5z` that grew with
+an ampr-emu-ng too old for it (`old_ng`: what to do, restart MaxPack or make a compact copy on the PC) is not built; any
+other error shows the payload's English text.
 Every text of the page is in all 11 languages: `tools/check_i18n.js` (run by CI) fails when a language lacks a key, has
 an extra one, changes a `{placeholder}` or keeps the English text.
 
@@ -955,6 +991,13 @@ an extra one, changes a `{placeholder}` or keeps the English text.
   `vendor/ampr-emu-ng/libSceAmpr.sprx`, `SHA256SUMS` and `VERSION` (ending in `-maxpack.N`) from its build, and
   `SOURCE` (repository, commit, CI run) and the Corresponding Source link in `THIRD_PARTY_NOTICES`. A file put into
   `/data/maxpack/ampr/` by hand overrides it on the console. Changes to ampr-emu-ng itself go to its repository.
+  A CI build of a branch there may be bundled before its release (now: commit 4c82503 of `consola-orden`, CI run
+  45752231139, `VERSION` the name of its coming release, `v0.5.2-maxpack.1`); `SOURCE` and `THIRD_PARTY_NOTICES`
+  say so, and the release's `libSceAmpr.sprx` and `SHA256SUMS` replace it once it is published. `VERSION` is what
+  the console compares (the update of ampr-emu-ng, `ampr.bundled`, `maxpack_logic::p5z::GROWN_NG`), and
+  `maxpack_logic::version::parse_version` ignores `-maxpack.N`: a release that changes what the console must check
+  takes a new X.Y.Z. A test (`p5z::tests::the_bundled_ampr_emu_ng_plays_a_grown_p5z`) fails when the bundled one
+  is older than `GROWN_NG`.
 - `vendor/dlc_emu/` and `vendor/pgo_stub/` are drakmor's released binaries (DLC and PlayGo emulators, added to a
   fakelib only when missing); to update, replace the sprx files, `SHA256SUMS` and `VERSION` from the new GitHub
   release.
