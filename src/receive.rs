@@ -10,7 +10,7 @@
 use crate::web::State;
 use maxpack_logic::inst::header;
 use maxpack_logic::job::Rate;
-use maxpack_logic::receive::{self as logic, Active, DriveFacts, Refusal, Start, StartFacts, State as Stage, VerifyProgress};
+use maxpack_logic::receive::{self as logic, Active, DriveFacts, PauseReason, Refusal, Start, StartFacts, State as Stage, VerifyProgress};
 use maxpack_logic::verify::QuickOutcome;
 use serde_json::{json, Value};
 use std::ffi::c_void;
@@ -98,23 +98,24 @@ pub fn init(state: Arc<State>) {
 fn swept() -> MutexGuard<'static, Option<Recv>> {
     let mut g = recv();
     if let Some(r) = g.as_mut().filter(|r| logic::idle(r.stage, r.last_ms, crate::sys::uptime_ms())) {
-        pause(r, None, &format!("nothing from the PC for {} min", logic::IDLE_MS / 60_000));
+        pause(r, PauseReason::Idle, None, &format!("nothing from the PC for {} min", logic::IDLE_MS / 60_000));
     }
     g
 }
 
-/// Ends a receive as paused: its file stays, its token is over (as after a restart), and a start of the same file
-/// goes on where it was. `error`: what stopped it, for the page (a full drive...); None for idle or Stop.
-fn pause(r: &mut Recv, error: Option<String>, why: &str) {
-    (r.stage, r.error, r.ended_ms) = (Stage::Paused, error, Some(crate::sys::uptime_ms()));
+/// Pauses a receive: its file stays and it keeps its token while the payload runs (its status says `paused` with
+/// `reason`, data and finish answer 409 `paused`), and a start of the same file goes on with it. `error`: what
+/// stopped it, for the page (a full drive...); None for idle or Stop.
+fn pause(r: &mut Recv, reason: PauseReason, error: Option<String>, why: &str) {
+    (r.stage, r.error, r.ended_ms) = (Stage::Paused(reason), error, Some(crate::sys::uptime_ms()));
     log!("receive: {}: paused at {} of {} bytes ({why}); {} stays: a send of it again goes on where it was", r.name, r.have,
         r.size, r.partial.display());
 }
 
-/// The receive whose token is `id`, while it is not paused (a paused receive's token is over, as after a restart:
-/// 404 `unknown_id`, and the PC starts again); the request counts as the PC being there.
+/// The receive whose token is `id` (a paused one too; 404 `unknown_id` only for a token this run does not know);
+/// the request counts as the PC being there.
 fn by_id<'a>(g: &'a mut Option<Recv>, id: &str) -> Option<&'a mut Recv> {
-    let r = g.as_mut().filter(|r| r.id == id && r.stage != Stage::Paused)?;
+    let r = g.as_mut().filter(|r| r.id == id)?;
     r.last_ms = crate::sys::uptime_ms();
     Some(r)
 }
@@ -260,6 +261,18 @@ pub fn start(state: &State, body: &[u8]) -> Answer {
             }).unwrap_or_default();
             log!("receive: {} to {}: the PC goes on at {have} of {} bytes", req.name, req.drive, req.size);
             return ok(200, json!({"id": id, "have": have}));
+        }
+        Ok(Start::Unpause { have }) => {
+            let Some(r) = g.as_mut() else { return Refusal::UnknownId.into() };
+            if let Err(e) = prepare(r.partial.parent().unwrap_or(Path::new("/")), &r.partial, have) {
+                log!("receive: {}: {e}", r.partial.display());
+                return ok(500, json!({"error": "write", "detail": e.to_string()}));
+            }
+            log!("receive: {}: going on with its token at {have} of {} bytes (it was paused)", r.name, r.size);
+            let now = crate::sys::uptime_ms();
+            (r.stage, r.have, r.from, r.error, r.stop, r.verify) = (Stage::Receiving, have, have, None, None, None);
+            (r.last_ms, r.ended_ms, r.rate) = (now, None, Rate::default());
+            return ok(200, json!({"id": r.id, "have": have}));
         }
         Ok(Start::New { have }) => have,
         Err(r) => {
@@ -442,7 +455,11 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
             }
             // Cancelled or stopped meanwhile: a cancel deletes the file once this lets WRITER go.
             Some(r) => {
-                failure = Some((Refusal::State(r.stage).into(), None));
+                let refusal = match r.stage {
+                    Stage::Paused(reason) => Refusal::Paused { reason, have: r.have },
+                    s => Refusal::State(s),
+                };
+                failure = Some((refusal.into(), None));
                 break;
             }
             None => {
@@ -471,7 +488,7 @@ pub fn put(state: &State, head: &str, query: &str, pre: &[u8], len: Option<u64>,
 /// The receive `id` paused by a failed write (`why`, shown on the page), answered with `a`.
 fn paused_by(id: &str, why: String, a: Answer) -> Answer {
     if let Some(r) = recv().as_mut().filter(|r| r.id == id && r.stage == Stage::Receiving) {
-        pause(r, Some(why.clone()), &why);
+        pause(r, PauseReason::WriteError, Some(why.clone()), &why);
     }
     a
 }
@@ -611,7 +628,7 @@ fn verify_received(id: &str) {
             }
             log!("receive: {name}: cancelled while verifying; deleted {}", partial.display());
         }
-        _ => pause(r, None, "stopped while verifying"),
+        _ => pause(r, PauseReason::Stopped, None, "stopped while verifying"),
     }
 }
 
@@ -631,7 +648,7 @@ pub fn cancel(id: Option<&str>) -> Answer {
             return e.into();
         }
         let stage = match r.stage {
-            Stage::Receiving | Stage::Failed | Stage::Paused => {
+            Stage::Receiving | Stage::Failed | Stage::Paused(_) => {
                 // A PUT under way stops at its next piece (it sees the stage); the file goes below, once it has.
                 (r.stage, r.ended_ms) = (Stage::Cancelled, Some(crate::sys::uptime_ms()));
                 Stage::Receiving
@@ -695,7 +712,7 @@ pub fn stop_receive() -> Answer {
         if r.stage == Stage::Verifying {
             r.stop = Some(false);
         } else {
-            pause(r, None, "stopped from the page");
+            pause(r, PauseReason::Stopped, None, "stopped from the page");
         }
         r.seq
     };
@@ -734,6 +751,10 @@ pub fn json() -> Value {
     json!({
         "seq": r.seq,
         "state": r.stage.name(),
+        "reason": match r.stage {
+            Stage::Paused(reason) => Some(reason.name()),
+            _ => None,
+        },
         "name": r.name,
         "drive": r.mount,
         "path": r.partial.to_string_lossy(),

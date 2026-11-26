@@ -41,9 +41,31 @@ pub enum State {
     Done,
     Failed,
     Cancelled,
-    /// Stopped with its file kept: idle for IDLE_MS, stopped from the page, the drive full or failing. Its token
-    /// is over (as after a restart); a start of the same file goes on where it was.
-    Paused,
+    /// Stopped with its file kept, and why. It keeps its token while the payload runs: its status says
+    /// `paused` with the reason, data and finish answer 409 `paused`, and a start of the same file goes on.
+    Paused(PauseReason),
+}
+
+/// Why a receive paused (the status's `reason`). The PC goes on by itself after `idle` and `write_error`, and
+/// never after `stopped`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauseReason {
+    /// Nothing from the PC for IDLE_MS.
+    Idle,
+    /// A write or a flush of what arrived failed (a full drive, FAT32, the drive gone).
+    WriteError,
+    /// "Stop (keep what arrived)" on the console, or the payload quitting during the verify.
+    Stopped,
+}
+
+impl PauseReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            PauseReason::Idle => "idle",
+            PauseReason::WriteError => "write_error",
+            PauseReason::Stopped => "stopped",
+        }
+    }
 }
 
 impl State {
@@ -54,7 +76,7 @@ impl State {
             State::Done => "done",
             State::Failed => "failed",
             State::Cancelled => "cancelled",
-            State::Paused => "paused",
+            State::Paused(_) => "paused",
         }
     }
 
@@ -93,6 +115,8 @@ pub enum Refusal {
     State(State),
     /// Finish before every byte arrived: `have`.
     Incomplete(u64),
+    /// Data or finish on a paused receive: why, and what it has.
+    Paused { reason: PauseReason, have: u64 },
 }
 
 impl Refusal {
@@ -103,7 +127,8 @@ impl Refusal {
             Refusal::Locked(_) => 429,
             Refusal::BadRequest(_) | Refusal::BadName | Refusal::BadSize | Refusal::Fat32 | Refusal::PastSize => 400,
             Refusal::NoDrive | Refusal::UnknownId => 404,
-            Refusal::Exists | Refusal::Busy(_) | Refusal::Offset(_) | Refusal::State(_) | Refusal::Incomplete(_) => 409,
+            Refusal::Exists | Refusal::Busy(_) | Refusal::Offset(_) | Refusal::State(_) | Refusal::Incomplete(_)
+            | Refusal::Paused { .. } => 409,
             Refusal::NoSpace(_) => 507,
             Refusal::TooLarge => 413,
             Refusal::LengthRequired => 411,
@@ -130,6 +155,7 @@ impl Refusal {
             Refusal::LengthRequired => "length_required",
             Refusal::State(_) => "state",
             Refusal::Incomplete(_) => "incomplete",
+            Refusal::Paused { .. } => "paused",
         }
     }
 
@@ -154,6 +180,7 @@ impl Refusal {
             Refusal::LengthRequired => "a Content-Length is needed".into(),
             Refusal::State(s) => format!("the receive is {}", s.name()),
             Refusal::Incomplete(h) => format!("only {h} bytes arrived"),
+            Refusal::Paused { reason, have } => format!("the receive is paused ({}) at {have} bytes: start it again to go on", reason.name()),
         }
     }
 
@@ -162,6 +189,10 @@ impl Refusal {
         let mut v = json!({"error": self.code(), "detail": self.detail()});
         match self {
             Refusal::Offset(h) | Refusal::Incomplete(h) => v["have"] = (*h).into(),
+            Refusal::Paused { reason, have } => {
+                v["reason"] = reason.name().into();
+                v["have"] = (*have).into();
+            }
             Refusal::NoSpace(m) => v["missing"] = (*m).into(),
             Refusal::Locked(ms) => v["retry_after"] = ms.div_ceil(1000).into(),
             _ => {}
@@ -318,6 +349,8 @@ pub enum Start {
     /// A new receive, from `have` (the bytes of a `.maxpack-recv` left by an earlier one; 0 = from the start,
     /// truncating whatever is there).
     New { have: u64 },
+    /// The same file, paused in this run: receiving again with its token, from `have`.
+    Unpause { have: u64 },
 }
 
 /// Where a new receive starts from a file left on the disk: its length less the last MAX_PUT (a power cut during
@@ -373,23 +406,34 @@ pub fn start_gate(f: &StartFacts) -> Result<Start, Refusal> {
         Some(a) if a.state.active() => return Err(Refusal::Busy(Busy::Receive)),
         _ => {}
     }
-    // Paused in this run, its file as it left it (flushed): exactly from there.
-    let paused = f.active.as_ref().filter(|a| a.state == State::Paused && a.same && f.partial == Some(a.have)).map(|a| a.have);
+    // The same file paused in this run goes on with its token: exactly where it was when its file is as it left it
+    // after flushed PUTs (idle, stopped); from the file, as one left on the disk, after a failed write or a change.
+    let unpause = f.active.as_ref().and_then(|a| match a.state {
+        State::Paused(r) if a.same => Some((r != PauseReason::WriteError && f.partial == Some(a.have)).then_some(a.have)),
+        _ => None,
+    });
     if let Some(b) = f.busy {
         return Err(Refusal::Busy(b));
     }
     if f.partial == Some(u64::MAX) {
         return Err(Refusal::Exists);
     }
-    let have = paused.unwrap_or_else(|| resume_have(f.partial, r.size, f.failed_before));
+    let have = match unpause {
+        Some(Some(exact)) => exact,
+        Some(None) => resume_have(f.partial, r.size, false),
+        None => resume_have(f.partial, r.size, f.failed_before),
+    };
     if let Some(m) = missing(d.free, r.size, have) {
         return Err(Refusal::NoSpace(m));
     }
-    Ok(Start::New { have })
+    Ok(if unpause.is_some() { Start::Unpause { have } } else { Start::New { have } })
 }
 
 /// A `PUT /api/receive/data` of `len` bytes at `offset` into a receive in `state` with `have` of `size`.
 pub fn data_check(state: State, have: u64, size: u64, offset: u64, len: u64) -> Result<(), Refusal> {
+    if let State::Paused(reason) = state {
+        return Err(Refusal::Paused { reason, have });
+    }
     if state != State::Receiving {
         return Err(Refusal::State(state));
     }
@@ -407,6 +451,9 @@ pub fn data_check(state: State, have: u64, size: u64, offset: u64, len: u64) -> 
 
 /// `POST /api/receive/finish`: only a receive that has every byte.
 pub fn finish_check(state: State, have: u64, size: u64) -> Result<(), Refusal> {
+    if let State::Paused(reason) = state {
+        return Err(Refusal::Paused { reason, have });
+    }
     if state != State::Receiving {
         return Err(Refusal::State(state));
     }
@@ -635,7 +682,8 @@ pub fn failed_text(q: &crate::verify::Quick) -> String {
     s
 }
 
-/// `GET /api/receive/status`'s answer: `{"have","size","state","verify":{bytes,total,nbad,bad:[...]}|null,"error"}`.
+/// `GET /api/receive/status`'s answer: `{"have","size","state","verify":{bytes,total,nbad,bad:[...]}|null,"error"}`,
+/// and `reason` when paused.
 pub fn status_json(have: u64, size: u64, state: State, verify: Option<&VerifyProgress>, error: Option<&str>) -> Value {
     // Each item as the PC's `maxpack verify --quick --json` gives it: a volume by its number, a file by its path, and
     // `found` only when something whole could be hashed.
@@ -653,7 +701,11 @@ pub fn status_json(have: u64, size: u64, state: State, verify: Option<&VerifyPro
         }).collect();
         json!({"bytes": v.bytes, "total": v.total, "nbad": v.nbad, "bad": bad})
     });
-    json!({"have": have, "size": size, "state": state.name(), "verify": verify, "error": error})
+    let mut s = json!({"have": have, "size": size, "state": state.name(), "verify": verify, "error": error});
+    if let State::Paused(reason) = state {
+        s["reason"] = reason.name().into();
+    }
+    s
 }
 
 #[cfg(test)]
@@ -690,7 +742,7 @@ mod tests {
 
     #[test]
     fn states() {
-        let all = [State::Receiving, State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused];
+        let all = [State::Receiving, State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused(PauseReason::Idle)];
         let names: Vec<&str> = all.iter().map(|s| s.name()).collect();
         assert_eq!(names, ["receiving", "verifying", "done", "failed", "cancelled", "paused"]);
         let active: Vec<bool> = all.iter().map(|s| s.active()).collect();
@@ -703,7 +755,7 @@ mod tests {
         assert!(!idle(State::Receiving, 1000, 1000 + IDLE_MS - 1));
         assert!(idle(State::Receiving, 1000, 1000 + IDLE_MS));
         assert!(!idle(State::Verifying, 0, 10 * IDLE_MS));
-        for s in [State::Done, State::Failed, State::Cancelled, State::Paused] {
+        for s in [State::Done, State::Failed, State::Cancelled, State::Paused(PauseReason::Idle)] {
             assert!(!idle(s, 0, 10 * IDLE_MS), "{s:?}");
         }
         // A clock that went back never pauses.
@@ -712,15 +764,49 @@ mod tests {
 
     #[test]
     fn a_paused_receive_goes_on_where_it_was() {
-        // The same file, paused in this run, its file as long as it had: from there exactly, a new token.
-        let paused = Some(Active { state: State::Paused, same: true, have: 3 << 30 });
-        assert_eq!(start_gate(&StartFacts { active: paused.clone(), partial: Some(3 << 30), ..facts() }), Ok(Start::New { have: 3 << 30 }));
-        // Its file changed meanwhile: as any file left on the disk.
-        assert_eq!(start_gate(&StartFacts { active: paused, partial: Some(2 << 30), ..facts() }),
-            Ok(Start::New { have: (2 << 30) - MAX_PUT }));
-        // Another file paused: nothing under way, the start goes on as usual.
-        let other = Some(Active { state: State::Paused, same: false, have: 5 });
+        // The same file, paused idle or stopped in this run, its file as long as it had: the same token again, from
+        // there exactly (every PUT was flushed).
+        for reason in [PauseReason::Idle, PauseReason::Stopped] {
+            let paused = Some(Active { state: State::Paused(reason), same: true, have: 3 << 30 });
+            assert_eq!(start_gate(&StartFacts { active: paused, partial: Some(3 << 30), ..facts() }),
+                Ok(Start::Unpause { have: 3 << 30 }), "{reason:?}");
+        }
+        // Paused by a write that failed (its flush may not have happened), or its file changed meanwhile: from the
+        // file, as one left on the disk.
+        let failed_write = Some(Active { state: State::Paused(PauseReason::WriteError), same: true, have: 3 << 30 });
+        assert_eq!(start_gate(&StartFacts { active: failed_write, partial: Some(3 << 30), ..facts() }),
+            Ok(Start::Unpause { have: (3 << 30) - MAX_PUT }));
+        let changed = Some(Active { state: State::Paused(PauseReason::Idle), same: true, have: 3 << 30 });
+        assert_eq!(start_gate(&StartFacts { active: changed, partial: Some(2 << 30), ..facts() }),
+            Ok(Start::Unpause { have: (2 << 30) - MAX_PUT }));
+        // It is not under way: another job of the engine refuses it, and the space is looked at.
+        let paused = Some(Active { state: State::Paused(PauseReason::Idle), same: true, have: 5 });
+        assert_eq!(start_gate(&StartFacts { active: paused.clone(), partial: Some(5), busy: Some(Busy::Install), ..facts() }),
+            Err(Refusal::Busy(Busy::Install)));
+        let full = Some(DriveFacts { free: 0, fat32: false, usable: true });
+        assert!(matches!(start_gate(&StartFacts { active: paused, partial: Some(5), drive: full, ..facts() }), Err(Refusal::NoSpace(_))));
+        // Another file paused: nothing under way, the start goes on as usual (a new receive).
+        let other = Some(Active { state: State::Paused(PauseReason::Stopped), same: false, have: 5 });
         assert_eq!(start_gate(&StartFacts { active: other, ..facts() }), Ok(Start::New { have: 0 }));
+    }
+
+    #[test]
+    fn a_paused_receive_answers_with_its_reason() {
+        assert_eq!([PauseReason::Idle, PauseReason::WriteError, PauseReason::Stopped].map(|r| r.name()),
+            ["idle", "write_error", "stopped"]);
+        let paused = State::Paused(PauseReason::Stopped);
+        assert_eq!(paused.name(), "paused");
+        // PUT data and finish on it: 409 paused with the reason and have.
+        let r = Refusal::Paused { reason: PauseReason::Stopped, have: 40 };
+        assert_eq!(data_check(paused, 40, 100, 40, 10), Err(r.clone()));
+        assert_eq!(finish_check(State::Paused(PauseReason::Stopped), 40, 100), Err(r.clone()));
+        assert_eq!((r.status(), r.code()), (409, "paused"));
+        let j = r.json();
+        assert_eq!((j["error"].as_str(), j["reason"].as_str(), j["have"].as_u64()), (Some("paused"), Some("stopped"), Some(40)));
+        // The status says it with its reason; any other state has none.
+        let s = status_json(40, 100, State::Paused(PauseReason::Idle), None, None);
+        assert_eq!((s["state"].as_str(), s["reason"].as_str()), (Some("paused"), Some("idle")));
+        assert!(status_json(40, 100, State::Receiving, None, None).get("reason").is_none());
     }
 
     #[test]
@@ -733,7 +819,7 @@ mod tests {
         assert_eq!(drain_len(&Refusal::Offset(5), 10, false), 10);
         assert_eq!(drain_len(&Refusal::Offset(5), MAX_PUT, false), MAX_DRAIN);
         assert_eq!(drain_len(&Refusal::UnknownId, MAX_PUT, true), 0);
-        assert_eq!(drain_len(&Refusal::State(State::Paused), 7, false), 7);
+        assert_eq!(drain_len(&Refusal::Paused { reason: PauseReason::Idle, have: 3 }, 7, false), 7);
     }
 
     #[test]
@@ -828,7 +914,7 @@ mod tests {
         assert_eq!(start_gate(&StartFacts { partial: Some(10 << 30), failed_before: true, ..facts() }), Ok(Start::New { have: 0 }));
         assert_eq!(start_gate(&StartFacts { partial: Some((10 << 30) + 1), ..facts() }), Ok(Start::New { have: 0 }));
         // An ended receive of this run is no longer under way.
-        for state in [State::Done, State::Failed, State::Cancelled, State::Paused] {
+        for state in [State::Done, State::Failed, State::Cancelled, State::Paused(PauseReason::Idle)] {
             let active = Some(Active { state, same: false, have: 5 });
             assert_eq!(start_gate(&StartFacts { active, ..facts() }), Ok(Start::New { have: 0 }));
         }
@@ -908,7 +994,7 @@ mod tests {
         assert_eq!(data_check(State::Receiving, 40, 100, 40, 61), Err(Refusal::PastSize));
         assert_eq!(data_check(State::Receiving, 0, u64::MAX, 0, MAX_PUT + 1), Err(Refusal::TooLarge));
         assert_eq!(data_check(State::Receiving, u64::MAX - 1, u64::MAX, u64::MAX - 1, 5), Err(Refusal::PastSize));
-        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused] {
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled] {
             assert_eq!(data_check(s, 0, 100, 0, 10), Err(Refusal::State(s)));
         }
     }
@@ -917,17 +1003,17 @@ mod tests {
     fn finish_and_cancel_rules() {
         assert_eq!(finish_check(State::Receiving, 100, 100), Ok(()));
         assert_eq!(finish_check(State::Receiving, 99, 100), Err(Refusal::Incomplete(99)));
-        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled, State::Paused] {
+        for s in [State::Verifying, State::Done, State::Failed, State::Cancelled] {
             assert_eq!(finish_check(s, 100, 100), Err(Refusal::State(s)));
         }
-        for s in [State::Receiving, State::Verifying, State::Failed, State::Cancelled, State::Paused] {
+        for s in [State::Receiving, State::Verifying, State::Failed, State::Cancelled, State::Paused(PauseReason::Idle)] {
             assert_eq!(cancel_check(s), Ok(()));
         }
         assert_eq!(cancel_check(State::Done), Err(Refusal::State(State::Done)));
         // Stop (keep what arrived): only a receive under way.
         assert_eq!(stop_check(State::Receiving), Ok(()));
         assert_eq!(stop_check(State::Verifying), Ok(()));
-        for s in [State::Done, State::Failed, State::Cancelled, State::Paused] {
+        for s in [State::Done, State::Failed, State::Cancelled, State::Paused(PauseReason::Idle)] {
             assert_eq!(stop_check(s), Err(Refusal::State(s)));
         }
     }

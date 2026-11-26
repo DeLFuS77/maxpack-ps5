@@ -463,8 +463,9 @@ function instPost(name, body) {
 // data (counted and dropped: nothing is written), status, finish (a verify of 3 s; a name with "damaged" in it fails
 // on a volume and a file) and cancel. --receive demo|failed|paused: a receive that runs by itself (5 % a second), or
 // one paused at 40 %, so the banner shows without a PC; at run time /mock?receive=demo. A receive with nothing from the
-// PC for 10 minutes pauses (src/receive.rs): its token is then unknown and a start of the same file goes on where it
-// was; the banner's Stop pauses it, Delete deletes what arrived.
+// PC for 10 minutes pauses (src/receive.rs, reason idle), as the banner's Stop does (reason stopped): it keeps its
+// token, its status says paused with the reason, data and finish answer 409 paused, and a start of the same file goes
+// on with that token; Delete deletes what arrived.
 const pairing = { on: mock.receive !== 'none', code: '' };
 let recvJob = null, recvSeq = 0, recvTimer = null;
 const recvLock = new Map();
@@ -488,8 +489,7 @@ function isLoopback(req) { return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].inclu
 // maxpack_logic::receive::idle: 10 minutes with nothing from the PC pauses a receive.
 function recvSweep() {
   if (recvJob && recvJob.state === 'receiving' && !recvJob.demo && Date.now() - (recvJob.last || recvJob.started) >= 600000) {
-    recvJob.state = 'paused';
-    recvJob.mbps = null;
+    Object.assign(recvJob, { state: 'paused', reason: 'idle', mbps: null });
   }
 }
 function recvUnder() { recvSweep(); return !!recvJob && (recvJob.state === 'receiving' || recvJob.state === 'verifying'); }
@@ -498,13 +498,13 @@ function recvState() {
   recvSweep();
   if (!recvJob) return null;
   const j = recvJob;
-  return { seq: j.seq, state: j.state, name: j.name, drive: j.mount, path: j.partial, dest: j.dest, size: j.size, have: j.have,
+  return { seq: j.seq, state: j.state, reason: j.state === 'paused' ? j.reason : null, name: j.name, drive: j.mount, path: j.partial, dest: j.dest, size: j.size, have: j.have,
     from: j.from, mbps: recvUnder() ? j.mbps : null, cancelling: false, verify: j.verify, error: j.error, elapsed_ms: Date.now() - j.started };
 }
 // The status the PC polls (maxpack_logic::receive::status_json).
 // Each bad item as the PC's maxpack verify --quick --json gives it: a volume by number, a file by path.
 function recvStatus(j) {
-  return { have: j.have, size: j.size, state: j.state, error: j.error, verify: j.verify && { bytes: j.verify.bytes, total: j.verify.total,
+  return { have: j.have, size: j.size, state: j.state, ...(j.state === 'paused' ? { reason: j.reason } : {}), error: j.error, verify: j.verify && { bytes: j.verify.bytes, total: j.verify.total,
     nbad: j.verify.nbad, bad: j.verify.bad.map((b) => Object.assign(b.what === 'volume' ? { volume: b.volume } : { path: b.name },
       { why: 'sha256', expected: 'aa'.repeat(32), found: 'bb'.repeat(32) })) } };
 }
@@ -545,7 +545,7 @@ function recvDemo(kind) {
   if (kind === 'paused') {
     pairing.on = true;
     if (!pairing.code) pairing.code = mockCode();
-    Object.assign(recvNewJob('Demo Paused [PPSA09876].p5z', 18 * GB, 'usb0', Math.round(18 * GB * 0.4)), { state: 'paused', demo: true });
+    Object.assign(recvNewJob('Demo Paused [PPSA09876].p5z', 18 * GB, 'usb0', Math.round(18 * GB * 0.4)), { state: 'paused', reason: 'idle', demo: true });
     return;
   }
   if (kind !== 'demo' && kind !== 'failed') { recvJob = null; return; }
@@ -591,23 +591,26 @@ function recvStart(body) {
   if (received.has(dest) || games().some((g) => g.path === dest)) return recvNo('exists', 409, 'that .p5z is already there');
   if (recvJob && recvJob.state === 'receiving' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size)
     return [200, { id: recvJob.id, have: recvJob.have }];
-  // Paused in this run: a new token, from where it was.
-  const paused = recvJob && recvJob.state === 'paused' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size
-    ? recvJob.have : 0;
+  // Paused in this run: receiving again with its token, from where it was.
+  if (recvJob && recvJob.state === 'paused' && recvJob.name === name && recvJob.drive === drive && recvJob.size === size) {
+    if (currentJob() || verifyRunning()) return recvNo('busy', 409, 'another job runs; try again when it ends');
+    Object.assign(recvJob, { state: 'receiving', reason: null, from: recvJob.have, last: Date.now(), demo: false });
+    return [200, { id: recvJob.id, have: recvJob.have }];
+  }
   if (recvUnder()) return recvNo('busy', 409, 'a receive from the PC is under way; try again when it ends');
   if (currentJob()) return recvNo('busy', 409, 'the installer is running a job; try again when it ends');
   if (verifyRunning()) return recvNo('busy', 409, 'a .p5z is being verified on the console; try again when it ends');
   const missing = size + 256 * MB - d.free;
   if (missing > 0) return recvNo('no_space', 507, 'not enough space on the drive', { missing });
   clearInterval(recvTimer);
-  const j = recvNewJob(name, size, drive, paused);
+  const j = recvNewJob(name, size, drive, 0);
   return [200, { id: j.id, have: j.have }];
 }
-// A paused receive's token is over (404, as after a restart); a request with the token counts as the PC being there.
+// A paused receive keeps its token; a request with the token counts as the PC being there.
 function recvById(url) {
   recvSweep();
   const id = url.searchParams.get('id');
-  const j = recvJob && recvJob.id === id && recvJob.state !== 'paused' ? recvJob : null;
+  const j = recvJob && recvJob.id === id ? recvJob : null;
   if (j) j.last = Date.now();
   return j;
 }
@@ -630,6 +633,7 @@ function recvRoute(req, url, body, bytes) {
   if (!j) return recvNo('unknown_id', 404, 'no receive with that id: start again');
   if (req.method === 'PUT' && p === '/api/receive/data') {
     const offset = Number(url.searchParams.get('offset'));
+    if (j.state === 'paused') return recvNo('paused', 409, 'the receive is paused: start it again to go on', { reason: j.reason, have: j.have });
     if (j.state !== 'receiving') return recvNo('state', 409, `the receive is ${j.state}`);
     if (bytes > 64 * MB) return recvNo('too_large', 413, 'at most 64 MiB per request');
     if (offset !== j.have) return recvNo('offset', 409, `the data must go on at byte ${j.have}`, { have: j.have });
@@ -642,6 +646,7 @@ function recvRoute(req, url, body, bytes) {
   }
   if (req.method === 'GET' && p === '/api/receive/status') return [200, recvStatus(j)];
   if (req.method === 'POST' && p === '/api/receive/finish') {
+    if (j.state === 'paused') return recvNo('paused', 409, 'the receive is paused: start it again to go on', { reason: j.reason, have: j.have });
     if (j.state !== 'receiving') return recvNo('state', 409, `the receive is ${j.state}`);
     if (j.have !== j.size) return recvNo('incomplete', 409, `only ${j.have} bytes arrived`, { have: j.have });
     recvVerify(j);
@@ -738,7 +743,7 @@ http.createServer((req, res) => {
     if (req.method === 'POST' && p === '/api/pairing/stop') {
       if (!recvUnder()) return json(res, 409, { error: 'state', detail: 'no receive is under way' });
       clearInterval(recvTimer);
-      Object.assign(recvJob, { state: 'paused', mbps: null });
+      Object.assign(recvJob, { state: 'paused', reason: 'stopped', mbps: null });
       return json(res, 200, recvStatus(recvJob));
     }
     if (req.method === 'POST' && p === '/api/pairing/left') {
