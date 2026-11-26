@@ -4,9 +4,9 @@ A Rust PS5 ELF payload (`src/`). It finds games on the internal SSD and on USB/e
 keeps a per-game cache on the internal SSD, registers each game on the home screen and, at
 launch, overlays the game's fakelib and the shared ampr-emu-ng dir on the sandbox's system libs.
 The ampr-emu-ng runtime is NOT built here: our own build of it (DeLFuS77/ampr-emu-ng: quer3q's v0.5.1, with its pkg mode, plus our p5z mode,
-which also plays a `.p5z` that grew; now `v0.5.1-maxpack.2`, for the time being a CI build of its branch `consola-orden` that is
-not released yet; its CI run and commit are in `vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
-`-maxpack.N`; `SHA256SUMS` copied from that CI run, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
+which also plays a `.p5z` that grew; now the release `v0.5.1-maxpack.2`, whose release, commit and CI run are in
+`vendor/ampr-emu-ng/SOURCE`) is bundled from `vendor/ampr-emu-ng/` (`VERSION`, which ends in
+`-maxpack.N`; `SHA256SUMS` copied from that release, checked by `ps5/build.sh`) and installed into `/data/maxpack/ampr/` at start.
 Two third-party emulators are bundled the same way (released files, `VERSION` and `SHA256SUMS` from
 their GitHub releases, checked by `ps5/build.sh`; GPL-3.0, `THIRD_PARTY_NOTICES`): drakmor's dlc_emu
 (`vendor/dlc_emu/`: `libSceAppContent.sprx`, `libSceNpEntitlementAccess.sprx`, `libSceGameUpdate.sprx`)
@@ -895,8 +895,8 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`; now b3b526f, of the engine's branch `pc-ampliar`, with no tag yet: `motor-consola-4` is
-to be put on it, and the sync run again, before a release; before it `motor-consola-3`, e8de15a), with the zstd and
+there in `vendor/maxpack/COMMIT.tag`; now `motor-consola-4`, 5463d75, the engine of MaxPack 1.0.7 for the PC; before it
+`motor-consola-3`, e8de15a), with the zstd and
 zlib its submodules pin. Since then the engine reads a `.p5z` that grew (Supported sources), and its installer refuses
 one (`grown_p5z`: its packs are laid out as only ampr-emu-ng's p5z mode reads them; play it from the `.p5z`, or make a
 compact copy on the PC with `maxpack compact`, which is index version 1 again). Verify compares an installed `.p5z`'s
@@ -1009,9 +1009,9 @@ an extra one, changes a `{placeholder}` or keeps the English text.
   `vendor/ampr-emu-ng/libSceAmpr.sprx`, `SHA256SUMS` and `VERSION` (ending in `-maxpack.N`) from its build, and
   `SOURCE` (repository, commit, CI run) and the Corresponding Source link in `THIRD_PARTY_NOTICES`. A file put into
   `/data/maxpack/ampr/` by hand overrides it on the console. Changes to ampr-emu-ng itself go to its repository.
-  A CI build of a branch there may be bundled before its release (now: commit 4c82503 of `consola-orden`, CI run
-  45752231139, `VERSION` the name of its coming release, `v0.5.1-maxpack.2`); `SOURCE` and `THIRD_PARTY_NOTICES`
-  say so, and the release's `libSceAmpr.sprx` and `SHA256SUMS` replace it once it is published. `VERSION` is what
+  A CI build of a branch there may be bundled before its release, as `v0.5.1-maxpack.2` was while it was tested
+  (`VERSION` then holds the name of the coming release); `SOURCE` and `THIRD_PARTY_NOTICES` say so, and the
+  release's `libSceAmpr.sprx` and `SHA256SUMS` replace it once it is published. `VERSION` is what
   the console compares (the update of ampr-emu-ng, `ampr.bundled`, `maxpack_logic::p5z::GROWN_NG`):
   `maxpack_logic::version::parse_version` orders by X.Y.Z, then by the `-maxpack.N` revision (none = 0, upstream's
   own build), so a new MaxPack build of the same upstream version takes the next N (the repository's rule,

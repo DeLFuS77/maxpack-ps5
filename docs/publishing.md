@@ -6,18 +6,11 @@ one's README and Corresponding Source links point at the others.
 
 ## Before the first release
 
-- **ampr-emu-ng is settled.** Up to 1.0.2, `vendor/ampr-emu-ng/libSceAmpr.sprx` was byte-identical to the
-  `libSceAmpr.sprx` of the public release `v0.5.1-maxpack.1` of DeLFuS77/ampr-emu-ng (CI run 45435074348,
-  tag on `73b2973`): same SHA-256. Change the vendored binary only together with `SHA256SUMS`, `VERSION`
-  and `SOURCE` (DESIGN.md, Vendored components).
-- **Before the next release: ampr-emu-ng `v0.5.1-maxpack.2` is released.** Now `vendor/ampr-emu-ng` holds
-  a CI build (run 45752231139) of commit `4c82503` on its branch `consola-orden`, which plays a `.p5z`
-  that grew; `VERSION` already says `v0.5.1-maxpack.2`, the name of its coming release, and the console
-  stops a grown `.p5z` with any older ampr-emu-ng (`maxpack_logic::p5z::GROWN_NG`). Merge that branch
-  there, publish the release (its crates keep upstream's version, 0.5.1, as v0.5.1-maxpack.1's did; the
-  console tells the builds apart by the `-maxpack.N` of the tag), and replace `libSceAmpr.sprx`, `SHA256SUMS` and `SOURCE`
-  here with the release's, with `THIRD_PARTY_NOTICES` pointing at its tag. Until it is published, the
-  latest release is the older `v0.5.1-maxpack.1`, which the update refuses as older than the bundled one.
+- **ampr-emu-ng is settled.** Since 1.0.2, `vendor/ampr-emu-ng/libSceAmpr.sprx` is byte-identical to the
+  `libSceAmpr.sprx` of the public release `v0.5.1-maxpack.2` of DeLFuS77/ampr-emu-ng (CI run 45771752511,
+  tag on `007c97f`): same SHA-256. Up to 1.0.1 it was the one of `v0.5.1-maxpack.1` (CI run 45435074348,
+  tag on `73b2973`). Change the vendored binary only together with `SHA256SUMS`, `VERSION` and `SOURCE`
+  (DESIGN.md, Vendored components).
 - **The secure-connection check passes on a console before `v1.0.0` is tagged.** With a build of the
   commit to be tagged, Settings > "Check secure connections" (docs/console-tests.md, 8.1) must end with
   "Passed": the console refuses an untrusted root, a wrong host and an expired certificate, and reaches
@@ -26,10 +19,10 @@ one's README and Corresponding Source links point at the others.
   not take as a TLS refusal (its line says "failed before the certificate check"), find out what that code
   means and add it there only if it is a certificate refusal.
 - **`vendor/maxpack/COMMIT`** is reachable in DeLFuS77/maxpack through a tag: keep it, and merge there
-  without squashing or rebasing. Up to 1.0.2 it was `e8de15a` (tag `motor-consola-3`). Now it is `b3b526f`
-  of the engine's branch `pc-ampliar`, with no tag yet (`vendor/maxpack/COMMIT.tag` is missing): before the
-  next release, sync the engine commit that is merged there, tag it `motor-consola-4`, push the tag and
-  run `tools/sync_maxpack.sh` again, so that `COMMIT.tag` names it.
+  without squashing or rebasing. Up to 1.0.1 it was `e8de15a` (tag `motor-consola-3`); since 1.0.2 it is
+  `5463d75`, the engine of MaxPack 1.0.7 for the PC (tag `motor-consola-4`, named in `vendor/maxpack/COMMIT.tag`).
+  For the next engine sync, tag its commit `motor-consola-5`, push that tag alone, and run
+  `tools/sync_maxpack.sh` so that `COMMIT.tag` names it.
 - **Tags.** This repository keeps the upstream project's tags locally (`v0.0.1-beta` to `v0.3.2`).
   Never `git push --tags`: it would publish them, and every `v*` tag starts the release job. Push
   only the release tag, `v` plus `Cargo.toml`'s version (`v1.0.0`); the release job refuses any

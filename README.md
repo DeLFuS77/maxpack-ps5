@@ -326,7 +326,7 @@ The whole flow, from packing on the PC:
 - **Scan paths** and **excluded paths** (the scan never opens those).
 - The bundled **DLC (dlc_emu)** and **PlayGo (pgo_stub)** emulators, added to a game that needs them and
   has none; **backports**; cleaning up games whose source is gone.
-- The bundled **ampr-emu-ng** (`v0.5.1-maxpack.1`), with its own updater (off until MaxPack is
+- The bundled **ampr-emu-ng** (`v0.5.1-maxpack.2`), with its own updater (off until MaxPack is
   published), checked like the self-update.
 - **Download updated recommended settings** (on by default): the latest list of
   [recommended settings](#recommended-settings), once per start.
