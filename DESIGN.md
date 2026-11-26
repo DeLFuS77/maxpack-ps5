@@ -966,8 +966,9 @@ mode, and the button says it is a test.
   the games or the walk's error), `exists`
   (`<folder>.p5z` is there, or cannot be looked at: it is never overwritten), then the room
   (`maxpack_logic::pack::room`, before anything is written): `fat32` with `folder_bytes` (the drive where the `.p5z`
-  goes is FAT32, statfs `f_fstypename` `msdosfs` and the like, and the folder's bytes, `cache::du`, are 4 GiB or
-  more: the `.p5z` is one file, can be as large as the folder, and FAT32 keeps no file of 4 GiB), then `no_space`
+  goes is FAT32, statfs `f_fstypename` `msdosfs` and the like, and the folder's bytes, `cache::du`, are 4 GiB less
+  `FAT32_ROOM` (256 MiB, for the indexes, volume headers and zstd frames the engine adds) or more: the `.p5z` is one
+  file, can be as large as the folder and that, and FAT32 keeps no file of 4 GiB), then `no_space`
   with `missing_bytes` and `internal` (the folder's bytes plus a margin must fit in the free space there: 2 GiB,
   `INTERNAL_MARGIN`, on the internal drive (`/data`, the user partition with the saves, the installs and the logs),
   `SPACE_MARGIN`, 256 MiB, elsewhere; a `.p5z` can be as large as the folder). Behind the same Host and Origin checks
@@ -977,10 +978,12 @@ mode, and the button says it is a test.
   `<folder>.p5z.maxpack-pack` (not a `.p5z` name, so the scan never takes the growing file) and named at the end
   (`maxpack_logic::pack::finish`, in this order): the file flushed (`fsync`: the engine closes it without one, and a
   power cut after the rename must not leave a `.p5z` whose index reached the disk and some of whose volumes did not),
-  its sums read back from it (below; this validates it again), and only then renamed, only if `<folder>.p5z` is still
-  not there (ponytail: checked, then renamed), and its folder flushed (a failed flush is logged, not fatal). A file
-  whose sums do not read never takes the name `<folder>.p5z`: it stays `.maxpack-pack`, the job fails and `left`
-  names it. A `.maxpack-pack` file found when a
+  its sums read back from it (below; this validates it again), a Cancel that came meanwhile honoured (the job ends
+  `cancelled`, the file deleted), and only then renamed, only if `<folder>.p5z` is still not there (ponytail:
+  checked, then renamed), and its folder flushed (a failed flush is logged, not fatal). A file whose sums do not read
+  never takes the name `<folder>.p5z` and is deleted (a full-size file must not stay, on `/data` least of all): the
+  job fails with `code` `sums` in `/api/state` `pack`, the reason in the log, and the page says it in its own
+  words; when that delete fails, `left` names the file (the next job of that folder removes it). A `.maxpack-pack` file found when a
   job starts (left by one this payload no longer runs: it quit or crashed) is removed and logged. Once renamed, the
   `.p5z` is a game of the scan like any other: while the folder is there it is the folder's duplicate (Flow,
   Duplicate title ids).
