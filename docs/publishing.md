@@ -17,8 +17,7 @@ one's README and Corresponding Source links point at the others.
   there, publish the release (raising its crates' version to 0.5.2 first, so that its identity and its
   launch notice say 0.5.2: they still say 0.5.1), and replace `libSceAmpr.sprx`, `SHA256SUMS` and `SOURCE`
   here with the release's, with `THIRD_PARTY_NOTICES` pointing at its tag. Until it is published, the
-  latest release is the older `v0.5.1-maxpack.1`: "Update ampr-emu-ng now" installs it, and every grown
-  `.p5z` then stops until MaxPack restarts.
+  latest release is the older `v0.5.1-maxpack.1`, which the update refuses as older than the bundled one.
 - **The secure-connection check passes on a console before `v1.0.0` is tagged.** With a build of the
   commit to be tagged, Settings > "Check secure connections" (docs/console-tests.md, 8.1) must end with
   "Passed": the console refuses an untrusted root, a wrong host and an expired certificate, and reaches

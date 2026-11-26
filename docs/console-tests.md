@@ -717,8 +717,10 @@ the secure-connection check and installs `libSceAmpr.sprx` only when it matches 
 by "Update ampr-emu-ng now" (it asks first).
 
 > With a build that bundles `v0.5.2-maxpack.1` (section 11) while its release is not published, the latest
-> release is the older `v0.5.1-maxpack.1`: "Update ampr-emu-ng now" installs it (Settings then shows it as
-> downloaded, and every `.p5z` that grew stops, 11.4), and a restart puts the bundled one back.
+> release is the older `v0.5.1-maxpack.1`: "Update ampr-emu-ng now" refuses it ("Update failed: the latest
+> release is older than the ampr-emu-ng MaxPack uses now, so nothing was installed: ..."; in the log
+> `ampr: update: nothing installed (older): ...`), and 9.2's install does not happen until a newer release
+> exists.
 
 - [ ] **9.1. Refused before the secure-connection check.**
   - Delete `/data/maxpack/tls_check.json` and restart MaxPack. Expected: in Settings, under
@@ -852,8 +854,8 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     no longer compared with a `.p5z` that grew; only the folder's packs are checked).
 - [ ] **11.4. An older ampr-emu-ng never starts it half-way.**
   - Over FTP (binary mode), put the `libSceAmpr.sprx` of ampr-emu-ng's release `v0.5.1-maxpack.1` in
-    `/data/maxpack/ampr/` in place of the bundled one, with no game running. (Or, once the secure-connection
-    check has passed, press "Update ampr-emu-ng now" while `v0.5.1-maxpack.1` is the latest release.)
+    `/data/maxpack/ampr/` in place of the bundled one, with no game running. ("Update ampr-emu-ng now" does
+    not do it: it refuses a release older than the bundled one, 9.)
   - Expected, at the next pass: in the log `<TID> (...): fakelib refresh: this .p5z grew (index version 2) and
     needs ampr-emu-ng v0.5.2-maxpack.1 or later; ...; rebuilding`, then the build fails with
     `... not started with it`; the game shows Error and its sheet says "This .p5z grew on the PC ... needs a
@@ -864,6 +866,13 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
   - A `.p5z` that never grew (another game, or the compact copy of 11.3) still builds and plays.
   - Delete the file you put there and restart MaxPack. Expected: `ampr: installed bundled ampr-emu-ng
     v0.5.2-maxpack.1`, then `building cache` of the grown game, and it starts.
+- [ ] **11.4b. A copy in the middle of a build (optional).**
+  - Delete the grown game's cache ("Rebuild cache") so that it builds again, and while the log says
+    `building cache` for it (a large `.p5z` on USB gives time), put that `v0.5.1-maxpack.1` file into
+    `/data/maxpack/ampr/` over FTP.
+  - Expected: the build ends with `... not started with it` (the copy in `fakelib/` is the one checked), or,
+    if the file arrived after the copy, the next pass refreshes the fakelib and stops as in 11.4. Never
+    "ready" with that file in `/data/maxpack/caches/<TID>/fakelib/`.
 - [ ] **11.5. An append cut short on the PC (optional).**
   - On the PC, run `maxpack update` on a copy of a `.p5z` and end the process from the Task Manager
     while it writes: a `<game>.p5z.maxpack-append` file stays next to it. Copy both to the console without

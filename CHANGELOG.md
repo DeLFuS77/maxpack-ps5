@@ -18,10 +18,12 @@ What changed in each version of MaxPack for the console. The format follows
 ### Changed
 
 - **Never half-way.** A `.p5z` that grew needs that ampr-emu-ng. When `/data/maxpack/ampr/` holds an older
-  one (put there by hand, or an older release installed with "Update ampr-emu-ng now"), MaxPack does not
-  start the game: its sheet says why and what to do (restart MaxPack to put back its own, deleting one you
+  one (put there by hand), MaxPack does not start the game: its sheet says why and what to do (restart MaxPack to put back its own, deleting one you
   put there by hand, or make a compact copy on the PC with `maxpack compact`), and a notice names it once.
   A `.p5z` that never grew plays as before, with any.
+- **The ampr-emu-ng update never installs an older release.** At start or with "Update ampr-emu-ng now", a
+  release older than the ampr-emu-ng MaxPack carries, or than the one in use, is not installed, and Settings
+  says why: a `.p5z` that grew would no longer start with it.
 - **Install** says that a `.p5z` that grew cannot be installed: play it from the `.p5z`, or make a compact
   copy on the PC and install that.
 - The installer is the MaxPack engine as it is now on the PC (it was the one of before the PC's 1.0.0):

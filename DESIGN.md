@@ -153,18 +153,24 @@ is ignored as a whole). The web UI edits the same file.
   A `.p5z` that grew (`PlayInfo::grew`) is built only while the ampr-emu-ng it gets on top of its `fakelib/`, the
   `libSceAmpr.sprx` of `/data/maxpack/ampr/` (always, whatever the game or backport ships), plays it
   (`cache::ng_gate`, `maxpack_logic::p5z::ng_plays`: `v0.5.2-maxpack.1` or later). Its version is the one MaxPack
-  knows (`main::ampr_version_in_use`): the bundled `VERSION` for the bundled copy, the version `ampr.bundled` records
-  for another copy we wrote (a downloaded release); a file put there by hand, a v0.4.0 mark, none or a read error is
-  unknown, and unknown never plays a grown `.p5z`. That file is not always the bundled one: "Update ampr-emu-ng now"
-  installs the latest release even when it is older, and a hand-placed file is kept. Otherwise the build stops right
+  knows (`main::ampr_version_of`, `maxpack_logic::ampr::known_version`): the bundled `VERSION` for the bundled
+  bytes, the version `ampr.bundled` records for exactly those bytes (len and crc32: a downloaded release); a file
+  put there by hand, bytes the mark does not describe, a v0.4.0 mark, none or a read error is unknown, and unknown
+  never plays a grown `.p5z`. That file is not always the bundled one: a hand-placed file is kept, and an update
+  could put another there (it never installs an older release: Flow, Auto-update). Otherwise the build stops right
   after the engine's open, before anything is extracted, with a `cache::OldNg` (`this .p5z grew (index version 2) and
   needs ampr-emu-ng v0.5.2-maxpack.1 or later; the ampr-emu-ng in use is <v> (...): not started with it`): a failed
   build, so the cache has no game files and neither Play nor the tile can start the game half-way (an older
   ampr-emu-ng refuses the grown index at the game's start and serves none of its packed files). `main.rs` shows status
   `error` with `error_code` `old_ng`, toasts `i18n::old_ng` once and memoizes it; `inputs_key` holds the ampr dir's
-  state (`cache::ampr_state`), so another `libSceAmpr.sprx` tries the build again (a restart too: the bundled copy
-  replaces an older one of ours at start). A fakelib refresh of a built cache of a grown `.p5z` (the ampr dir changed)
-  that meets such an ampr-emu-ng does not recompose `fakelib/`: it rebuilds, which stops the same way. A `.p5z` that
+  state (`cache::ampr_state`) and the mark's text (`main::ampr_mark`), so another `libSceAmpr.sprx`, or a mark
+  written after it, tries the build again (a restart too: the bundled copy replaces an older one of ours at start).
+  The check before extraction only spares the work: the one that counts is `compose_fakelib`'s, on the copy that
+  `fakelib/` got, which is what the game loads, made after the state `check` compares was read. A file swapped in
+  the ampr dir during a long build is therefore either the refused copy (an OldNg, nothing recorded) or one that
+  differs from the record (the next pass refreshes and checks it). A fakelib refresh of a built cache of a grown
+  `.p5z` (the ampr dir changed) whose copy is refused does not keep that `fakelib/`: it rebuilds, which clears the
+  cache and stops the same way. A `.p5z` that
   never grew is not looked at (an older ampr-emu-ng plays it as before). A grown `.p5z`'s `maxpack.image` has a line
   for every volume, as the description lists them: a volume with no chunk, or with room no chunk uses, keeps its
   region (ampr-emu-ng checks each chunk against its own record).
@@ -377,9 +383,14 @@ toasted (`i18n::ampr_updated`). A copy we wrote (bundled or downloaded) is ours:
 ours only when the bundled version is newer; a hand-placed file is kept by both, and ownership is checked
 again after the download. Network errors are logged and retried up to 3 times 20 s apart, then nothing
 until the next start. An install wakes the scan loop (fakelib refresh); one update runs at a time.
+Never a downgrade, at start or forced (`maxpack_logic::ampr::not_older`): a release older than the bundled
+`VERSION` or than the version in use (`known_version`), or whose tag is not a version, is refused before anything
+is downloaded or moved aside (`older`, 409: an older ampr-emu-ng stops every `.p5z` that grew, Cache), logged
+`ampr: update: nothing installed (older): ...`.
 Settings has "Update ampr-emu-ng now" (`POST /api/ampr/update`): forced, one attempt, installs the latest
 stable release whatever is installed, with the same gate and checks; a hand-placed file is first moved to
-`/data/maxpack/libSceAmpr.sprx.hand` (one backup, outside `ampr/`). Until the secure-connection self-test
+`/data/maxpack/libSceAmpr.sprx.hand` (one backup, outside `ampr/`); a release older than the bundled one or the one in
+use is refused there too (`older`, the page's `amprFail_older`). Until the secure-connection self-test
 has passed, Settings says under the ampr-emu-ng row that its updates stay off (`amprNeedsTls`), and the
 button's refusal shows the self-update's text (`updFail_tls_unchecked`). HTTPS goes through the console's
 sceHttp/sceSsl with 4 built-in root CAs (from SMP).
@@ -390,7 +401,7 @@ Toasts: `sceNotificationSend` system toast (dump-forge/SMP JSON, icon `/user/dat
 the old `sceKernelSendNotificationRequest` only as fallback. Toast texts (`src/i18n.rs`) follow the console language
 (`sceSystemServiceParamGetInt` lang, read per toast; dump-forge's 11: en ru zh de es fr ja pt it ko ar), English when it
 cannot be read; "MaxPack", title names and paths stay as they are. A failed game is retried
-only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, the ampr dir's files (`cache::ampr_state`), its effective `playgo_off`,
+only when its inputs change (`main::inputs_key`: the stamp, the input mtimes, the ampr dir's files (`cache::ampr_state`) and `ampr.bundled`, its effective `playgo_off`,
 `cache::overlay_off` and `cache::fakelib_mode`) or a rebuild is forced (not a `.p5z` build short of space, `cache::NoSpace`, or whose
 `.p5z` the engine could not open just now, `cache::TryAgain`: both are tried again every pass, their tries not logged).
 Duplicate title ids: a folder beats a pkg, which beats a .p5z
@@ -585,7 +596,8 @@ pub fn is_ours(title_id: &str) -> Result<(), std::path::PathBuf>; // Err(path) =
 // main.rs (shared version compare, used by cache.rs for ampr-emu-ng identities)
 pub(crate) fn parse_version(v: &str) -> Option<(u32, u32, u32)>; // "X.Y.Z", leading "v" allowed
 pub(crate) fn newer(a: Option<&str>, b: Option<&str>) -> bool;   // a strictly newer than b; an unknown version is older than any
-pub(crate) fn ampr_version_in_use() -> Option<String>;           // the ampr dir's libSceAmpr.sprx: bundled VERSION or ampr.bundled's; None = unknown
+pub(crate) fn ampr_version_of(path: &std::path::Path) -> Option<String>; // a libSceAmpr.sprx (ampr dir's or a fakelib copy): bundled VERSION or ampr.bundled's; None = unknown
+pub(crate) fn ampr_mark() -> Option<String>;                     // ampr.bundled's text (inputs_key)
 
 // installer.rs (the MaxPack engine through ps5/installer.c and mp_api_call; Answer = {status, ctype, body})
 pub fn start(state: Arc<State>, runtime: &'static [u8], runtime_version: &'static str); // own thread; 503 until up
@@ -750,8 +762,9 @@ minute):
   200 + result text, else `{code, detail}` (`maxpack_logic::ampr::Fail`): 409 `tls_unchecked` until the
   secure-connection self-test has passed (the self-update's code and page text), 409 `update_running`, 502
   `download`, `release` or `checksum` (`SHA256SUMS` missing, malformed or not matching: nothing installed;
-  the page's `amprFail_checksum`), 500 `install`. The page shows its own text for `tls_unchecked`,
-  `update_running`, `download` and `checksum`, the detail for the rest.
+  the page's `amprFail_checksum`), 409 `older` (the latest release is older than the bundled ampr-emu-ng or the
+  one in use: nothing installed; `amprFail_older`), 500 `install`. The page shows its own text for `tls_unchecked`,
+  `update_running`, `download`, `checksum` and `older`, the detail for the rest.
 - `POST /api/rescan`, `POST /api/rebuild/<TID>`, `POST /api/rebuild-all`, `POST /api/purge` -> 204.
 - `GET /api/sizes/<TID>` -> `{game: u64, dlc: u64, save: u64|null, cache: u64}` in bytes,
   measured on request; 404 for an invalid or absent library title. Game is the pkg file or folder,
@@ -917,7 +930,7 @@ Host and Origin checks as the payload (with a hidden game, a recorded crash, Pla
 rebuild, a plain folder game with its overlay off, a pkg game in the fakelib mode Off, the Excluded paths, an install that does not fit on the internal SSD,
 a `.p5z` that grew with an ampr-emu-ng too old for it (`old_ng`), `--last grown` for the installer's `grown_p5z`, and, with `--update`, a newer release on offer whose Update ends as the switch `--update-fail` says; "Update
 ampr-emu-ng now" answers `tls_unchecked` until `--tls passed`, then installs, or with `--ampr-fail checksum`
-refuses).
+refuses, or with `--ampr-fail older` refuses an older release).
 
 ## Library page (`src/ui.html`)
 Over the grid: the type chips (L2/R2), the drive pills and a search box. A drive pill's body is a filter button:
