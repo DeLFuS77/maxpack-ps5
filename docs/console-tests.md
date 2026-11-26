@@ -919,7 +919,10 @@ field `pack`.
     the compression" if you still can, start no other run, and send `/data/maxpack/maxpack.log` (FTP) with what you
     saw. If the console needed a restart, say so; do not send this build again until the log has been read.
   - Expected at the end: "Done in ...", a box with the lines, and "Copy the lines". Next to the folder there is
-    `<folder>.p5z` (and no `.maxpack-pack` file); the library lists it as a duplicate of the folder.
+    `<folder>.p5z` (and no `.maxpack-pack` file); the library lists it as a duplicate of the folder. The file takes
+    that name only after its lines were read back from it: while the sheet says "reading the sums" it is still
+    `<folder>.p5z.maxpack-pack`, and a run that fails there leaves it under that name (never as `<folder>.p5z`),
+    with the sheet saying so; the next run of that folder removes it.
   - Press "Copy the lines" and keep them (paste them into a text file on the PC). They hold no game name.
   - While it runs, use the console: go to the home screen, open a menu or two, scroll the page. Note anything slow.
 - [ ] **12.3. Levels 9 and 19, and 4 threads.**
@@ -964,6 +967,16 @@ field `pack`.
     is still there, check it over FTP and note it.
   - With `<folder>.p5z` there, press "Compress (test)". Expected: the sheet says it is there already; the file is
     not touched.
+  - The internal SSD keeps 2 GB free: with a folder game on `/data/homebrew` whose size plus 2 GB is more than the
+    internal SSD's free space (fill it with a large file over FTP if you need to, and delete that file afterwards),
+    press "Compress (test)". Expected: "It does not fit: N more is needed on the internal SSD (... 2 GB stay free
+    there ...)", nothing is written next to the folder, and the log says `pack: ... refused: ... more is needed on
+    the internal drive ...` with the folder's size and the free space. The same folder on a USB drive with only
+    256 MB more free than its size does start.
+  - A FAT32 USB drive (optional): put a folder game of more than 4 GB on it and press "Compress (test)". Expected:
+    "That drive is FAT32, which keeps no file of 4 GB or more, and this folder is ...", nothing is written, and the
+    log says `pack: ... refused: the drive is FAT32 ...` with `msdosfs` at the end of the line (if it shows another
+    type for a FAT32 drive, note it). A folder of less than 4 GB on that drive starts as usual.
   - With a game running (start one from the home screen, also one MaxPack did not start), press "Compress (test)".
     Expected: "Close the game first." and nothing starts; in the log `pack: ... refused: a game is running (<TID>)`.
   - During a run, press Install or Verify in the Install tab. Expected: "A test compression is running: try again

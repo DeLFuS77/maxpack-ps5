@@ -9,7 +9,9 @@ What changed in each version of MaxPack for the console. The format follows
 
 - **Compress on the console (test).** On a test build, a folder game's sheet can pack the folder into a `.p5z`
   beside it (level 3, 9 or 19, with 4 or 5 threads) and shows the `archive_id` and each volume's SHA-256 to compare
-  with the PC; the speed and the memory go to the log. A prototype to measure, before the real feature.
+  with the PC; the speed and the memory go to the log. A prototype to measure, before the real feature. It
+  keeps 2 GB free on the internal SSD, refuses a folder of 4 GB or more on a FAT32 drive before writing
+  anything, and names the `.p5z` only once its sums read back.
 
 ## 1.0.2 - 2026-11-26
 

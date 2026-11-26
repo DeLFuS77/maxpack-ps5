@@ -964,16 +964,23 @@ mode, and the button says it is a test.
   info title ids `maxpack_logic::pack::running_games` keeps, not a system app's `NPXS`, not MaxPack's tile
   `MXPK00001`, not this payload; a walk that fails refuses too, `maxpack_logic::inst::game_blocks`; the log names
   the games or the walk's error), `exists`
-  (`<folder>.p5z` is there, or cannot be looked at: it is never overwritten), `no_space` with `missing_bytes` (the
-  folder's bytes, `cache::du`, plus `SPACE_MARGIN` must fit in the free space where the `.p5z` goes, since a `.p5z`
-  can be as large as the folder). Behind the same Host and Origin checks as every POST. `POST /api/pack/cancel` ->
+  (`<folder>.p5z` is there, or cannot be looked at: it is never overwritten), then the room
+  (`maxpack_logic::pack::room`, before anything is written): `fat32` with `folder_bytes` (the drive where the `.p5z`
+  goes is FAT32, statfs `f_fstypename` `msdosfs` and the like, and the folder's bytes, `cache::du`, are 4 GiB or
+  more: the `.p5z` is one file, can be as large as the folder, and FAT32 keeps no file of 4 GiB), then `no_space`
+  with `missing_bytes` and `internal` (the folder's bytes plus a margin must fit in the free space there: 2 GiB,
+  `INTERNAL_MARGIN`, on the internal drive (`/data`, the user partition with the saves, the installs and the logs),
+  `SPACE_MARGIN`, 256 MiB, elsewhere; a `.p5z` can be as large as the folder). Behind the same Host and Origin checks
+  as every POST. `POST /api/pack/cancel` ->
   204, or 409 when no job runs. Both are only for the page's test button: nothing else calls them.
 - The `.p5z` goes beside the folder, so on the same drive: `<folder>.p5z`. It is written as
-  `<folder>.p5z.maxpack-pack` (not a `.p5z` name, so the scan never takes the growing file) and renamed at the end,
-  only if `<folder>.p5z` is still not there (ponytail: checked, then renamed); before the rename the file is flushed
-  (`fsync`: the engine closes it without one, and a power cut after the rename must not leave a `.p5z` whose index
-  reached the disk and some of whose volumes did not), after it its folder (a failure of either is logged, not
-  fatal). A `.maxpack-pack` file found when a
+  `<folder>.p5z.maxpack-pack` (not a `.p5z` name, so the scan never takes the growing file) and named at the end
+  (`maxpack_logic::pack::finish`, in this order): the file flushed (`fsync`: the engine closes it without one, and a
+  power cut after the rename must not leave a `.p5z` whose index reached the disk and some of whose volumes did not),
+  its sums read back from it (below; this validates it again), and only then renamed, only if `<folder>.p5z` is still
+  not there (ponytail: checked, then renamed), and its folder flushed (a failed flush is logged, not fatal). A file
+  whose sums do not read never takes the name `<folder>.p5z`: it stays `.maxpack-pack`, the job fails and `left`
+  names it. A `.maxpack-pack` file found when a
   job starts (left by one this payload no longer runs: it quit or crashed) is removed and logged. Once renamed, the
   `.p5z` is a game of the scan like any other: while the folder is there it is the folder's duplicate (Flow,
   Duplicate title ids).
@@ -982,8 +989,8 @@ mode, and the button says it is a test.
   the monitor's thread the job goes on, with no peak memory and no game lines): the memory probe (the first job of
   a run only), then the engine (`ps5/pack.c` `maxpack_pack_p5z`:
   `mp_pack_opts_default` with the level and the threads set and no progress on stderr, `mp_pack_out_p5z` with 1
-  thread, `mp_pack_run`, then the writer's destroy, which deletes a `.p5z` it did not finish), the rename, and the
-  sums (`maxpack_p5z_sums`: `mp_p5z_open` of the file written, and from its index the header's `archive_id` and
+  thread, `mp_pack_run`, then the writer's destroy, which deletes a `.p5z` it did not finish), the sums, and the
+  rename (`maxpack_p5z_sums`: `mp_p5z_open` of the file written, still `.maxpack-pack`, and from its index the header's `archive_id` and
   level and each volume record's name, size and SHA-256, which the format keeps of the volume's bytes from 64 to its
   end; the C reads them through `mp_p5z_internal.h`, as no public call gives them; `maxpack_logic::pack::parse_sums`
   checks them). C does that setup, as `ps5/installer.c` does, so Rust never mirrors the engine's structs.
