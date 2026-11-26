@@ -171,6 +171,42 @@ pub fn room(free: u64, need: u64, drive: Drive) -> Result<(), Refusal> {
     }
 }
 
+/// What the end of a job does to the files (src/pack.rs gives the real ones).
+pub trait Finish {
+    /// The `.maxpack-pack` file to the disk (a failure is logged, not fatal).
+    fn flush_part(&mut self);
+    /// Its sums, read back from it (the engine's reader validates it again).
+    fn sums(&mut self) -> Result<Sums, String>;
+    /// Something is at `<folder>.p5z` now (or cannot be looked at).
+    fn dest_taken(&mut self) -> bool;
+    /// `.maxpack-pack` renamed to `<folder>.p5z`.
+    fn rename(&mut self) -> Result<(), String>;
+    /// The folder to the disk after the rename (logged, not fatal).
+    fn flush_dir(&mut self);
+}
+
+/// Why the end of a job failed; the file stays under its work name in each case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FinishFail {
+    Sums(String),
+    Taken,
+    Rename(String),
+}
+
+/// The end of a job once the engine wrote the `.maxpack-pack` file, in this order: to the disk, its sums read back
+/// (which validates it again), and only then, onto nothing, its game name, and the folder to the disk. A file
+/// whose sums do not read never takes the name `<folder>.p5z`.
+pub fn finish(f: &mut impl Finish) -> Result<Sums, FinishFail> {
+    f.flush_part();
+    let sums = f.sums().map_err(FinishFail::Sums)?;
+    if f.dest_taken() {
+        return Err(FinishFail::Taken);
+    }
+    f.rename().map_err(FinishFail::Rename)?;
+    f.flush_dir();
+    Ok(sums)
+}
+
 /// What the gate looks at, all read when the request comes.
 pub struct Facts<'a> {
     /// `/api/state`'s `kind` and `packing` of the library entry at the asked path (None: none listed there).
@@ -616,6 +652,55 @@ mod tests {
         for t in ["exfatfs", "exfat", "ufs", "pfs", "", "fat64"] {
             assert!(!is_fat32(t), "{t}");
         }
+    }
+
+    /// A fake of the files at the end of a job: what was done, in order, and what each step answers.
+    struct Steps {
+        done: Vec<&'static str>,
+        sums: Result<Sums, String>,
+        taken: bool,
+        rename: Result<(), String>,
+    }
+
+    impl Finish for Steps {
+        fn flush_part(&mut self) {
+            self.done.push("flush");
+        }
+        fn sums(&mut self) -> Result<Sums, String> {
+            self.done.push("sums");
+            self.sums.clone()
+        }
+        fn dest_taken(&mut self) -> bool {
+            self.done.push("taken?");
+            self.taken
+        }
+        fn rename(&mut self) -> Result<(), String> {
+            self.done.push("rename");
+            self.rename.clone()
+        }
+        fn flush_dir(&mut self) {
+            self.done.push("flush dir");
+        }
+    }
+
+    #[test]
+    fn the_p5z_takes_its_name_only_once_its_sums_read() {
+        let sums = Sums { archive_id: "ab".repeat(16), level: 9, volumes: vec![] };
+        let ok = || Steps { done: vec![], sums: Ok(sums.clone()), taken: false, rename: Ok(()) };
+        let mut s = ok();
+        assert_eq!(finish(&mut s), Ok(sums.clone()));
+        assert_eq!(s.done, ["flush", "sums", "taken?", "rename", "flush dir"]);
+        // Sums that do not read: never renamed, it stays under its work name.
+        let mut s = Steps { sums: Err("index CRC".into()), ..ok() };
+        assert_eq!(finish(&mut s), Err(FinishFail::Sums("index CRC".into())));
+        assert_eq!(s.done, ["flush", "sums"]);
+        // Something at <folder>.p5z meanwhile: never renamed over it.
+        let mut s = Steps { taken: true, ..ok() };
+        assert_eq!(finish(&mut s), Err(FinishFail::Taken));
+        assert_eq!(s.done, ["flush", "sums", "taken?"]);
+        let mut s = Steps { rename: Err("EXDEV".into()), ..ok() };
+        assert_eq!(finish(&mut s), Err(FinishFail::Rename("EXDEV".into())));
+        assert_eq!(s.done, ["flush", "sums", "taken?", "rename"]);
     }
 
     #[test]

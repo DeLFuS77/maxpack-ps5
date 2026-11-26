@@ -387,39 +387,25 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
     log!("pack: {} loose files ({}), {} packed files ({} -> {}) in {} volumes",
         counts.loose_files, logic::mb(counts.loose_bytes), counts.packed_files, logic::mb(counts.packed_bytes),
         logic::mb(counts.stored_bytes), counts.volumes);
-    // Renamed only onto nothing: never over a file that appeared meanwhile.
-    // ponytail: checked, then renamed; a file put there in between is replaced (rename(2) has no
-    // no-replace flag here, and exFAT has no link(2) to do it with).
-    if std::fs::symlink_metadata(&dest.p5z).is_ok() {
-        let why = format!("{} appeared meanwhile: the new .p5z stays as {}", dest.p5z, dest.part);
-        log!("pack: {why}");
-        end(Stage::Failed, Some(why));
-        return;
-    }
-    // On the disk before it gets its game name: the engine closes it without a flush, and a power cut after the
-    // rename must not leave a .p5z whose index is there and some of whose volumes are not.
-    if let Err(e) = std::fs::File::open(&dest.part).and_then(|f| f.sync_all()) {
-        log!("pack: fsync {}: {e} (renamed anyway)", dest.part);
-    }
-    if let Err(e) = std::fs::rename(&dest.part, &dest.p5z) {
-        let why = format!("rename {} to {}: {e}", dest.part, dest.p5z);
-        log!("pack: {why}");
-        end(Stage::Failed, Some(why));
-        return;
-    }
-    if let Some(dir) = Path::new(&dest.p5z).parent() {
-        if let Err(e) = std::fs::File::open(dir).and_then(|d| d.sync_all()) {
-            log!("pack: fsync {}: {e} (the rename may not be on the disk yet)", dir.display());
-        }
-    }
-    let size = std::fs::metadata(&dest.p5z).map(|m| m.len()).ok();
-    let sums = read_sums(&dest.p5z);
+    // Its sums read back before it gets its game name (maxpack_logic::pack::finish): a file the engine's reader
+    // refuses never stays as <folder>.p5z.
+    let size = std::fs::metadata(&dest.part).map(|m| m.len()).ok();
+    let finished = logic::finish(&mut Files { part: &dest.part, p5z: &dest.p5z });
     let end_ms = crate::sys::uptime_ms();
-    let sums = match sums {
+    let sums = match finished {
         Ok(s) => s,
-        Err(why) => {
-            log!("pack: {} written, but its sums: {why}", dest.p5z);
-            end(Stage::Failed, Some(format!("the .p5z was written, but its sums could not be read: {why}")));
+        Err(f) => {
+            let why = match f {
+                logic::FinishFail::Sums(why) => format!("its sums could not be read: {why}; it stays as {} (the next job of \
+                    this folder removes it)", dest.part),
+                logic::FinishFail::Taken => format!("{} appeared meanwhile: the new .p5z stays as {}", dest.p5z, dest.part),
+                logic::FinishFail::Rename(e) => format!("rename {} to {}: {e}", dest.part, dest.p5z),
+            };
+            log!("pack: {why}");
+            if let Some(j) = job().as_mut() {
+                j.left = Path::new(&dest.part).exists().then(|| dest.part.clone());
+            }
+            end(Stage::Failed, Some(format!("the .p5z was written, but {why}")));
             return;
         }
     };
@@ -447,6 +433,44 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
         j.size = size;
     }
     end(Stage::Done, None);
+}
+
+/// The files at the end of a job (maxpack_logic::pack::finish): the `.maxpack-pack` file and its game name.
+struct Files<'a> {
+    part: &'a str,
+    p5z: &'a str,
+}
+
+impl logic::Finish for Files<'_> {
+    /// On the disk before it is read back and named: the engine closes it without a flush, and a power cut after
+    /// the rename must not leave a .p5z whose index is there and some of whose volumes are not.
+    fn flush_part(&mut self) {
+        if let Err(e) = std::fs::File::open(self.part).and_then(|f| f.sync_all()) {
+            log!("pack: fsync {}: {e} (going on)", self.part);
+        }
+    }
+
+    fn sums(&mut self) -> Result<logic::Sums, String> {
+        read_sums(self.part)
+    }
+
+    /// Renamed only onto nothing. ponytail: checked, then renamed; a file put there in between is replaced
+    /// (rename(2) has no no-replace flag here, and exFAT has no link(2) to do it with).
+    fn dest_taken(&mut self) -> bool {
+        !matches!(std::fs::symlink_metadata(self.p5z), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+    }
+
+    fn rename(&mut self) -> Result<(), String> {
+        std::fs::rename(self.part, self.p5z).map_err(|e| e.to_string())
+    }
+
+    fn flush_dir(&mut self) {
+        if let Some(dir) = Path::new(self.p5z).parent() {
+            if let Err(e) = std::fs::File::open(dir).and_then(|d| d.sync_all()) {
+                log!("pack: fsync {}: {e} (the rename may not be on the disk yet)", dir.display());
+            }
+        }
+    }
 }
 
 fn read_sums(p5z: &str) -> Result<logic::Sums, String> {
