@@ -9,7 +9,8 @@ use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-/// The list in the repository, the only place it is downloaded from.
+/// The list in the repository, the only place it is downloaded from. A redirect from it is followed, as
+/// for every request (net.rs turns on sceHttp's auto-redirect): what answers is parsed as strictly.
 pub const URL: &str = "https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json";
 /// The last downloaded copy that was newer than the bundled one.
 pub const CACHED: &str = "/data/maxpack/recommended.json";

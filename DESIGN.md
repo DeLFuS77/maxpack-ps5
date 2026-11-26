@@ -659,12 +659,16 @@ scope: every other setting (`overlay_off`, backports, scans). The console never 
   Otherwise Full with the stub ("default"). The notice is the entry's in every case. A hand change on the sheet adds
   the title to `manual_settings`; when its settings were the list's, the list's values are written into the lists
   first, so the one the user did not touch stays as shown (`hand_choice`). `POST /api/recommended/<TID>` takes it
-  out of all four lists.
+  out of all four lists. Values copied so stay the user's even if a later list drops the game's entry: the sheet's
+  way back needs an entry (`recommended` not null, Library page), so they are then changed on the sheet like any
+  other choice of the user's.
 - **Refresh** (`recommended::spawn_refresh`, once per start). Skipped with `recommended: refresh off` without
   `recommended_update`. Skipped with `recommended: refresh skipped until the next start: the secure connection check
   has not passed` when the self-test has not passed by the time MaxPack starts (`tls::passed`, asked once): a check
   that passes later in the same run does not start it; the next start does. Otherwise
-  `GET https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json` (262144 bytes at most;
+  `GET https://raw.githubusercontent.com/DeLFuS77/maxpack-ps5/main/data/recommended.json` (a redirect is followed,
+  as for every request of `net.rs`, which turns on sceHttp's auto-redirect, and whatever answers is parsed as
+  strictly; 262144 bytes at most;
   tried again as the self-update's look, `maxpack_logic::update::look_failed`, after no answer or a server error;
   a body over that size is not tried again, `net::too_large`),
   checked with `parse`, and only when its `version` is higher than the list in use: saved to
