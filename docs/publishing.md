@@ -27,7 +27,7 @@ one's README and Corresponding Source links point at the others.
   not take as a TLS refusal (its line says "failed before the certificate check"), find out what that code
   means and add it there only if it is a certificate refusal.
 - **`vendor/maxpack/COMMIT`** is reachable in DeLFuS77/maxpack through a tag: keep it, and merge there
-  without squashing or rebasing. Up to 1.0.2 it was `e8de15a` (tag `motor-consola-3`). Now it is `58f83fd`
+  without squashing or rebasing. Up to 1.0.2 it was `e8de15a` (tag `motor-consola-3`). Now it is `b3b526f`
   of the engine's branch `pc-ampliar`, with no tag yet (`vendor/maxpack/COMMIT.tag` is missing): before the
   next release, sync the engine commit that is merged there, tag it `motor-consola-4`, push the tag and
   run `tools/sync_maxpack.sh` again, so that `COMMIT.tag` names it.

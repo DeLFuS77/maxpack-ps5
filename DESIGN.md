@@ -38,7 +38,8 @@ only into a cache's `fakelib/`, never into `/data/maxpack/ampr/`.
   damaged) and still lists every volume, 0..n-1, the old ones too, with no chunk left in them or with room no chunk
   uses. It plays only with an ampr-emu-ng that knows such a file (`maxpack_logic::p5z::GROWN_NG`,
   `v0.5.2-maxpack.1`; Cache: `ng_gate`). While a journal (`<name>.p5z.maxpack-append`) says an append on the PC was
-  cut short, the engine reads the file as it was before it; the console never cuts it (recovery is the PC's).
+  cut short, the engine reads the file as it was before it (or as it grew, when that append had ended before its
+  journal went); the console never cuts it nor deletes the journal (recovery is the PC's).
 - Any drive. The cache is always on the internal SSD.
 
 ## Paths
@@ -881,11 +882,15 @@ stage 1. The pushed stage 2 saves stage 1 to `/data/maxpack/maxpack.elf` at star
 ## Installer (`src/installer.rs`, `ps5/installer.c`, `vendor/maxpack`)
 The phase-2 installer is the MaxPack engine in C: `vendor/maxpack` is a copy of its sources at one commit
 (`vendor/maxpack/COMMIT`, written by `tools/sync_maxpack.sh <maxpack checkout> <commit>`, and the tag that keeps it
-there in `vendor/maxpack/COMMIT.tag`; now 58f83fd, of the engine's branch `pc-ampliar`, with no tag yet: `motor-consola-4` is
+there in `vendor/maxpack/COMMIT.tag`; now b3b526f, of the engine's branch `pc-ampliar`, with no tag yet: `motor-consola-4` is
 to be put on it, and the sync run again, before a release; before it `motor-consola-3`, e8de15a), with the zstd and
-zlib its submodules pin. Since 58f83fd the engine reads a `.p5z` that grew (Supported sources), and its installer refuses
+zlib its submodules pin. Since then the engine reads a `.p5z` that grew (Supported sources), and its installer refuses
 one (`grown_p5z`: its packs are laid out as only ampr-emu-ng's p5z mode reads them; play it from the `.p5z`, or make a
-compact copy on the PC with `maxpack compact`, which is index version 1 again). `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
+compact copy on the PC with `maxpack compact`, which is index version 1 again). Verify compares an installed `.p5z`'s
+loose files only with the `.p5z` it was installed from (still there, the same `archive_id`, index version 1): once
+that `.p5z` grew on the PC, Verify checks only the folder's packs, as when the `.p5z` is gone, and an install that
+works is not called damaged. The page shows the counts either way (the engine's detail says "without the .p5z to
+compare the loose files", which the page does not show). `ps5/build.sh` builds it with the SDK's `prospero-cmake -DMAXPACK_PS5=ON` into static
 libraries (`target/ps5/engine`) that `ps5/linker.sh` links, and checks in lld's link map that `mp_api_call` and
 `mp_inst_install` are in `maxpack.elf` (`maxpack.elf.txt`). `ps5/installer.c` sets it up as the engine's
 `src/ps5/main_ps5.c` does: `mp_inst_env_default` (`/data`, `/mnt/usb0..7`, `/mnt/ext0..1`), the ShadowMountPlus

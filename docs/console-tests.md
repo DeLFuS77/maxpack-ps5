@@ -301,7 +301,7 @@ both in a folder of their own on the drive, for example `/mnt/usb0/install/`: no
 root is a scan root by default) is already a game: MaxPack builds its cache and registers it before you
 install it, and this section does not test that (section 6 does). MaxPack does not scan below a
 drive's root, and the Install tab looks one level further down, so it finds them all the same. At
-start the log says `installer: ready in N ms (MaxPack engine 58f83fd0c1b3cf02f462acad26027eda58dbd5e8,
+start the log says `installer: ready in N ms (MaxPack engine b3b526f037befa3f540704ff0b55831198ea7e3a,
 runtime ampr-emu-ng v0.5.2-maxpack.1 720048 bytes)`; a 1.0.2 build or older says engine `e8de15a...` and
 runtime `v0.5.1-maxpack.1 716176 bytes`, and a build from before the repositories were public `e9e0ec4`.
 
@@ -846,6 +846,10 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     on the destination drive.
   - On the PC, `maxpack compact "<game>.p5z" -o "<compact>.p5z"`. Expected: the compact copy installs as in
     5.1 and starts.
+  - Grow on the PC the very `.p5z` that compact copy was installed from (`maxpack add` or `maxpack update`
+    on that file, in place, so it keeps its `archive_id`), put it back where it was installed from, and press
+    Verify on the installed game. Expected: "<game> verified." with `0 damaged` (the installed loose files are
+    no longer compared with a `.p5z` that grew; only the folder's packs are checked).
 - [ ] **11.4. An older ampr-emu-ng never starts it half-way.**
   - Over FTP (binary mode), put the `libSceAmpr.sprx` of ampr-emu-ng's release `v0.5.1-maxpack.1` in
     `/data/maxpack/ampr/` in place of the bundled one, with no game running. (Or, once the secure-connection
@@ -865,4 +869,5 @@ downloaded or put there by hand, delete `/data/maxpack/ampr/libSceAmpr.sprx` and
     while it writes: a `<game>.p5z.maxpack-append` file stays next to it. Copy both to the console without
     running MaxPack on the PC first.
   - Expected: the console plays the `.p5z` as it was before that update (the engine reads it through
-    that file, and never cuts it); MaxPack on the PC puts it back as it was the next time it opens it.
+    that file, and never cuts it), or as it grew if the update had ended before the process was stopped;
+    MaxPack on the PC settles it the next time it opens it.
