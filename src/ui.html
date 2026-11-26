@@ -341,6 +341,8 @@ button.shoulder:hover { color: var(--fg); }
 .m-notice { margin: 0 0 1.1rem; padding: 0.75rem 1rem; border-radius: 0.9rem; background: rgba(110, 72, 18, 0.5);
   color: #fff0cf; box-shadow: inset 0.25rem 0 0 var(--warn); overflow-wrap: break-word; }
 .tag.rec { margin-left: 0.6rem; vertical-align: 0.08rem; background: rgba(45, 125, 255, 0.24); color: #d6e4ff; }
+/* Under "Back to the recommended setting": what it sets. */
+.m-reset-what { margin-top: 0.4rem; font-size: 0.82rem; color: var(--muted); }
 .sheet-side .badge { left: 1rem; top: 1rem; }
 .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .sheet-head h2 { font: 800 2.4rem/1.12 var(--display); letter-spacing: -0.03em; text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.55); }
@@ -846,7 +848,8 @@ button.inst-item[aria-checked="true"] {
           <option value="emulators" data-i18n="fakelibEmulators">Emulators only</option>
           <option value="off" data-i18n="fakelibOff">Off</option>
         </select></label>
-      <div class="m-row" id="m-reset-row" hidden><button type="button" id="m-reset" data-i18n="recommendedReset">Back to the recommended setting</button></div>
+      <div class="m-row" id="m-reset-row" hidden><button type="button" id="m-reset" data-i18n="recommendedReset">Back to the recommended setting</button>
+        <p class="m-reset-what" id="m-reset-what"></p></div>
       <label class="row m-row" id="m-overlay-row" hidden><span><span class="lbl" data-i18n="overlayLbl">MaxPack libraries at launch</span>
         <span class="hint" data-i18n="overlayHint">Turn off only for a game that must run without them (a Playden title): it then gets no ampr-emu-ng, no emulators and no /data or USB in its sandbox.</span></span>
         <input type="checkbox" id="m-overlay"></label>
@@ -971,6 +974,9 @@ var MSG = {
     fakelibOverlayOff: 'No effect while "MaxPack libraries at launch" is off.',
     fakelibPlainOff: 'For an unpacked folder game, Off mounts nothing at launch: no /data, USB, fonts or writable /app0 in its sandbox.',
     recommendedTag: 'Recommended setting', recommendedReset: 'Back to the recommended setting',
+    recommendedResetFakelib: 'Sets Fakelib to "{mode}".',
+    recommendedResetStubOn: 'Sets Fakelib to "{mode}", with the PlayGo stub on.',
+    recommendedResetStubOff: 'Sets Fakelib to "{mode}", with the PlayGo stub off.',
     noticeLongFirstBoot: 'It can take several minutes to start, with a black screen. Wait.',
     szGame: 'Game', szDlc: 'DLC', szSave: 'Save', szCache: 'Cache',
     szPart: '{part} {size}', szNa: '{part} n/a', szTotal: 'Total {size}',
@@ -1249,6 +1255,9 @@ var MSG = {
     fakelibOverlayOff: 'Не действует, пока «Библиотеки MaxPack при запуске» выключены.',
     fakelibPlainOff: 'Для игры в распакованной папке «Выкл.» значит, что при запуске MaxPack ничего не монтирует: в песочнице нет /data, USB, шрифтов и записываемого /app0.',
     recommendedTag: 'Рекомендуемая настройка', recommendedReset: 'Вернуть рекомендуемую настройку',
+    recommendedResetFakelib: 'Ставит Fakelib в режим «{mode}».',
+    recommendedResetStubOn: 'Ставит Fakelib в режим «{mode}» и включает заглушку PlayGo.',
+    recommendedResetStubOff: 'Ставит Fakelib в режим «{mode}» и выключает заглушку PlayGo.',
     noticeLongFirstBoot: 'Запуск может занять несколько минут, с чёрным экраном. Подождите.',
     deleteP5z: "Файл .p5z и его кеш будут удалены с накопителя: {path}. Это нельзя отменить.",
     excludePaths: "Исключённые пути",
@@ -1504,6 +1513,9 @@ var MSG = {
     fakelibOverlayOff: '“启动时加载 MaxPack 库”关闭时无效。',
     fakelibPlainOff: '对于未打包的文件夹游戏，“关闭”表示启动时 MaxPack 不挂载任何内容：沙盒中没有 /data、USB、字体，也没有可写的 /app0。',
     recommendedTag: '推荐设置', recommendedReset: '恢复推荐设置',
+    recommendedResetFakelib: '将 Fakelib 设为“{mode}”。',
+    recommendedResetStubOn: '将 Fakelib 设为“{mode}”，并开启 PlayGo 存根。',
+    recommendedResetStubOff: '将 Fakelib 设为“{mode}”，并关闭 PlayGo 存根。',
     noticeLongFirstBoot: '启动可能需要几分钟，期间屏幕保持黑色。请稍候。',
     deleteP5z: "将从驱动器删除 .p5z 文件及其缓存：{path}。此操作无法撤销。",
     excludePaths: "排除的路径",
@@ -1759,6 +1771,9 @@ var MSG = {
     fakelibOverlayOff: 'Ohne Wirkung, solange „MaxPack-Bibliotheken beim Start“ ausgeschaltet ist.',
     fakelibPlainOff: 'Bei einem entpackten Ordnerspiel bindet „Aus“ beim Start nichts ein: kein /data, kein USB, keine Schriften und kein beschreibbares /app0 in seiner Sandbox.',
     recommendedTag: 'Empfohlene Einstellung', recommendedReset: 'Zurück zur empfohlenen Einstellung',
+    recommendedResetFakelib: 'Stellt Fakelib auf „{mode}“.',
+    recommendedResetStubOn: 'Stellt Fakelib auf „{mode}“, mit eingeschaltetem PlayGo-Stub.',
+    recommendedResetStubOff: 'Stellt Fakelib auf „{mode}“, mit ausgeschaltetem PlayGo-Stub.',
     noticeLongFirstBoot: 'Der Start kann mehrere Minuten dauern, mit schwarzem Bildschirm. Bitte warten.',
     deleteP5z: "Die .p5z-Datei und ihr Cache werden vom Laufwerk gelöscht: {path}. Das lässt sich nicht rückgängig machen.",
     excludePaths: "Ausgeschlossene Pfade",
@@ -1945,6 +1960,9 @@ var MSG = {
     fakelibOverlayOff: 'No tiene efecto mientras «Librerías de MaxPack al lanzar» está apagado.',
     fakelibPlainOff: 'En un juego en carpeta sin empaquetar, «Desactivado» hace que MaxPack no monte nada al lanzarlo: ni /data, ni USB, ni fuentes, ni /app0 escribible en su sandbox.',
     recommendedTag: 'Ajuste recomendado', recommendedReset: 'Volver al recomendado',
+    recommendedResetFakelib: 'Pone Fakelib en «{mode}».',
+    recommendedResetStubOn: 'Pone Fakelib en «{mode}», con el stub de PlayGo activado.',
+    recommendedResetStubOff: 'Pone Fakelib en «{mode}», con el stub de PlayGo desactivado.',
     noticeLongFirstBoot: 'Puede tardar varios minutos en arrancar, con la pantalla en negro. Espera.',
     szGame: 'Juego', szDlc: 'DLC', szSave: 'Partidas', szCache: 'Caché',
     szPart: '{part} {size}', szNa: '{part} n/d', szTotal: 'Total {size}',
@@ -2214,6 +2232,9 @@ var MSG = {
     fakelibOverlayOff: "Sans effet tant que « Bibliothèques MaxPack au lancement » est désactivé.",
     fakelibPlainOff: "Pour un jeu en dossier non empaqueté, « Désactivé » signifie que MaxPack ne monte rien au lancement : ni /data, ni USB, ni polices, ni /app0 inscriptible dans son bac à sable.",
     recommendedTag: 'Réglage recommandé', recommendedReset: 'Revenir au réglage recommandé',
+    recommendedResetFakelib: 'Règle Fakelib sur « {mode} ».',
+    recommendedResetStubOn: 'Règle Fakelib sur « {mode} », avec le stub PlayGo activé.',
+    recommendedResetStubOff: 'Règle Fakelib sur « {mode} », avec le stub PlayGo désactivé.',
     noticeLongFirstBoot: 'Le démarrage peut prendre plusieurs minutes, avec un écran noir. Patientez.',
     deleteP5z: "Le fichier .p5z et son cache seront supprimés du disque : {path}. Action irréversible.",
     excludePaths: "Chemins exclus",
@@ -2469,6 +2490,9 @@ var MSG = {
     fakelibOverlayOff: '「起動時に MaxPack のライブラリを使う」がオフの間は効果がありません。',
     fakelibPlainOff: '展開済みフォルダーのゲームでは、「オフ」にすると起動時に MaxPack は何もマウントしません。サンドボックスに /data、USB、フォント、書き込み可能な /app0 はありません。',
     recommendedTag: '推奨設定', recommendedReset: '推奨設定に戻す',
+    recommendedResetFakelib: 'Fakelib を「{mode}」にします。',
+    recommendedResetStubOn: 'Fakelib を「{mode}」にし、PlayGo スタブをオンにします。',
+    recommendedResetStubOff: 'Fakelib を「{mode}」にし、PlayGo スタブをオフにします。',
     noticeLongFirstBoot: '起動に数分かかることがあり、その間画面は真っ暗です。お待ちください。',
     deleteP5z: ".p5z ファイルとそのキャッシュをドライブから削除します: {path}。元に戻せません。",
     excludePaths: "除外するパス",
@@ -2724,6 +2748,9 @@ var MSG = {
     fakelibOverlayOff: 'Sem efeito enquanto “Bibliotecas do MaxPack ao iniciar” estiver desligado.',
     fakelibPlainOff: 'Em um jogo em pasta não empacotada, “Desligado” faz o MaxPack não montar nada ao iniciar: sem /data, USB, fontes ou /app0 gravável no sandbox.',
     recommendedTag: 'Configuração recomendada', recommendedReset: 'Voltar à configuração recomendada',
+    recommendedResetFakelib: 'Coloca o Fakelib em “{mode}”.',
+    recommendedResetStubOn: 'Coloca o Fakelib em “{mode}”, com o stub do PlayGo ligado.',
+    recommendedResetStubOff: 'Coloca o Fakelib em “{mode}”, com o stub do PlayGo desligado.',
     noticeLongFirstBoot: 'Pode levar vários minutos para iniciar, com a tela preta. Aguarde.',
     deleteP5z: "O arquivo .p5z e o cache dele serão excluídos do drive: {path}. Não é possível desfazer.",
     excludePaths: "Caminhos excluídos",
@@ -2979,6 +3006,9 @@ var MSG = {
     fakelibOverlayOff: "Nessun effetto finché «Librerie di MaxPack all'avvio» è disattivato.",
     fakelibPlainOff: "Per un gioco in cartella non impacchettata, «Disattivato» significa che MaxPack non monta nulla all'avvio: niente /data, USB, font o /app0 scrivibile nella sandbox.",
     recommendedTag: 'Impostazione consigliata', recommendedReset: "Torna all'impostazione consigliata",
+    recommendedResetFakelib: 'Imposta Fakelib su «{mode}».',
+    recommendedResetStubOn: 'Imposta Fakelib su «{mode}», con lo stub PlayGo attivo.',
+    recommendedResetStubOff: 'Imposta Fakelib su «{mode}», con lo stub PlayGo disattivato.',
     noticeLongFirstBoot: "L'avvio può richiedere diversi minuti, con lo schermo nero. Attendi.",
     deleteP5z: "Il file .p5z e la sua cache verranno eliminati dall'unità: {path}. L'operazione non è reversibile.",
     excludePaths: "Percorsi esclusi",
@@ -3234,6 +3264,9 @@ var MSG = {
     fakelibOverlayOff: '“실행 시 MaxPack 라이브러리 사용”이 꺼져 있는 동안에는 효과가 없습니다.',
     fakelibPlainOff: '압축되지 않은 폴더 게임에서 “끄기”는 실행 시 MaxPack이 아무것도 마운트하지 않는다는 뜻입니다. 샌드박스에 /data, USB, 글꼴, 쓰기 가능한 /app0이 없습니다.',
     recommendedTag: '권장 설정', recommendedReset: '권장 설정으로 되돌리기',
+    recommendedResetFakelib: 'Fakelib을 “{mode}” 모드로 설정합니다.',
+    recommendedResetStubOn: 'Fakelib을 “{mode}” 모드로 설정하고 PlayGo 스텁을 켭니다.',
+    recommendedResetStubOff: 'Fakelib을 “{mode}” 모드로 설정하고 PlayGo 스텁을 끕니다.',
     noticeLongFirstBoot: '시작하는 데 몇 분이 걸릴 수 있으며 그동안 화면이 검게 보입니다. 기다려 주세요.',
     deleteP5z: ".p5z 파일과 캐시가 드라이브에서 삭제됩니다: {path}. 되돌릴 수 없습니다.",
     excludePaths: "제외할 경로",
@@ -3489,6 +3522,9 @@ var MSG = {
     fakelibOverlayOff: 'لا أثر له ما دام «مكتبات MaxPack عند التشغيل» معطّلًا.',
     fakelibPlainOff: 'في لعبة مجلد غير معبّأ، يعني «إيقاف» أن MaxPack لا يركّب شيئًا عند التشغيل: لا /data ولا USB ولا خطوط ولا /app0 قابل للكتابة في بيئتها المعزولة.',
     recommendedTag: 'إعداد موصى به', recommendedReset: 'العودة إلى الإعداد الموصى به',
+    recommendedResetFakelib: 'يضبط Fakelib على «{mode}».',
+    recommendedResetStubOn: 'يضبط Fakelib على «{mode}» مع تشغيل بديل PlayGo.',
+    recommendedResetStubOff: 'يضبط Fakelib على «{mode}» مع إيقاف بديل PlayGo.',
     noticeLongFirstBoot: 'قد يستغرق بدء التشغيل عدة دقائق مع شاشة سوداء. انتظر.',
     deleteP5z: "سيُحذف ملف .p5z وذاكرته المؤقتة من المحرك: {path}. لا يمكن التراجع عن ذلك.",
     excludePaths: "المسارات المستثناة",
@@ -4309,6 +4345,7 @@ function renderModal() {
   var reset = $('m-reset');
   $('m-reset-row').hidden = dup || g.settings_source !== 'user' || !g.recommended;
   reset.disabled = !!reset._busy || g.status === 'building';
+  setText($('m-reset-what'), resetWhat(g));
   var notice = g.notice === 'long_first_boot' ? t('noticeLongFirstBoot') : '';
   setText($('m-notice'), notice);
   $('m-notice').hidden = !notice;
@@ -4537,6 +4574,14 @@ $('m-fakelib').onchange = async function () {
   }
   schedule(300);
 };
+// What "Back to the recommended setting" sets, as the reset handler below draws it: the list's Fakelib mode
+// (Full when it sets none), and the PlayGo stub when the sheet will show that switch with an effect.
+var FAKELIB_TEXT = { full: 'fakelibFull', emulators: 'fakelibEmulators', off: 'fakelibOff' };
+function resetWhat(g) {
+  var rec = g.recommended || {}, mode = rec.fakelib || 'full', args = { mode: t(FAKELIB_TEXT[mode] || 'fakelibFull') };
+  if (mode === 'off' || !(g.playgo === true || rec.playgo_off)) return t('recommendedResetFakelib', args);
+  return t(rec.playgo_off ? 'recommendedResetStubOff' : 'recommendedResetStubOn', args);
+}
 // "Back to the recommended setting" (POST /api/recommended/<TID>, body reset): the list applies again.
 $('m-reset').onclick = async function () {
   var btn = this, g = openTid && findGame(openTid);

@@ -977,8 +977,10 @@ The recommended settings: while `settings_source` is "recommended", "Recommended
 "Fakelib" label when `recommended.fakelib` is set and beside "PlayGo stub" when `recommended.playgo_off` is set (never
 beside a value the list leaves at its default); a game with a `notice` shows its text above the sheet's fields; once the user chose
 the settings (`settings_source` "user") and the list recommends something for the game (`recommended` not null), "Back
-to the recommended setting" (`POST /api/recommended/<TID>`, body `reset`) shows under the Fakelib row, and is in the
-D-pad's list of the sheet's controls only while it shows. A hand change draws the settings as the user's until the
+to the recommended setting" (`POST /api/recommended/<TID>`, body `reset`) shows under the Fakelib row, with a line
+under it that says what it sets (`resetWhat`: the list's Fakelib mode, Full when it sets none, and the PlayGo stub
+when the sheet shows that switch and the mode is not Off), and is in the D-pad's list of the sheet's controls only
+while it shows. A hand change draws the settings as the user's until the
 next state; the report is fetched again when `settings_source` or the stub changes. Settings has "Excluded paths"
 under "Scan paths", one path per line (`exclude`), and "Download updated recommended settings"
 (`recommended_update`) under the ampr-emu-ng update.

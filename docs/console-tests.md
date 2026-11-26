@@ -786,8 +786,9 @@ name no game.
   - Start it. Expected: it reaches its menu, as with Off set by hand.
 - [ ] **10.3. A hand change wins.**
   - In the Off game's sheet, set Fakelib to Full. Expected: the tags go and "Back to the recommended
-    setting" shows; in the log `<TID>: fakelib mode full`, then at the next pass
-    `<TID>: ...; refreshing fakelib only`; in `config.toml`, the title in `manual_settings`.
+    setting" shows, with "Sets Fakelib to "Off"." under it (in the page's language); in the log
+    `<TID>: fakelib mode full`, then at the next pass `<TID>: ...; refreshing fakelib only`; in `config.toml`,
+    the title in `manual_settings`.
   - Restart MaxPack. Expected: still Full, no tag, the button still there.
 - [ ] **10.4. Back to the recommended setting.**
   - Press it. Expected: in the log `<TID>: back to the recommended settings (fakelib mode off, PlayGo stub
