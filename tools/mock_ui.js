@@ -7,7 +7,7 @@
 //                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
-//                         [--ampr-fail checksum|older|none] [--pack-fail <code>|none]
+//                         [--ampr-fail checksum|older|none] [--pack-fail <code>|none] [--pack-end done|sums|sums_left]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -81,6 +81,7 @@ const mock = {
   tls_result: arg('tls-result', 'passed'),
   ampr_fail: arg('ampr-fail', 'none'),
   pack_fail: arg('pack-fail', 'none'),
+  pack_end: arg('pack-end', 'done'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
@@ -264,6 +265,12 @@ function packValue() {
   if (ms < 2000) return Object.assign(v, { state: 'probe' });
   if (ms < 5000) return Object.assign(v, { state: 'running', phase: 'loose', total: loose, done: Math.round(loose * (ms - 2000) / 3000), mbps: 60 });
   if (ms < 15000) return Object.assign(v, { state: 'running', phase: 'packs', total: packed, done: Math.round(packed * (ms - 5000) / 10000), mbps: 820 });
+  // The sums read back for 2 s (a Cancel then ends it cancelled, the file deleted). --pack-end sums|sums_left: they
+  // do not read, the file is deleted (or, sums_left, could not be), as src/pack.rs ends it (code sums).
+  if (ms < 17000) return Object.assign(v, { state: 'sums', phase: 'packs', done: packed, total: packed });
+  if (mock.pack_end === 'sums' || mock.pack_end === 'sums_left')
+    return Object.assign(v, { state: 'failed', code: 'sums', elapsed_ms: 17000, left: mock.pack_end === 'sums_left' ? j.source + '.p5z.maxpack-pack' : null,
+      error: 'the .p5z was written, but its sums could not be read: index CRC; deleted ' + j.source + '.p5z.maxpack-pack' });
   const hex = (n, c) => c.repeat(n);
   const lines = [
     '# MaxPack 1.0.2 on the console, engine b3b526f; lines that start with # are notes',
@@ -472,7 +479,7 @@ http.createServer((req, res) => {
     }
     if (req.method === 'GET' && p === '/app-icon.png') return send(res, 200, 'image/png', fs.readFileSync(path.join(root, 'ps5/icon0.png')));
     if (p === '/mock') {
-      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail', 'pack_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
+      for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail', 'pack_fail', 'pack_end']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;

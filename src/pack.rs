@@ -95,6 +95,8 @@ struct Job {
     size: Option<u64>,
     /// The `.maxpack-pack` file, when a failed or cancelled job left it (the engine normally deletes it).
     left: Option<String>,
+    /// Why a failed job failed, for the page's own words: `sums` (the written file's sums did not read back).
+    code: Option<&'static str>,
 }
 
 static JOB: Mutex<Option<Job>> = Mutex::new(None);
@@ -172,7 +174,7 @@ pub fn start(state: &State, body: &[u8]) -> Result<(), Refusal> {
     let now = crate::sys::uptime_ms();
     *job() = Some(Job {
         req: req.clone(), dest, stage: Stage::Probe, cancel: false, started_ms: now, ended_ms: None,
-        progress: Progress::new(now), error: None, lines: None, size: None, left: None,
+        progress: Progress::new(now), error: None, lines: None, size: None, left: None, code: None,
     });
     let running = state.running.clone();
     log!("pack: {} ({} in its files, {} free there): zstd level {}, {} threads for the packs, {} for the loose files",
@@ -237,6 +239,8 @@ pub fn json() -> serde_json::Value {
         "lines": j.lines,
         "size": j.size,
         "left": j.left,
+        // Why it failed, for the page's own words ("sums"), else null.
+        "code": j.code,
     })
 }
 
@@ -388,24 +392,46 @@ fn run(running: Arc<Mutex<HashSet<String>>>, need: u64) {
         counts.loose_files, logic::mb(counts.loose_bytes), counts.packed_files, logic::mb(counts.packed_bytes),
         logic::mb(counts.stored_bytes), counts.volumes);
     // Its sums read back before it gets its game name (maxpack_logic::pack::finish): a file the engine's reader
-    // refuses never stays as <folder>.p5z.
+    // refuses never stays as <folder>.p5z, and is deleted; a Cancel during the sums is honoured the same way.
     let size = std::fs::metadata(&dest.part).map(|m| m.len()).ok();
     let finished = logic::finish(&mut Files { part: &dest.part, p5z: &dest.p5z });
     let end_ms = crate::sys::uptime_ms();
     let sums = match finished {
         Ok(s) => s,
         Err(f) => {
-            let why = match f {
-                logic::FinishFail::Sums(why) => format!("its sums could not be read: {why}; it stays as {} (the next job of \
-                    this folder removes it)", dest.part),
-                logic::FinishFail::Taken => format!("{} appeared meanwhile: the new .p5z stays as {}", dest.p5z, dest.part),
-                logic::FinishFail::Rename(e) => format!("rename {} to {}: {e}", dest.part, dest.p5z),
+            // What the delete of the file did, for the log, and the file when it is still there.
+            let deleted = |d: &Result<(), String>| match d {
+                Ok(()) => (format!("deleted {}", dest.part), None),
+                Err(e) => (format!("delete {}: {e} (the next job of this folder removes it)", dest.part), Some(dest.part.clone())),
+            };
+            let (code, why, left) = match f {
+                logic::FinishFail::Sums { why, delete } => {
+                    let (what, left) = deleted(&delete);
+                    (Some("sums"), format!("the .p5z was written, but its sums could not be read: {why}; {what}"), left)
+                }
+                logic::FinishFail::Cancelled { delete } => {
+                    let (what, left) = deleted(&delete);
+                    log!("pack: cancelled while reading the sums; {what}");
+                    if let Some(j) = job().as_mut() {
+                        j.left = left;
+                    }
+                    end(Stage::Cancelled, Some("cancelled".into()));
+                    return;
+                }
+                logic::FinishFail::Taken => {
+                    let why = format!("the .p5z was written, but {} appeared meanwhile: it stays as {}", dest.p5z, dest.part);
+                    (None, why, Some(dest.part.clone()))
+                }
+                logic::FinishFail::Rename(e) => {
+                    let left = Path::new(&dest.part).exists().then(|| dest.part.clone());
+                    (None, format!("the .p5z was written, but rename {} to {}: {e}", dest.part, dest.p5z), left)
+                }
             };
             log!("pack: {why}");
             if let Some(j) = job().as_mut() {
-                j.left = Path::new(&dest.part).exists().then(|| dest.part.clone());
+                (j.left, j.code) = (left, code);
             }
-            end(Stage::Failed, Some(format!("the .p5z was written, but {why}")));
+            end(Stage::Failed, Some(why));
             return;
         }
     };
@@ -452,6 +478,18 @@ impl logic::Finish for Files<'_> {
 
     fn sums(&mut self) -> Result<logic::Sums, String> {
         read_sums(self.part)
+    }
+
+    /// "Cancel the compression" during the sums (cancel() sets the flag in every running stage).
+    fn cancelled(&mut self) -> bool {
+        job().as_ref().is_some_and(|j| j.cancel)
+    }
+
+    fn delete_part(&mut self) -> Result<(), String> {
+        match std::fs::remove_file(self.part) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
+        }
     }
 
     /// Renamed only onto nothing. ponytail: checked, then renamed; a file put there in between is replaced

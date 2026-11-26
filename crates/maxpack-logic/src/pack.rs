@@ -181,6 +181,10 @@ pub trait Finish {
     fn flush_part(&mut self);
     /// Its sums, read back from it (the engine's reader validates it again).
     fn sums(&mut self) -> Result<Sums, String>;
+    /// A Cancel came (the job's flag).
+    fn cancelled(&mut self) -> bool;
+    /// The `.maxpack-pack` file deleted (already gone is fine); Err: the OS error.
+    fn delete_part(&mut self) -> Result<(), String>;
     /// Something is at `<folder>.p5z` now (or cannot be looked at).
     fn dest_taken(&mut self) -> bool;
     /// `.maxpack-pack` renamed to `<folder>.p5z`.
@@ -189,20 +193,30 @@ pub trait Finish {
     fn flush_dir(&mut self);
 }
 
-/// Why the end of a job failed; the file stays under its work name in each case.
+/// Why the end of a job did not name the file: it stays under its work name, or (sums, cancel) is deleted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinishFail {
-    Sums(String),
+    /// Its sums did not read (why), and the file's delete.
+    Sums { why: String, delete: Result<(), String> },
+    /// A Cancel came while the sums were read, and the file's delete.
+    Cancelled { delete: Result<(), String> },
     Taken,
     Rename(String),
 }
 
 /// The end of a job once the engine wrote the `.maxpack-pack` file, in this order: to the disk, its sums read back
-/// (which validates it again), and only then, onto nothing, its game name, and the folder to the disk. A file
-/// whose sums do not read never takes the name `<folder>.p5z`.
+/// (which validates it again), a Cancel that came meanwhile honoured, and only then, onto nothing, its game name, and
+/// the folder to the disk. A file whose sums do not read never takes the name `<folder>.p5z`, and it is deleted (a
+/// full-size file must not stay, on the internal drive least of all), as a cancelled one is.
 pub fn finish(f: &mut impl Finish) -> Result<Sums, FinishFail> {
     f.flush_part();
-    let sums = f.sums().map_err(FinishFail::Sums)?;
+    let sums = match f.sums() {
+        Ok(s) => s,
+        Err(why) => return Err(FinishFail::Sums { why, delete: f.delete_part() }),
+    };
+    if f.cancelled() {
+        return Err(FinishFail::Cancelled { delete: f.delete_part() });
+    }
     if f.dest_taken() {
         return Err(FinishFail::Taken);
     }
@@ -668,8 +682,10 @@ mod tests {
     struct Steps {
         done: Vec<&'static str>,
         sums: Result<Sums, String>,
+        cancelled: bool,
         taken: bool,
         rename: Result<(), String>,
+        delete: Result<(), String>,
     }
 
     impl Finish for Steps {
@@ -679,6 +695,14 @@ mod tests {
         fn sums(&mut self) -> Result<Sums, String> {
             self.done.push("sums");
             self.sums.clone()
+        }
+        fn cancelled(&mut self) -> bool {
+            self.done.push("cancelled?");
+            self.cancelled
+        }
+        fn delete_part(&mut self) -> Result<(), String> {
+            self.done.push("delete");
+            self.delete.clone()
         }
         fn dest_taken(&mut self) -> bool {
             self.done.push("taken?");
@@ -696,21 +720,29 @@ mod tests {
     #[test]
     fn the_p5z_takes_its_name_only_once_its_sums_read() {
         let sums = Sums { archive_id: "ab".repeat(16), level: 9, volumes: vec![] };
-        let ok = || Steps { done: vec![], sums: Ok(sums.clone()), taken: false, rename: Ok(()) };
+        let ok = || Steps {
+            done: vec![], sums: Ok(sums.clone()), cancelled: false, taken: false, rename: Ok(()), delete: Ok(()),
+        };
         let mut s = ok();
         assert_eq!(finish(&mut s), Ok(sums.clone()));
-        assert_eq!(s.done, ["flush", "sums", "taken?", "rename", "flush dir"]);
-        // Sums that do not read: never renamed, it stays under its work name.
+        assert_eq!(s.done, ["flush", "sums", "cancelled?", "taken?", "rename", "flush dir"]);
+        // Sums that do not read: never renamed, and deleted (a full-size file must not stay, on /data too).
         let mut s = Steps { sums: Err("index CRC".into()), ..ok() };
-        assert_eq!(finish(&mut s), Err(FinishFail::Sums("index CRC".into())));
-        assert_eq!(s.done, ["flush", "sums"]);
+        assert_eq!(finish(&mut s), Err(FinishFail::Sums { why: "index CRC".into(), delete: Ok(()) }));
+        assert_eq!(s.done, ["flush", "sums", "delete"]);
+        let mut s = Steps { sums: Err("index CRC".into()), delete: Err("EBUSY".into()), ..ok() };
+        assert_eq!(finish(&mut s), Err(FinishFail::Sums { why: "index CRC".into(), delete: Err("EBUSY".into()) }));
+        // A Cancel while the sums were read: honoured before the name, the file deleted.
+        let mut s = Steps { cancelled: true, ..ok() };
+        assert_eq!(finish(&mut s), Err(FinishFail::Cancelled { delete: Ok(()) }));
+        assert_eq!(s.done, ["flush", "sums", "cancelled?", "delete"]);
         // Something at <folder>.p5z meanwhile: never renamed over it.
         let mut s = Steps { taken: true, ..ok() };
         assert_eq!(finish(&mut s), Err(FinishFail::Taken));
-        assert_eq!(s.done, ["flush", "sums", "taken?"]);
+        assert_eq!(s.done, ["flush", "sums", "cancelled?", "taken?"]);
         let mut s = Steps { rename: Err("EXDEV".into()), ..ok() };
         assert_eq!(finish(&mut s), Err(FinishFail::Rename("EXDEV".into())));
-        assert_eq!(s.done, ["flush", "sums", "taken?", "rename"]);
+        assert_eq!(s.done, ["flush", "sums", "cancelled?", "taken?", "rename"]);
     }
 
     #[test]
