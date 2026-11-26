@@ -67,7 +67,7 @@ Open the game's details in the web UI and clear "PlayGo stub". The switch is sho
 black screen with the stub; turn it back on if the game asks you to finish the download.
 
 MaxPack stores the choice in `/data/maxpack/config.toml` as a list of title IDs,
-`playgo_off = ["PPSA01556"]`, and refreshes the game's `fakelib/`. For a title in the list the bundled
+`playgo_off = ["PPSA01234"]`, and refreshes the game's `fakelib/`. For a title in the list the bundled
 stub is neither added nor upgraded (log line `fakelib: PlayGo stub off (playgo_off)`); a
 `libScePlayGo.sprx` that the game or backport ships stays as it is. The DLC emulator is not affected.
 

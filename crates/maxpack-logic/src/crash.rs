@@ -17,13 +17,13 @@ pub struct Crash {
     pub at: u64,
     /// From the dump's file name ("eboot.bin").
     pub process: String,
-    /// The console's crash folder name ("PPSA22327_1795166239").
+    /// The console's crash folder name ("PPSA00006_1795166239").
     pub folder: String,
     /// The exit status from NOTE_EXIT ("killed by signal 11").
     pub status: String,
 }
 
-/// "PPSA22327_1795166239" -> "PPSA22327".
+/// "PPSA00006_1795166239" -> "PPSA00006".
 pub fn folder_tid(name: &str) -> Option<&str> {
     let (tid, n) = name.split_once('_')?;
     let digits = !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
@@ -119,9 +119,9 @@ mod tests {
 
     #[test]
     fn crash_folder_names() {
-        assert_eq!(folder_tid("PPSA22327_1795166239"), Some("PPSA22327"));
+        assert_eq!(folder_tid("PPSA00006_1795166239"), Some("PPSA00006"));
         assert_eq!(folder_tid("CUSA00001_1"), Some("CUSA00001"));
-        for bad in ["PPSA22327", "PPSA22327_", "PPSA22327_12a", "ppsa22327_1", "NPXS20001_5", "PPSA2232_1", "_1"] {
+        for bad in ["PPSA00006", "PPSA00006_", "PPSA00006_12a", "ppsa00006_1", "NPXS20001_5", "PPSA0000_1", "_1"] {
             assert_eq!(folder_tid(bad), None, "{bad}");
         }
     }
