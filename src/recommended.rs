@@ -44,12 +44,16 @@ fn cached() -> Option<List> {
 }
 
 /// At start: the bundled list, or CACHED when it parses and its version is higher. One log line says
-/// which is used.
+/// which is used. A CACHED that is not newer (this MaxPack bundles a list at least as new) is of no use
+/// any more: it is deleted, so the line that says so comes once, not at every start.
 pub fn init() {
     let bundled = bundled();
     let cached = cached();
     if let Some(c) = cached.as_ref().filter(|c| c.version <= bundled.version) {
-        log!("recommended: cached copy ignored: v{} is not newer than the bundled v{}", c.version, bundled.version);
+        match std::fs::remove_file(CACHED) {
+            Ok(()) => log!("recommended: removed {CACHED}: v{} is not newer than the bundled v{}", c.version, bundled.version),
+            Err(e) => log!("recommended: cached copy ignored: v{} is not newer than the bundled v{} (remove: {e})", c.version, bundled.version),
+        }
     }
     let from = if cached.as_ref().is_some_and(|c| c.version > bundled.version) { "downloaded" } else { "bundled" };
     let list = logic::newer(&bundled, cached.as_ref()).clone();
