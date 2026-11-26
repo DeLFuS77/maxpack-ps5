@@ -147,27 +147,27 @@ fn set(s: &mut Settings, key: &str, v: &str) -> Result<(), String> {
                 s.playgo_off.push(v.to_string());
             }
         }
-        "playgo_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "playgo_off" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "hidden" if crate::scan::valid_tid(v) => {
             maxpack_logic::titles::set_listed(&mut s.hidden, v, true);
         }
-        "hidden" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "hidden" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "overlay_off" if crate::scan::valid_tid(v) => {
             maxpack_logic::titles::set_listed(&mut s.overlay_off, v, true);
         }
-        "overlay_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "overlay_off" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "fakelib_emulators" if crate::scan::valid_tid(v) => {
             maxpack_logic::titles::set_listed(&mut s.fakelib_emulators, v, true);
         }
-        "fakelib_emulators" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "fakelib_emulators" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "fakelib_off" if crate::scan::valid_tid(v) => {
             maxpack_logic::titles::set_listed(&mut s.fakelib_off, v, true);
         }
-        "fakelib_off" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "fakelib_off" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "manual_settings" if crate::scan::valid_tid(v) => {
             maxpack_logic::titles::set_listed(&mut s.manual_settings, v, true);
         }
-        "manual_settings" => return Err(format!("expected a title id like PPSA01556, got {v:?}")),
+        "manual_settings" => return Err(format!("expected a title id like PPSA01234, got {v:?}")),
         "ampr_auto_update" => s.ampr_auto_update = flag(v)?,
         "recommended_update" => s.recommended_update = flag(v)?,
         // Removed global setting, now per title (fakelib_emulators, fakelib_off): ignored, dropped on the next

@@ -521,7 +521,7 @@ the test with it running).
     menu.
 - [ ] **6.12. A name with accents, a trademark sign or Japanese.**
   - Rename the `.p5z` the way MaxPack on the PC names it for a title like that, for example
-    `Starfall’s Odyssey™ 2 [PPSA01234].p5z` (or `Iron Harbor™ DIRECTOR’S CUT [PPSA01411].p5z`), with the game
+    `Starfall’s Odyssey™ 2 [PPSA01234].p5z` (or `Iron Harbor™ DIRECTOR’S CUT [PPSA00002].p5z`), with the game
     closed.
   - Expected: it is relinked as in 6.5 (`moved ... relinking`, no `building cache`), line 2 of
     `maxpack.image` is `p5z/` and the new name as it is, the notice says "(p5z) running" and the game
