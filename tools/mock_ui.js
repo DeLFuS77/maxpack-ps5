@@ -36,7 +36,8 @@
 // The test compression (POST /api/pack, src/pack.rs) on a plain folder game's sheet ("Plain Racer", "Shell Title"):
 // it measures the memory for 2 s, copies the loose files for 3 s, packs for 10 s, then shows the lines to compare;
 // Cancel ends it as cancelled. --pack-fail answers the start with that refusal instead (maxpack_logic::pack::Refusal:
-// exists, no_space, pack_running, install_running, game_running). Default: none.
+// exists, no_space, no_space_internal (no_space on the internal drive, which keeps 2 GiB free), fat32 (a FAT32 drive
+// and a folder of 4 GiB or more), pack_running, install_running, game_running). Default: none.
 // Library samples: a hidden game (PPSA02345, shown with "Show hidden"), a game with a recorded crash
 // (PPSA01234, its sheet shows it and Copy report copies GET /api/report), Play (POST /api/launch:
 // the game "runs" for 8 s, then exits), Hide/Show (POST /api/hidden), and Rebuild (rebuild_queued
@@ -245,6 +246,9 @@ let packJob = null;
 const PACK_REFUSALS = {
   exists: [409, 'the .p5z is there already: it is never overwritten'],
   no_space: [409, '3221.2 MB more is needed on that drive'],
+  // As no_space, on the internal drive (it keeps 2 GiB free).
+  no_space_internal: [409, '3221.2 MB more is needed on the internal drive (2 GiB stay free there for saves, installs and logs)'],
+  fat32: [409, 'the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is 5368.7 MB: its .p5z could be as large'],
   pack_running: [409, 'a test compression is running'],
   install_running: [409, 'the installer is running or queuing a job'],
   game_running: [409, 'a game is running'],
@@ -632,8 +636,10 @@ http.createServer((req, res) => {
       if (g.kind !== 'folder' || g.packing !== 'plain') return json(res, 409, { code: 'not_folder', detail: `not a plain folder game: ${g.kind}` });
       const fail = packRunningNow() ? 'pack_running' : mock.pack_fail;
       if (PACK_REFUSALS[fail]) {
-        const out = { code: fail, detail: PACK_REFUSALS[fail][1] };
-        if (fail === 'no_space') out.missing_bytes = 3221225472;
+        const code = fail === 'no_space_internal' ? 'no_space' : fail;
+        const out = { code, detail: PACK_REFUSALS[fail][1] };
+        if (code === 'no_space') Object.assign(out, { missing_bytes: 3221225472, internal: fail === 'no_space_internal' });
+        if (code === 'fat32') out.folder_bytes = 5368709120;
         return json(res, PACK_REFUSALS[fail][0], out);
       }
       packJob = { source: v.path, level: v.level || 9, threads: v.threads || 5, t0: Date.now(), cancelled: 0 };

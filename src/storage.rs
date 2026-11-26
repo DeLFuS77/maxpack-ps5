@@ -35,6 +35,17 @@ pub fn free(path: &str) -> std::io::Result<u64> {
     statfs(path).map(|f| avail(&f)).ok_or_else(std::io::Error::last_os_error)
 }
 
+/// statfs f_fstypename ("ufs", "exfatfs", "msdosfs"...).
+fn type_name(fs: &libc::statfs) -> String {
+    let b: Vec<u8> = fs.f_fstypename.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    String::from_utf8_lossy(&b).into_owned()
+}
+
+/// The type of the filesystem holding `path` (type_name); None when it cannot be read.
+pub fn fs_type(path: &str) -> Option<String> {
+    statfs(path).map(|f| type_name(&f))
+}
+
 /// A statfs that reports `path` itself as the mount point (an empty /mnt/usbN reports /mnt).
 fn mounted(path: &str) -> Option<libc::statfs> {
     statfs(path).filter(|fs| on_name(fs) == path)

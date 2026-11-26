@@ -160,8 +160,13 @@ pub fn start(state: &State, body: &[u8]) -> Result<(), Refusal> {
     let need = crate::cache::du(Path::new(&req.path));
     let parent = Path::new(&dest.p5z).parent().map_or("/".into(), |p| p.to_string_lossy().into_owned());
     let free = crate::storage::free(&parent).unwrap_or(0);
-    if let Err(r) = logic::space(free, need) {
-        log!("pack: {} refused: {} (the folder is {}, {} free on {parent})", req.path, r.detail(), logic::mb(need), logic::mb(free));
+    // The internal drive (the user partition) keeps 2 GiB; a FAT32 drive takes no folder of 4 GiB or more
+    // (maxpack_logic::pack::room), before anything is written.
+    let fstype = crate::storage::fs_type(&parent).unwrap_or_default();
+    let drive = logic::Drive { internal: crate::storage::drive_of(Path::new(&req.path)) == "/data", fat32: logic::is_fat32(&fstype) };
+    if let Err(r) = logic::room(free, need, drive) {
+        log!("pack: {} refused: {} (the folder is {}, {} free on {parent}, {fstype})", req.path, r.detail(), logic::mb(need),
+            logic::mb(free));
         return Err(r);
     }
     let now = crate::sys::uptime_ms();

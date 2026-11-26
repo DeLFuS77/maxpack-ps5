@@ -523,8 +523,14 @@ fn route(state: &State, head: &str, body: &[u8], loopback: bool) -> Reply {
             Ok(()) => no_content(),
             Err(r) => {
                 let mut v = serde_json::json!({"code": r.code(), "detail": r.detail()});
-                if let maxpack_logic::pack::Refusal::NoSpace { missing } = r {
-                    v["missing_bytes"] = missing.into();
+                match r {
+                    // `internal`: the internal drive, which keeps 2 GiB free (the page says so).
+                    maxpack_logic::pack::Refusal::NoSpace { missing, internal } => {
+                        v["missing_bytes"] = missing.into();
+                        v["internal"] = internal.into();
+                    }
+                    maxpack_logic::pack::Refusal::Fat32 { size } => v["folder_bytes"] = size.into(),
+                    _ => {}
                 }
                 reply(r.status(), "application/json", v.to_string())
             }

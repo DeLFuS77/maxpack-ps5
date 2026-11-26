@@ -1139,6 +1139,8 @@ var MSG = {
     packPhase_sums: "reading the sums",
     packFail_exists: "{path} is there already: MaxPack never overwrites it. Move or delete it over FTP first.",
     packFail_no_space: "It does not fit: {size} more is needed on that drive (a .p5z can be as large as the folder).",
+    packFail_no_space_internal: "It does not fit: {size} more is needed on the internal SSD (a .p5z can be as large as the folder, and 2 GB stay free there for saves, installs and the log).",
+    packFail_fat32: "That drive is FAT32, which keeps no file of 4 GB or more, and this folder is {size}: its .p5z could be as large. Compress it on an exFAT drive or on the internal SSD.",
     packFail_install_running: "The installer is busy: try again when its job ends.",
     packFail_pack_running: "Another test compression is running.",
     iPackRunning: "A test compression is running: try again when it ends."
@@ -1422,6 +1424,8 @@ var MSG = {
     packPhase_sums: "чтение контрольных сумм",
     packFail_exists: "{path} уже есть: MaxPack никогда его не перезаписывает. Сначала переместите или удалите его по FTP.",
     packFail_no_space: "Не помещается: на этом диске нужно ещё {size} (.p5z может быть размером с папку).",
+    packFail_no_space_internal: "Не помещается: на внутреннем SSD нужно ещё {size} (.p5z может быть размером с папку, а 2 ГБ там остаются свободными для сохранений, установок и журнала).",
+    packFail_fat32: "Этот диск в FAT32, где не бывает файлов от 4 ГБ, а эта папка занимает {size}: её .p5z может оказаться таким же. Сжимайте её на диске exFAT или на внутреннем SSD.",
     packFail_install_running: "Установщик занят: повторите, когда его задача закончится.",
     packFail_pack_running: "Уже идёт другое тестовое сжатие.",
     iPackRunning: "Идёт тестовое сжатие: повторите, когда оно закончится."
@@ -1705,6 +1709,8 @@ var MSG = {
     packPhase_sums: "读取校验和",
     packFail_exists: "{path} 已存在：MaxPack 绝不覆盖它。请先通过 FTP 移走或删除它。",
     packFail_no_space: "空间不足：该磁盘还需要 {size}（.p5z 可能和文件夹一样大）。",
+    packFail_no_space_internal: "空间不足：内置 SSD 还需要 {size}（.p5z 可能和文件夹一样大，并且那里要为存档、安装和日志保留 2 GB 空闲空间）。",
+    packFail_fat32: "该磁盘是 FAT32，无法保存 4 GB 或更大的文件，而此文件夹有 {size}：它的 .p5z 可能一样大。请在 exFAT 磁盘或内置 SSD 上压缩它。",
     packFail_install_running: "安装器正忙：请在其任务结束后再试。",
     packFail_pack_running: "另一个测试压缩正在进行。",
     iPackRunning: "测试压缩正在进行：请在结束后再试。"
@@ -1988,6 +1994,8 @@ var MSG = {
     packPhase_sums: "Prüfsummen lesen",
     packFail_exists: "{path} gibt es schon: MaxPack überschreibt es nie. Verschiebe oder lösche es zuerst per FTP.",
     packFail_no_space: "Passt nicht: Auf dem Laufwerk fehlen {size} (eine .p5z kann so groß wie der Ordner sein).",
+    packFail_no_space_internal: "Passt nicht: Auf der internen SSD fehlen {size} (eine .p5z kann so groß wie der Ordner sein, und dort bleiben 2 GB frei für Spielstände, Installationen und das Log).",
+    packFail_fat32: "Das Laufwerk ist FAT32, das keine Datei ab 4 GB speichert, und dieser Ordner hat {size}: seine .p5z könnte so groß werden. Komprimiere ihn auf einem exFAT-Laufwerk oder auf der internen SSD.",
     packFail_install_running: "Der Installer ist beschäftigt: versuche es erneut, wenn sein Auftrag endet.",
     packFail_pack_running: "Eine andere Testkomprimierung läuft.",
     iPackRunning: "Eine Testkomprimierung läuft: versuche es erneut, wenn sie endet."
@@ -2216,6 +2224,8 @@ var MSG = {
     packPhase_sums: "leyendo las sumas",
     packFail_exists: "{path} ya existe: MaxPack nunca lo sobrescribe. Muévelo o bórralo antes por FTP.",
     packFail_no_space: "No cabe: hacen falta {size} más en ese disco (un .p5z puede ser tan grande como la carpeta).",
+    packFail_no_space_internal: "No cabe: hacen falta {size} más en el SSD interno (un .p5z puede ser tan grande como la carpeta, y allí se dejan 2 GB libres para partidas guardadas, instalaciones y el registro).",
+    packFail_fat32: "Ese disco es FAT32, que no guarda archivos de 4 GB o más, y esta carpeta ocupa {size}: su .p5z podría ser igual de grande. Comprímela en un disco exFAT o en el SSD interno.",
     packFail_install_running: "El instalador está ocupado: vuelve a intentarlo cuando termine su trabajo.",
     packFail_pack_running: "Hay otra compresión de prueba en marcha.",
     iPackRunning: "Hay una compresión de prueba en marcha: vuelve a intentarlo cuando termine."
@@ -2499,6 +2509,8 @@ var MSG = {
     packPhase_sums: "lecture des sommes",
     packFail_exists: "{path} existe déjà : MaxPack ne l'écrase jamais. Déplacez-le ou supprimez-le d'abord par FTP.",
     packFail_no_space: "Ça ne rentre pas : il faut encore {size} sur ce disque (un .p5z peut être aussi gros que le dossier).",
+    packFail_no_space_internal: "Ça ne rentre pas : il faut encore {size} sur le SSD interne (un .p5z peut être aussi gros que le dossier, et 2 Go y restent libres pour les sauvegardes, les installations et le journal).",
+    packFail_fat32: "Ce disque est en FAT32, qui ne garde aucun fichier de 4 Go ou plus, et ce dossier fait {size} : son .p5z pourrait être aussi gros. Compressez-le sur un disque exFAT ou sur le SSD interne.",
     packFail_install_running: "L'installateur est occupé : réessayez quand sa tâche est finie.",
     packFail_pack_running: "Une autre compression de test est en cours.",
     iPackRunning: "Une compression de test est en cours : réessayez quand elle sera finie."
@@ -2782,6 +2794,8 @@ var MSG = {
     packPhase_sums: "チェックサムを読み込み中",
     packFail_exists: "{path} はすでにあります。MaxPack は上書きしません。先に FTP で移動するか削除してください。",
     packFail_no_space: "容量が足りません。そのドライブにあと {size} 必要です（.p5z はフォルダと同じ大きさになることがあります）。",
+    packFail_no_space_internal: "容量が足りません。内蔵 SSD にあと {size} 必要です（.p5z はフォルダと同じ大きさになることがあり、内蔵 SSD にはセーブデータ、インストール、ログのために 2 GB の空きを残します）。",
+    packFail_fat32: "そのドライブは FAT32 で、4 GB 以上のファイルを保存できません。このフォルダは {size} あり、その .p5z も同じくらいの大きさになる可能性があります。exFAT のドライブか内蔵 SSD で圧縮してください。",
     packFail_install_running: "インストーラーが作業中です。終わってから再度お試しください。",
     packFail_pack_running: "別のテスト圧縮が実行中です。",
     iPackRunning: "テスト圧縮が実行中です。終わってから再度お試しください。"
@@ -3065,6 +3079,8 @@ var MSG = {
     packPhase_sums: "lendo as somas",
     packFail_exists: "{path} já existe: o MaxPack nunca o sobrescreve. Mova ou apague-o antes por FTP.",
     packFail_no_space: "Não cabe: faltam {size} nesse disco (um .p5z pode ser tão grande quanto a pasta).",
+    packFail_no_space_internal: "Não cabe: faltam {size} no SSD interno (um .p5z pode ser tão grande quanto a pasta, e lá ficam 2 GB livres para salvamentos, instalações e o registro).",
+    packFail_fat32: "Esse disco é FAT32, que não guarda arquivos de 4 GB ou mais, e esta pasta tem {size}: o .p5z dela pode ficar desse tamanho. Comprima-a num disco exFAT ou no SSD interno.",
     packFail_install_running: "O instalador está ocupado: tente de novo quando a tarefa dele terminar.",
     packFail_pack_running: "Outra compressão de teste está em andamento.",
     iPackRunning: "Uma compressão de teste está em andamento: tente de novo quando terminar."
@@ -3348,6 +3364,8 @@ var MSG = {
     packPhase_sums: "lettura delle somme",
     packFail_exists: "{path} esiste già: MaxPack non lo sovrascrive mai. Spostalo o eliminalo prima via FTP.",
     packFail_no_space: "Non ci sta: servono altri {size} su quel disco (un .p5z può essere grande quanto la cartella).",
+    packFail_no_space_internal: "Non ci sta: servono altri {size} sull'SSD interno (un .p5z può essere grande quanto la cartella, e lì restano liberi 2 GB per i salvataggi, le installazioni e il registro).",
+    packFail_fat32: "Quel disco è FAT32, che non tiene file da 4 GB in su, e questa cartella occupa {size}: il suo .p5z potrebbe essere altrettanto grande. Comprimila su un disco exFAT o sull'SSD interno.",
     packFail_install_running: "L'installatore è occupato: riprova quando il suo lavoro finisce.",
     packFail_pack_running: "È in corso un'altra compressione di prova.",
     iPackRunning: "È in corso una compressione di prova: riprova quando finisce."
@@ -3631,6 +3649,8 @@ var MSG = {
     packPhase_sums: "체크섬 읽기",
     packFail_exists: "{path}가 이미 있습니다. MaxPack은 덮어쓰지 않습니다. 먼저 FTP로 옮기거나 지우세요.",
     packFail_no_space: "공간이 부족합니다. 그 드라이브에 {size}가 더 필요합니다(.p5z는 폴더만큼 클 수 있습니다).",
+    packFail_no_space_internal: "공간이 부족합니다. 내장 SSD에 {size}가 더 필요합니다(.p5z는 폴더만큼 클 수 있고, 내장 SSD에는 세이브, 설치, 로그를 위해 2 GB를 비워 둡니다).",
+    packFail_fat32: "그 드라이브는 FAT32라서 4 GB 이상의 파일을 저장할 수 없는데, 이 폴더는 {size}입니다: .p5z도 그만큼 클 수 있습니다. exFAT 드라이브나 내장 SSD에서 압축하세요.",
     packFail_install_running: "설치 프로그램이 작업 중입니다. 작업이 끝나면 다시 시도하세요.",
     packFail_pack_running: "다른 테스트 압축이 진행 중입니다.",
     iPackRunning: "테스트 압축이 진행 중입니다. 끝나면 다시 시도하세요."
@@ -3914,6 +3934,8 @@ var MSG = {
     packPhase_sums: "قراءة المجاميع",
     packFail_exists: "{path} موجود بالفعل: لا يكتب MaxPack فوقه أبدًا. انقله أو احذفه أولًا عبر FTP.",
     packFail_no_space: "لا تكفي المساحة: يلزم {size} إضافية على ذلك القرص (قد يكون ملف .p5z بحجم المجلد).",
+    packFail_no_space_internal: "لا تكفي المساحة: يلزم {size} إضافية على SSD الداخلي (قد يكون ملف .p5z بحجم المجلد، ويُترك هناك 2 غيغابايت فارغة لحفظ الألعاب والتثبيتات والسجل).",
+    packFail_fat32: "هذا القرص بنظام FAT32 الذي لا يحفظ ملفات بحجم 4 غيغابايت أو أكثر، وهذا المجلد بحجم {size}: قد يكون ملف .p5z الخاص به بالحجم نفسه. اضغطه على قرص exFAT أو على SSD الداخلي.",
     packFail_install_running: "المُثبِّت مشغول: أعد المحاولة عند انتهاء مهمته.",
     packFail_pack_running: "يجري ضغط تجريبي آخر.",
     iPackRunning: "يجري ضغط تجريبي: أعد المحاولة عند انتهائه."
@@ -4656,6 +4678,14 @@ function overlayOptional(g) { return g.kind === 'folder' && g.packing === 'plain
 // (a duplicate copy too: it goes by path). The job of this run (state.pack) shows on the sheet of the folder it packs.
 var PACK_FAILS = { exists: 'packFail_exists', game_running: 'iGameRunning', install_running: 'packFail_install_running',
   pack_running: 'packFail_pack_running' };
+// The page's words for a refused start (POST /api/pack's {code, detail, ...}; status: the HTTP one): the internal
+// drive keeps 2 GiB free (no_space with internal), and a FAT32 drive takes no folder of 4 GiB or more (fat32).
+function packFailText(e, path, status) {
+  var code = e && e.code;
+  if (code === 'no_space') return t(e.internal ? 'packFail_no_space_internal' : 'packFail_no_space', { size: fmtSize(e.missing_bytes) });
+  if (code === 'fat32') return t('packFail_fat32', { size: fmtSize(e.folder_bytes) });
+  return PACK_FAILS[code] ? t(PACK_FAILS[code], { path: path }) : (e && e.detail) || 'HTTP ' + status;
+}
 function packRunning() { var p = state && state.pack; return !!p && ['probe', 'running', 'sums'].indexOf(p.state) >= 0; }
 function packStatus(p) {
   var time = instDuration((Number(p.elapsed_ms) || 0) / 1000) || '0 s';
@@ -4701,9 +4731,7 @@ $('m-pack').onclick = async function () {
     if (!r.ok) {
       var e = null;
       try { e = await r.json(); } catch (x) { /* plain text */ }
-      var code = e && e.code;
-      throw new Error(code === 'no_space' ? t('packFail_no_space', { size: fmtSize(e.missing_bytes) }) :
-        PACK_FAILS[code] ? t(PACK_FAILS[code], { path: g.path + '.p5z' }) : (e && e.detail) || 'HTTP ' + r.status);
+      throw new Error(packFailText(e, g.path + '.p5z', r.status));
     }
     modalActionError = '';
     modalNote = null;

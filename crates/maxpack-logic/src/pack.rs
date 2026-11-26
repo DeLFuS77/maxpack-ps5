@@ -85,8 +85,11 @@ pub enum Refusal {
     GameRunning,
     /// `<folder>.p5z` is there already: it is never overwritten.
     Exists,
-    /// The drive lacks this many bytes (the folder's size plus the 256 MiB margin, less what is free).
-    NoSpace { missing: u64 },
+    /// The drive lacks this many bytes (the folder's size plus the margin, less what is free); `internal`: the
+    /// internal drive, whose margin is INTERNAL_MARGIN.
+    NoSpace { missing: u64, internal: bool },
+    /// The drive is FAT32 and the folder is this large: its `.p5z`, one file, could pass FAT32's 4 GiB.
+    Fat32 { size: u64 },
 }
 
 impl Refusal {
@@ -109,6 +112,7 @@ impl Refusal {
             Refusal::GameRunning => "game_running",
             Refusal::Exists => "exists",
             Refusal::NoSpace { .. } => "no_space",
+            Refusal::Fat32 { .. } => "fat32",
         }
     }
 
@@ -122,8 +126,48 @@ impl Refusal {
             Refusal::InstallRunning => "the installer is running or queuing a job".into(),
             Refusal::GameRunning => "a game is running".into(),
             Refusal::Exists => "the .p5z is there already: it is never overwritten".into(),
-            Refusal::NoSpace { missing } => format!("{} more is needed on that drive", mb(*missing)),
+            Refusal::NoSpace { missing, internal: false } => format!("{} more is needed on that drive", mb(*missing)),
+            Refusal::NoSpace { missing, internal: true } => {
+                format!("{} more is needed on the internal drive (2 GiB stay free there for saves, installs and logs)", mb(*missing))
+            }
+            Refusal::Fat32 { size } => format!(
+                "the drive is FAT32, which keeps no file of 4 GiB or more, and the folder is {}: its .p5z could be as large", mb(*size)),
         }
+    }
+}
+
+/// The free space kept on the internal drive beyond the folder's size: it is the user partition (saves, installs,
+/// MaxPack's log and caches), which a game that hardly compresses must not leave nearly full.
+pub const INTERNAL_MARGIN: u64 = 2 << 30;
+/// FAT32 keeps no file of this size or more.
+pub const FAT32_LIMIT: u64 = 4 << 30;
+
+/// A filesystem type (statfs `f_fstypename`) that is FAT32 (as maxpack_logic::receive::is_fat32 on the receive's
+/// branch).
+pub fn is_fat32(fstype: &str) -> bool {
+    matches!(fstype.to_ascii_lowercase().as_str(), "msdosfs" | "msdos" | "vfat" | "fat32" | "fat")
+}
+
+/// What the room check knows of the drive the `.p5z` goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Drive {
+    /// The internal drive (`/data`).
+    pub internal: bool,
+    /// Its filesystem is FAT32 (`is_fat32`).
+    pub fat32: bool,
+}
+
+/// The room check, before anything is written: on FAT32 a folder of FAT32_LIMIT or more is refused (its `.p5z` is
+/// one file, and can be as large as the folder: some games hardly compress); then the folder's `need` bytes plus
+/// the margin must fit in `free`: INTERNAL_MARGIN on the internal drive, `p5z::SPACE_MARGIN` (256 MiB) elsewhere.
+pub fn room(free: u64, need: u64, drive: Drive) -> Result<(), Refusal> {
+    if drive.fat32 && need >= FAT32_LIMIT {
+        return Err(Refusal::Fat32 { size: need });
+    }
+    let margin = if drive.internal { INTERNAL_MARGIN } else { crate::p5z::SPACE_MARGIN };
+    match need.saturating_add(margin).checked_sub(free).filter(|m| *m > 0) {
+        Some(missing) => Err(Refusal::NoSpace { missing, internal: drive.internal }),
+        None => Ok(()),
     }
 }
 
@@ -160,15 +204,6 @@ pub fn gate(f: &Facts) -> Result<(), Refusal> {
         return Err(Refusal::Exists);
     }
     Ok(())
-}
-
-/// The space check: the folder's `need` bytes plus `p5z::SPACE_MARGIN` must fit in `free` (a `.p5z` can be
-/// as large as the folder: some games hardly compress).
-pub fn space(free: u64, need: u64) -> Result<(), Refusal> {
-    match crate::p5z::space_short(free, need) {
-        Some(missing) => Err(Refusal::NoSpace { missing }),
-        None => Ok(()),
-    }
 }
 
 /// The installer requests that start a job (it shares the engine's cancel flag and progress hook): refused
@@ -534,14 +569,53 @@ mod tests {
         assert_eq!(gate(&Facts { pack_running: false, installer_busy: false, ..all(plain) }), Err(Refusal::GameRunning));
     }
 
+    const USB: Drive = Drive { internal: false, fat32: false };
+    const INTERNAL: Drive = Drive { internal: true, fat32: false };
+    const FAT32: Drive = Drive { internal: false, fat32: true };
+
     #[test]
     fn the_folder_and_the_margin_must_fit() {
+        // Another drive keeps 256 MiB free beyond the folder's size (a .p5z can be as large).
         let margin = crate::p5z::SPACE_MARGIN;
-        assert_eq!(space(10 << 30, 1 << 30), Ok(()));
-        assert_eq!(space((1 << 30) + margin, 1 << 30), Ok(()));
-        assert_eq!(space((1 << 30) + margin - 1, 1 << 30), Err(Refusal::NoSpace { missing: 1 }));
-        assert_eq!(space(0, 5 << 30), Err(Refusal::NoSpace { missing: (5 << 30) + margin }));
-        assert_eq!(space(u64::MAX, u64::MAX), Ok(()));
+        assert_eq!(margin, 256 << 20);
+        assert_eq!(room(10 << 30, 1 << 30, USB), Ok(()));
+        assert_eq!(room((1 << 30) + margin, 1 << 30, USB), Ok(()));
+        assert_eq!(room((1 << 30) + margin - 1, 1 << 30, USB), Err(Refusal::NoSpace { missing: 1, internal: false }));
+        assert_eq!(room(0, 5 << 30, USB), Err(Refusal::NoSpace { missing: (5 << 30) + margin, internal: false }));
+        assert_eq!(room(u64::MAX, u64::MAX, USB), Ok(()));
+    }
+
+    #[test]
+    fn the_internal_drive_keeps_2_gib_free() {
+        // The user partition holds the saves, the installs and the logs: 2 GiB stay free beyond the folder's size.
+        assert_eq!(INTERNAL_MARGIN, 2 << 30);
+        assert_eq!(room((1 << 30) + (2 << 30), 1 << 30, INTERNAL), Ok(()));
+        assert_eq!(room((1 << 30) + (2 << 30) - 1, 1 << 30, INTERNAL), Err(Refusal::NoSpace { missing: 1, internal: true }));
+        // What fits on a USB drive with today's margin does not on the internal one.
+        let free = (1 << 30) + (256 << 20);
+        assert_eq!(room(free, 1 << 30, USB), Ok(()));
+        assert_eq!(room(free, 1 << 30, INTERNAL), Err(Refusal::NoSpace { missing: (2 << 30) - (256 << 20), internal: true }));
+        assert_eq!(room(0, 0, INTERNAL), Err(Refusal::NoSpace { missing: 2 << 30, internal: true }));
+    }
+
+    #[test]
+    fn a_fat32_drive_takes_no_folder_of_4_gib() {
+        // A .p5z is one file, and FAT32 keeps none of 4 GiB or more: refused before anything is written, whatever
+        // the space, and before the space check.
+        assert_eq!(FAT32_LIMIT, 4 << 30);
+        assert_eq!(room(u64::MAX, 4 << 30, FAT32), Err(Refusal::Fat32 { size: 4 << 30 }));
+        assert_eq!(room(0, 5 << 30, FAT32), Err(Refusal::Fat32 { size: 5 << 30 }));
+        assert_eq!(room(u64::MAX, (4 << 30) - 1, FAT32), Ok(()));
+        assert_eq!(room(0, (4 << 30) - 1, FAT32), Err(Refusal::NoSpace { missing: (4 << 30) - 1 + (256 << 20), internal: false }));
+        let r = Refusal::Fat32 { size: 5 << 30 };
+        assert_eq!((r.status(), r.code()), (409, "fat32"));
+        assert!(r.detail().contains("FAT32") && r.detail().contains("5368.7 MB"), "{}", r.detail());
+        for t in ["msdosfs", "MSDOSFS", "msdos", "vfat", "fat32", "fat"] {
+            assert!(is_fat32(t), "{t}");
+        }
+        for t in ["exfatfs", "exfat", "ufs", "pfs", "", "fat64"] {
+            assert!(!is_fat32(t), "{t}");
+        }
     }
 
     #[test]
@@ -554,7 +628,8 @@ mod tests {
             (Refusal::InstallRunning, 409, "install_running"),
             (Refusal::GameRunning, 409, "game_running"),
             (Refusal::Exists, 409, "exists"),
-            (Refusal::NoSpace { missing: 3 << 30 }, 409, "no_space"),
+            (Refusal::NoSpace { missing: 3 << 30, internal: false }, 409, "no_space"),
+            (Refusal::Fat32 { size: 5 << 30 }, 409, "fat32"),
         ];
         for (r, status, code) in all {
             assert_eq!((r.status(), r.code()), (status, code), "{r:?}");
@@ -562,7 +637,8 @@ mod tests {
         }
         assert!(Refusal::BadRequest("no path".into()).detail().contains("no path"));
         assert!(Refusal::NotPlain("folder (zstd)".into()).detail().contains("folder (zstd)"));
-        assert!(Refusal::NoSpace { missing: 3 << 30 }.detail().contains("3221.2 MB"));
+        assert!(Refusal::NoSpace { missing: 3 << 30, internal: false }.detail().contains("3221.2 MB"));
+        assert!(Refusal::NoSpace { missing: 3 << 30, internal: true }.detail().contains("2 GiB"));
     }
 
     #[test]
