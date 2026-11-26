@@ -7,7 +7,7 @@
 //                         [--last done|failed|needs_confirm|grown|none] [--empty]
 //                         [--update v1.0.3|none] [--update-fail <code>|none]
 //                         [--tls never|passed|broken] [--tls-result passed|broken|inconclusive]
-//                         [--ampr-fail checksum|older|none] [--receive demo|failed|none]
+//                         [--ampr-fail checksum|older|none] [--receive demo|failed|none] [--receive-delete-fail]
 //   then open http://localhost:8095/ and the Install tab.
 //
 // Defaults: --waiting other (ShadowMountPlus running: the banner and ShadowMountPlus connected in
@@ -85,6 +85,7 @@ const mock = {
   tls_result: arg('tls-result', 'passed'),
   ampr_fail: arg('ampr-fail', 'none'),
   receive: arg('receive', 'none'),
+  receive_delete_fail: args.includes('--receive-delete-fail'),
 };
 // The running version: the one an Update in the mock "installs" once it is done.
 let version = '1.0.2';
@@ -480,7 +481,8 @@ const received = new Set();
 let leftovers = [{ path: '/mnt/usb0/homebrew/Old Send [PPSA05555].p5z.maxpack-recv', name: 'Old Send [PPSA05555].p5z', size: 7 * GB }];
 function leftState() {
   const l = leftovers.slice();
-  if (recvJob && (recvJob.state === 'paused' || recvJob.state === 'failed') && !l.some((x) => x.path === recvJob.partial))
+  const kept = recvJob && (recvJob.state === 'paused' || recvJob.state === 'failed' || (recvJob.state === 'cancelled' && recvJob.error));
+  if (kept && !l.some((x) => x.path === recvJob.partial))
     l.push({ path: recvJob.partial, name: recvJob.name, size: recvJob.have });
   return l;
 }
@@ -642,9 +644,12 @@ function recvDiscard(body) {
   if (same && same.state !== 'done') { clearInterval(recvTimer); recvJob = null; }
   return [200, there ? { deleted: true, bytes: there.size } : { deleted: false }];
 }
+// --receive-delete-fail (or /mock?receive_delete_fail=1): the delete fails, so the file stays and error says why
+// (src/receive.rs cancel: a cancelled receive's error is only that).
 function recvCancel(j) {
   if (j.state === 'done') return recvNo('state', 409, 'the receive is done');
-  if (j.state !== 'cancelled') Object.assign(j, { state: 'cancelled', mbps: null });
+  if (j.state !== 'cancelled') Object.assign(j, { state: 'cancelled', mbps: null,
+    error: mock.receive_delete_fail ? 'Permission denied (os error 13)' : null });
   clearInterval(recvTimer);
   return [200, recvStatus(j)];
 }
@@ -746,6 +751,7 @@ http.createServer((req, res) => {
     if (p === '/mock') {
       for (const k of ['waiting', 'job', 'last', 'update', 'update_fail', 'tls', 'tls_result', 'ampr_fail']) if (url.searchParams.has(k)) mock[k] = url.searchParams.get(k);
       if (url.searchParams.has('empty')) mock.empty = url.searchParams.get('empty') === '1';
+      if (url.searchParams.has('receive_delete_fail')) mock.receive_delete_fail = url.searchParams.get('receive_delete_fail') === '1';
       if (url.searchParams.has('job')) { extraJob = null; jobStart = Date.now(); }
       if (url.searchParams.has('last')) lastExtra = null;
       if (url.searchParams.has('receive')) recvDemo(url.searchParams.get('receive'));
@@ -778,7 +784,7 @@ http.createServer((req, res) => {
     if (req.method === 'POST' && p === '/api/pairing/left') {
       if (!leftState().some((x) => x.path === chunks)) return send(res, 404, 'text/plain', 'not a file a send left');
       leftovers = leftovers.filter((x) => x.path !== chunks);
-      if (recvJob && recvJob.partial === chunks) recvJob.state = 'cancelled';
+      if (recvJob && recvJob.partial === chunks) Object.assign(recvJob, { state: 'cancelled', error: null });
       return send(res, 204, 'text/plain', '');
     }
     if (req.method === 'POST' && p === '/api/pairing/cancel') {

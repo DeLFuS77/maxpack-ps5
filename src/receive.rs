@@ -556,9 +556,10 @@ extern "C" fn verify_stopped(_ctx: *mut c_void) -> std::ffi::c_int {
     std::ffi::c_int::from(recv().as_ref().is_none_or(|r| r.stop.is_some()))
 }
 
+/// Deletes a `.maxpack-recv` file (already gone is fine); Err: the OS error, as the page shows it.
 fn delete(partial: &Path) -> Result<(), String> {
     match fs::remove_file(partial) {
-        Err(e) if e.kind() != ErrorKind::NotFound => Err(format!("delete {}: {e}", partial.display())),
+        Err(e) if e.kind() != ErrorKind::NotFound => Err(e.to_string()),
         _ => Ok(()),
     }
 }
@@ -629,11 +630,11 @@ fn verify_received(id: &str) {
         // Stopped: Delete removes what arrived; Stop or a quit keeps it (paused: a send again verifies it again).
         _ if r.stop == Some(true) => {
             r.stage = Stage::Cancelled;
-            if let Err(e) = delete(&partial) {
-                log!("receive: {name}: {e}");
-                r.error = Some(e);
+            r.error = delete(&partial).err();
+            match &r.error {
+                None => log!("receive: {name}: cancelled while verifying; deleted {}", partial.display()),
+                Some(e) => log!("receive: {name}: cancelled while verifying, but delete {}: {e}: it stays", partial.display()),
             }
-            log!("receive: {name}: cancelled while verifying; deleted {}", partial.display());
         }
         _ => pause(r, PauseReason::Stopped, None, "stopped while verifying"),
     }
@@ -678,11 +679,13 @@ pub fn cancel(id: Option<&str>) -> Answer {
                 return ok(200, json!({"state": Stage::Cancelled.name()}));
             };
             FAILED.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != &r.partial);
-            if let Err(e) = delete(&r.partial) {
-                log!("receive: {}: {e}", r.name);
-                r.error = Some(e);
+            // A cancelled receive's error says only why what arrived is still there (the page shows it).
+            r.error = delete(&r.partial).err();
+            match &r.error {
+                None => log!("receive: {}: cancelled at {} of {} bytes; deleted {}", r.name, r.have, r.size, r.partial.display()),
+                Some(e) => log!("receive: {}: cancelled at {} of {} bytes, but delete {}: {e}: it stays", r.name, r.have, r.size,
+                    r.partial.display()),
             }
-            log!("receive: {}: cancelled at {} of {} bytes; deleted {}", r.name, r.have, r.size, r.partial.display());
             ok(200, status_of(r))
         }
         Stage::Verifying => {
@@ -828,6 +831,8 @@ pub fn json() -> Value {
         "mbps": if r.stage.active() { r.rate.mbps(10_000) } else { None },
         "cancelling": r.stop == Some(true) && r.stage == Stage::Verifying,
         "verify": verify,
+        // What stopped it (paused), what failed (failed), or why what arrived is still there (cancelled: the delete
+        // failed); null for a cancel that deleted it.
         "error": r.error,
         "elapsed_ms": r.ended_ms.unwrap_or(now).saturating_sub(r.started_ms),
     })
@@ -886,11 +891,13 @@ pub fn delete_leftover(state: &State, body: &[u8]) -> Result<(), (u16, String)> 
         return Err((404, "not a file a send left".into()));
     }
     if let Err(e) = delete(Path::new(&path)) {
+        let e = format!("delete {path}: {e}");
         log!("receive: {e}");
         return Err((500, e));
     }
     if let Some(r) = g.as_mut().filter(|r| r.partial == Path::new(&path)) {
-        (r.stage, r.ended_ms) = (Stage::Cancelled, r.ended_ms.or(Some(crate::sys::uptime_ms())));
+        // Deleted: no error left to show (a pause's or a failed verify's no longer holds).
+        (r.stage, r.error, r.ended_ms) = (Stage::Cancelled, None, r.ended_ms.or(Some(crate::sys::uptime_ms())));
     }
     drop(g);
     FAILED.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != Path::new(&path));

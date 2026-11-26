@@ -1167,6 +1167,7 @@ var MSG = {
     recvFailed: "{name} arrived damaged: {what} do not match. It stays as {path}: send it again from the PC, or delete what arrived.",
     recvFailedError: "{name} arrived but could not be checked: {error}. It stays as {path}: send it again from the PC, or delete what arrived.",
     recvCancelled: "The receive of {name} was cancelled: what had arrived is deleted.",
+    recvCancelledKept: "The receive of {name} was cancelled, but what had arrived could not be deleted ({error}): it stays as {path}. Delete it under Settings > Unfinished games from the PC.",
     recvOnHere: "To turn it on, open MaxPack in the console's own browser (its tile): from another device it can only be turned off.",
     recvStop: "Stop (keep what arrived)",
     recvDelete: "Delete what arrived",
@@ -1474,6 +1475,7 @@ var MSG = {
     recvFailed: "{name} пришёл повреждённым: не совпадают {what}. Он остаётся как {path}: отправьте его с ПК ещё раз или удалите полученное.",
     recvFailedError: "{name} пришёл, но его не удалось проверить: {error}. Он остаётся как {path}: отправьте его с ПК ещё раз или удалите полученное.",
     recvCancelled: "Приём {name} отменён: полученное удалено.",
+    recvCancelledKept: "Приём {name} отменён, но полученное не удалось удалить ({error}): оно остаётся как {path}. Удалите его в разделе Настройки > Незавершённые игры с ПК.",
     recvOnHere: "Чтобы включить, откройте MaxPack в браузере самой консоли (её плитка): с другого устройства можно только выключить.",
     recvStop: "Остановить (сохранить полученное)",
     recvDelete: "Удалить полученное",
@@ -1781,6 +1783,7 @@ var MSG = {
     recvFailed: "{name} 收到时已损坏：{what} 不一致。它保留为 {path}：请从电脑重新发送，或删除已收到的部分。",
     recvFailedError: "{name} 已收到但无法校验：{error}。它保留为 {path}：请从电脑重新发送，或删除已收到的部分。",
     recvCancelled: "已取消接收 {name}：已收到的部分已删除。",
+    recvCancelledKept: "已取消接收 {name}，但无法删除已收到的部分（{error}）：它保留为 {path}。请在“设置 > 来自电脑的未完成游戏”中删除它。",
     recvOnHere: "要开启，请在主机自己的浏览器中打开 MaxPack（它的图标）：在其他设备上只能关闭。",
     recvStop: "停止（保留已收到的部分）",
     recvDelete: "删除已收到的部分",
@@ -2088,6 +2091,7 @@ var MSG = {
     recvFailed: "{name} ist beschädigt angekommen: {what} stimmen nicht. Es bleibt als {path}: sende es vom PC erneut oder lösche, was angekommen ist.",
     recvFailedError: "{name} ist angekommen, ließ sich aber nicht prüfen: {error}. Es bleibt als {path}: sende es vom PC erneut oder lösche, was angekommen ist.",
     recvCancelled: "Der Empfang von {name} wurde abgebrochen: Was angekommen war, ist gelöscht.",
+    recvCancelledKept: "Der Empfang von {name} wurde abgebrochen, aber was angekommen war, ließ sich nicht löschen ({error}): Es bleibt als {path}. Lösche es unter Einstellungen > Unfertige Spiele vom PC.",
     recvOnHere: "Zum Einschalten öffne MaxPack im Browser der Konsole selbst (seine Kachel): von einem anderen Gerät lässt es sich nur ausschalten.",
     recvStop: "Anhalten (Angekommenes behalten)",
     recvDelete: "Angekommenes löschen",
@@ -2340,6 +2344,7 @@ var MSG = {
     recvFailed: "{name} ha llegado dañado: no cuadran {what}. Se queda como {path}: envíalo otra vez desde el PC, o borra lo que llegó.",
     recvFailedError: "{name} ha llegado pero no se pudo comprobar: {error}. Se queda como {path}: envíalo otra vez desde el PC, o borra lo que llegó.",
     recvCancelled: "Se canceló la recepción de {name}: lo que había llegado se ha borrado.",
+    recvCancelledKept: "Se canceló la recepción de {name}, pero lo que había llegado no se pudo borrar ({error}): se queda como {path}. Bórralo en Ajustes > Juegos del PC sin terminar.",
     recvOnHere: "Para encenderlo, abre MaxPack en el navegador de la propia consola (su icono): desde otro aparato solo se puede apagar.",
     recvStop: "Parar (guardar lo que llegó)",
     recvDelete: "Borrar lo que llegó",
@@ -2647,6 +2652,7 @@ var MSG = {
     recvFailed: "{name} est arrivé endommagé : {what} ne correspondent pas. Il reste sous {path} : renvoyez-le depuis le PC, ou supprimez ce qui est arrivé.",
     recvFailedError: "{name} est arrivé mais n'a pas pu être vérifié : {error}. Il reste sous {path} : renvoyez-le depuis le PC, ou supprimez ce qui est arrivé.",
     recvCancelled: "La réception de {name} a été annulée : ce qui était arrivé est supprimé.",
+    recvCancelledKept: "La réception de {name} a été annulée, mais ce qui était arrivé n'a pas pu être supprimé ({error}) : il reste sous {path}. Supprimez-le dans Paramètres > Jeux du PC inachevés.",
     recvOnHere: "Pour l'activer, ouvrez MaxPack dans le navigateur de la console elle-même (sa tuile) : depuis un autre appareil, on peut seulement le désactiver.",
     recvStop: "Arrêter (garder ce qui est arrivé)",
     recvDelete: "Supprimer ce qui est arrivé",
@@ -2954,6 +2960,7 @@ var MSG = {
     recvFailed: "{name} は破損した状態で届きました: {what} が一致しません。{path} として残ります。PC からもう一度送るか、届いた分を削除してください。",
     recvFailedError: "{name} は届きましたが検証できませんでした: {error}。{path} として残ります。PC からもう一度送るか、届いた分を削除してください。",
     recvCancelled: "{name} の受信を中止しました。届いた分は削除されました。",
+    recvCancelledKept: "{name} の受信を中止しましたが、届いた分を削除できませんでした（{error}）。{path} として残っています。設定 > PC からの未完了のゲーム で削除してください。",
     recvOnHere: "オンにするには、本体自身のブラウザーで MaxPack を開いてください（そのタイルから）。ほかの機器からはオフにしかできません。",
     recvStop: "停止（届いた分を残す）",
     recvDelete: "届いた分を削除",
@@ -3261,6 +3268,7 @@ var MSG = {
     recvFailed: "{name} chegou danificado: {what} não conferem. Ele fica como {path}: envie-o de novo do PC, ou apague o que chegou.",
     recvFailedError: "{name} chegou mas não pôde ser conferido: {error}. Ele fica como {path}: envie-o de novo do PC, ou apague o que chegou.",
     recvCancelled: "O recebimento de {name} foi cancelado: o que tinha chegado foi apagado.",
+    recvCancelledKept: "O recebimento de {name} foi cancelado, mas o que tinha chegado não pôde ser apagado ({error}): fica como {path}. Apague-o em Configurações > Jogos do PC não terminados.",
     recvOnHere: "Para ligar, abra o MaxPack no navegador do próprio console (o bloco dele): de outro aparelho só é possível desligar.",
     recvStop: "Parar (manter o que chegou)",
     recvDelete: "Apagar o que chegou",
@@ -3568,6 +3576,7 @@ var MSG = {
     recvFailed: "{name} è arrivato danneggiato: {what} non corrispondono. Resta come {path}: invialo di nuovo dal PC, oppure elimina ciò che è arrivato.",
     recvFailedError: "{name} è arrivato ma non è stato possibile controllarlo: {error}. Resta come {path}: invialo di nuovo dal PC, oppure elimina ciò che è arrivato.",
     recvCancelled: "La ricezione di {name} è stata annullata: ciò che era arrivato è stato eliminato.",
+    recvCancelledKept: "La ricezione di {name} è stata annullata, ma ciò che era arrivato non si è potuto eliminare ({error}): resta come {path}. Eliminalo in Impostazioni > Giochi dal PC non finiti.",
     recvOnHere: "Per attivarlo, apri MaxPack nel browser della console stessa (il suo riquadro): da un altro dispositivo si può solo disattivare.",
     recvStop: "Ferma (tieni ciò che è arrivato)",
     recvDelete: "Elimina ciò che è arrivato",
@@ -3875,6 +3884,7 @@ var MSG = {
     recvFailed: "{name}이(가) 손상된 채로 도착했습니다: {what}이(가) 일치하지 않습니다. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 도착한 부분을 삭제하세요.",
     recvFailedError: "{name}이(가) 도착했지만 검증할 수 없었습니다: {error}. {path}(으)로 남아 있습니다. PC에서 다시 보내거나 도착한 부분을 삭제하세요.",
     recvCancelled: "{name} 받기를 취소했습니다. 도착한 부분은 삭제되었습니다.",
+    recvCancelledKept: "{name} 받기를 취소했지만 도착한 부분을 삭제하지 못했습니다({error}). {path}(으)로 남아 있습니다. 설정 > PC에서 온 미완료 게임에서 삭제하세요.",
     recvOnHere: "켜려면 콘솔 자체 브라우저에서 MaxPack을 여세요(타일에서). 다른 기기에서는 끄기만 할 수 있습니다.",
     recvStop: "멈추기(도착한 부분 유지)",
     recvDelete: "도착한 부분 삭제",
@@ -4182,6 +4192,7 @@ var MSG = {
     recvFailed: "وصل {name} تالفًا: {what} غير مطابقة. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو احذف ما وصل.",
     recvFailedError: "وصل {name} لكن تعذّر التحقق منه: {error}. يبقى باسم {path}: أرسله من الحاسوب مرة أخرى، أو احذف ما وصل.",
     recvCancelled: "أُلغي استقبال {name}: حُذف ما كان قد وصل.",
+    recvCancelledKept: "أُلغي استقبال {name}، لكن تعذّر حذف ما كان قد وصل ({error}): يبقى باسم {path}. احذفه من الإعدادات > ألعاب غير مكتملة من الحاسوب.",
     recvOnHere: "لتشغيله، افتح MaxPack في متصفح الجهاز نفسه (من بلاطته): من جهاز آخر يمكن إيقافه فقط.",
     recvStop: "إيقاف (الاحتفاظ بما وصل)",
     recvDelete: "حذف ما وصل",
@@ -5567,7 +5578,8 @@ function recvText() {
     return r.cancelling ? t('verifyCancelling') : t('recvVerifying', { name: name, pct: v.total ? Math.floor(v.bytes / v.total * 100) : 0, speed: speed });
   }
   if (r.state === 'done') return t('recvDone', { name: name });
-  if (r.state === 'cancelled') return t('recvCancelled', { name: name });
+  // A cancelled receive's error says why what arrived is still there (its delete failed).
+  if (r.state === 'cancelled') return r.error ? t('recvCancelledKept', { name: name, error: r.error, path: r.path }) : t('recvCancelled', { name: name });
   if (r.state === 'paused') return t(r.error ? 'recvPausedWhy' : 'recvPaused', { name: name, error: r.error || '',
     have: fmtSize(r.have), size: fmtSize(r.size), path: r.path });
   var names = r.verify && Array.isArray(r.verify.bad) ? r.verify.bad.map(function (b) { return b.name; }) : [];
@@ -5580,8 +5592,9 @@ function renderReceive() {
   var show = !!r && (under || r.seq !== recvClosed);
   live($('recv-msg'), show ? recvText : null);
   $('recv').classList.toggle('show', show);
-  $('recv').classList.toggle('ok', show && r.state !== 'failed' && r.state !== 'paused');
-  $('recv').classList.toggle('warn', show && (r.state === 'failed' || r.state === 'paused'));
+  var warn = show && (r.state === 'failed' || r.state === 'paused' || (r.state === 'cancelled' && !!r.error));
+  $('recv').classList.toggle('ok', show && !warn);
+  $('recv').classList.toggle('warn', warn);
   if (!show) return;
   $('recv-stop').hidden = !under;
   $('recv-stop').disabled = !!r.cancelling || !!$('recv-stop')._busy;
