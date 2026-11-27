@@ -4077,6 +4077,20 @@ var PS = /PlayStation (?:4|5)\b/i.test(navigator.userAgent || '');
 var ELF = 'http://127.0.0.1:9021/data/maxpack/maxpack.elf';
 var LOOPBACK = (location.hostname === '127.0.0.1' || location.hostname === 'localhost') && location.port === '8095';
 var stopped = false, launchTried = false;
+// The AppCache keeps the page: on a load it shows the kept copy and fetches a new payload's page behind it.
+// Take the new one as soon as it is there, so a page opened after another maxpack.elf was sent is that
+// ELF's page, not the last one seen. pageCheck asks again when the payload comes back while the page is open.
+var wasOffline = false;
+(function () {
+  var ac = window.applicationCache;
+  if (!ac) return;
+  function take() { try { ac.swapCache(); } catch (e) {} location.reload(); }
+  ac.addEventListener('updateready', take);
+  if (ac.status === ac.UPDATEREADY) take();
+})();
+function pageCheck() {
+  try { if (window.applicationCache && applicationCache.status !== applicationCache.UNCACHED) applicationCache.update(); } catch (e) {}
+}
 var KINDS = [
   { id: 'all', key: 'kindAll' }, { id: 'pkg', label: 'PKG' }, { id: 'p5z', label: 'P5Z' }, { id: 'folder', key: 'kindFolders' },
   { id: 'lz4', label: 'LZ4' }, { id: 'zstd', label: 'ZSTD' }
@@ -5188,6 +5202,7 @@ async function poll() {
     state = await r.json();
     if (upd.from && state.version && state.version !== upd.from) { location.reload(); return; }
     updTimedOut();
+    if (wasOffline) { wasOffline = false; pageCheck(); }
     setBanner('offline', false);
     renderUpdate();
     var cache = state.cache || {};
@@ -5215,6 +5230,7 @@ async function poll() {
     }
   } catch (e) {
     if (stopped) return;
+    wasOffline = true;
     setBanner('offline', true);
     // During a self-update the new copy is on its way: starting the saved (old) copy would race it.
     if (updTimedOut()) renderUpdate();

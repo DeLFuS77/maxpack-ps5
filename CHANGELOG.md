@@ -14,6 +14,16 @@ What changed in each version of MaxPack for the console. The format follows
   writing anything (the `.p5z` adds its indexes to the folder's bytes), and names the `.p5z` only once its sums read back; a file
   whose sums do not read back is deleted, and a Cancel while they are read is honoured.
 
+### Fixed
+
+- **The page after another `maxpack.elf`.** The console's browser keeps the page, and after a different
+  `maxpack.elf` was sent it showed the last page it had seen until MaxPack was opened again. From this version
+  on, the new payload's page replaces it as soon as the browser has fetched it, also when the payload comes
+  back while the page is open.
+- **The test compression's memory probe.** On a PS5 on 13.60 it could not read the system's free memory
+  (`vm.stats`), so it took no step; it now falls back to the free pages of `vm.vmtotal`, and the log says at
+  every start which memory sources answer.
+
 ## 1.0.2 - 2026-11-26
 
 ### Added
