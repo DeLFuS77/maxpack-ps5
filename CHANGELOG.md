@@ -3,7 +3,7 @@
 What changed in each version of MaxPack for the console. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions are those of `Cargo.toml`.
 
-## Unreleased
+## 1.1.0 - 2026-11-27
 
 ### Added
 

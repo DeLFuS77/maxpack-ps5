@@ -31,9 +31,13 @@
   black screen or stalls while checking add-ons ([more](#fakelib-per-game)).
 - **Recommended settings**, new in 1.0.2: a game known to need a Fakelib mode gets it by itself, and a game
   that takes minutes on a black screen says so when it starts ([more](#recommended-settings)).
+- **Games sent from the PC**, new in 1.1.0: MaxPack for the PC sends a `.p5z` straight to a drive of the
+  console, which checks it as it arrives ([more](#send-games-from-the-pc-checked-when-they-arrive)).
+- **Verify on the console**, new in 1.1.0: a `.p5z` game's sheet checks the file against the SHA-256 it was
+  written with ([more](#check-a-p5z-on-the-console)).
 
 > [!NOTE]
-> **Status: early release, help us test.** MaxPack 1.0.2 is the current release (1.0.0 was the first public one). It has
+> **Status: early release, help us test.** MaxPack 1.1.0 is the current release (1.0.0 was the first public one). It has
 > been tested on one console (firmware 13.60) with a handful of games, so expect rough edges. Testing
 > on other firmwares, games and drives is the most useful help right now:
 > [here is how](#help-test-maxpack).
@@ -579,7 +583,7 @@ but MaxPack does not mount them: ShadowMountPlus plays them.
 
 ## Status
 
-MaxPack for the console **1.0.2** is the current release (1.0.0 was the first public one). Honestly, this
+MaxPack for the console **1.1.0** is the current release (1.0.0 was the first public one). Honestly, this
 is where it stands:
 
 | Area | State |
@@ -588,6 +592,8 @@ is where it stands:
 | Playing a `.p5z` in place | **Tested on a real PS5**: firmware 13.60, three games with 1, 9 and 19 volumes, from the internal SSD and an external M.2 SSD over USB-C ([results](#tested-on-a-real-ps5)). Still to do: a side-by-side timing against a packed folder, and more games, firmwares and drives. |
 | Fakelib per game | Done and tested on the PC. Game C reached its menu with the same `fakelib/` that **Off** makes, set up by hand during the tests. |
 | Recommended settings | Done and tested on the PC (the list's checks and the precedence in `cargo test`, the page in the mock); its pass through the console checklist (section 10) is still to do. |
+| Receiving a `.p5z` from the PC | **Tested on a real PS5** (firmware 13.60): two `.p5z` of 7.5 GB and 35.5 GB arrived over the console's Wi-Fi at about 24 MB/s, checked out in 42 s and 3 min 36 s and showed up in the library; the one whose game runs on that firmware started from it. A send by cable is still to measure. |
+| Verify on the console | **Tested on a real PS5**: **Verify quickly** read a 35.5 GB `.p5z` from the internal SSD in about 3 minutes (about 180 MB/s). |
 | The library, Play, hide, Copy report, installer, excluded paths, living with ShadowMountPlus and Kraken Mount, the tile, the self-update | Done and tested on the PC; their pass through the console checklist is still under way. |
 | Everything inherited from Kraken Mount 0.3.1 | Kept as in Kraken Mount, a released mounter; MaxPack's own pass through that part of the checklist (section B) is still to do. |
 
