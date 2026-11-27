@@ -597,13 +597,81 @@ fn probe(cancelled: &dyn Fn() -> bool, game: &dyn Fn() -> bool) -> Probe {
 }
 
 /// The system's available memory: its free pages (`vm.stats.vm.v_free_count`), plus its inactive ones
-/// (`v_inactive_count`, the cache the kernel can hand out) when that can be read (then true). None when the free
-/// pages cannot be read.
+/// (`v_inactive_count`, the cache the kernel can hand out) when that can be read (then true). When the vm.stats
+/// names cannot be read (a PS5 on 13.60 answered none), the free pages of `vm.vmtotal`. None when neither answers.
 fn available_memory() -> Option<(u64, bool)> {
     let page = page_size()?;
-    let free = sysctl_u64(b"vm.stats.vm.v_free_count")?;
-    let inactive = sysctl_u64(b"vm.stats.vm.v_inactive_count");
-    Some(((free + inactive.unwrap_or(0)) * page, inactive.is_some()))
+    if let Some(free) = sysctl_u64(b"vm.stats.vm.v_free_count") {
+        let inactive = sysctl_u64(b"vm.stats.vm.v_inactive_count");
+        return Some(((free + inactive.unwrap_or(0)) * page, inactive.is_some()));
+    }
+    vmtotal_free().ok().map(|free| (free * page, false))
+}
+
+/// `t_free` (free pages) of `vm.vmtotal`, by its fixed numbers {CTL_VM, VM_TOTAL} (no name lookup): the last field
+/// of struct vmtotal, 32 bits in FreeBSD 11's 48-byte layout, 64 bits in the 88-byte one of later releases.
+fn vmtotal_free() -> Result<u64, String> {
+    let mib = [2 as c_int, 1];
+    let mut buf = [0u8; 128];
+    let mut len = buf.len();
+    // SAFETY: the buffer and its length are ours.
+    let rc = unsafe { libc::sysctl(mib.as_ptr(), 2, buf.as_mut_ptr().cast(), &mut len, std::ptr::null(), 0) };
+    if rc != 0 {
+        return Err(format!("sysctl: {}", std::io::Error::last_os_error()));
+    }
+    match len {
+        48 => Ok(i32::from_ne_bytes([buf[44], buf[45], buf[46], buf[47]]).max(0) as u64),
+        88 => Ok(u64::from_ne_bytes([buf[80], buf[81], buf[82], buf[83], buf[84], buf[85], buf[86], buf[87]])),
+        n => Err(format!("{n} bytes, not a known struct vmtotal")),
+    }
+}
+
+/// What a numeric sysctl by name answers, for the log: the value, or the step that failed and why.
+fn sysctl_why(name: &[u8]) -> String {
+    let mut oid = [0 as c_int; 24];
+    let mut len = std::mem::size_of_val(&oid);
+    let q = [0 as c_int, 3];
+    // SAFETY: as in sysctl_u64.
+    let rc = unsafe {
+        libc::sysctl(q.as_ptr(), 2, oid.as_mut_ptr().cast(), &mut len, name.as_ptr().cast(), name.len())
+    };
+    if rc != 0 {
+        return format!("name2oid: {}", std::io::Error::last_os_error());
+    }
+    match sysctl_u64(name) {
+        Some(v) => v.to_string(),
+        None => format!("read: {} ({} oid words)", std::io::Error::last_os_error(), len / 4),
+    }
+}
+
+/// Once at start: which of the memory sources the probe can use answer on this console, in the log (the probe
+/// takes no step without one). sceKernelAvailableFlexibleMemorySize is this process's own budget, logged only.
+pub fn log_memory_sources() {
+    let page = page_size().map_or("unknown".to_string(), |p| p.to_string());
+    let vmtotal = match vmtotal_free() {
+        Ok(v) => v.to_string(),
+        Err(e) => e,
+    };
+    type Flexible = unsafe extern "C" fn(*mut usize) -> i32;
+    // SAFETY: a lookup by a NUL-terminated name; the function, when there, takes one size_t out-pointer.
+    let flexible = unsafe {
+        let f = libc::dlsym(libc::RTLD_DEFAULT, c"sceKernelAvailableFlexibleMemorySize".as_ptr());
+        if f.is_null() {
+            "not found".to_string()
+        } else {
+            let mut size = 0usize;
+            let rc = std::mem::transmute::<*mut c_void, Flexible>(f)(&mut size);
+            if rc == 0 { format!("{} MiB", size >> 20) } else { format!("error {rc:#x}") }
+        }
+    };
+    log!("memory sources: page {page} bytes; vm.stats.vm.v_free_count {}; v_inactive_count {}; vm.vmtotal t_free {vmtotal}; \
+          flexible memory {flexible}; the probe uses {}",
+        sysctl_why(b"vm.stats.vm.v_free_count"), sysctl_why(b"vm.stats.vm.v_inactive_count"),
+        match available_memory() {
+            Some((b, true)) => format!("free + inactive, {} MiB", b >> 20),
+            Some((b, false)) => format!("free, {} MiB", b >> 20),
+            None => "none (it takes no step)".to_string(),
+        });
 }
 
 fn page_size() -> Option<u64> {

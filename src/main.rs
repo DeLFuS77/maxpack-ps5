@@ -995,6 +995,8 @@ fn main() {
     recommended::spawn_refresh(state.clone());
     let web_state = state.clone();
     std::thread::spawn(move || web::serve(web_state, listener));
+    // Which memory sources the test compression's probe can read here, once per start (read-only sysctls).
+    pack::log_memory_sources();
     // The web UI is up; nothing mounts until kstuff answers, nor while another mounter runs.
     wait_ready(&state);
     {
