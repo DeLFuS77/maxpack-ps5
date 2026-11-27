@@ -54,6 +54,10 @@ What changed in each version of MaxPack for the console. The format follows
   engine carries since 1.0.2.
 - The README said that a value of the recommended settings this version does not know is refused; it is
   ignored for that game, and only a file that does not check out is refused.
+- **The page after another `maxpack.elf`.** The console's browser keeps the page, and after a different
+  `maxpack.elf` was sent it showed the last page it had seen until MaxPack was opened again. From this version
+  on, the new payload's page replaces it as soon as the browser has fetched it, also when the payload comes
+  back while the page is open.
 
 ## 1.0.2 - 2026-11-26
 
